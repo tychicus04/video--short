@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 from google.genai import errors
 
-from vshort.tts import QuotaExceeded, _speaker_from_client, load_api_key, measured_rate, synth_script
+from vshort.tts import QuotaExceeded, _speaker_from_client, load_api_key, synth_script
 
 
 def _speech_wav(parts: list[tuple[str, float]]) -> bytes:
@@ -64,11 +64,6 @@ def test_load_api_key_never_leaks(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError) as e:
         load_api_key(tmp_path / "missing.env")
     assert "secret" not in str(e.value)
-
-
-def test_measured_rate():
-    clips = [SimpleNamespace(id=1, duration=2.0), SimpleNamespace(id=2, duration=2.0)]
-    assert measured_rate(clips, [(1, "một hai ba bốn"), (2, "năm sáu bảy tám chín mười")]) == 2.5
 
 
 class FakeModels:

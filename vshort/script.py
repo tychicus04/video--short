@@ -48,10 +48,6 @@ def syllables(text: str) -> int:
     return sum(1 for tok in text.replace("|", " ").replace("*", "").split() if re.search(r"\w", tok))
 
 
-def budget(s: Sentence, rate: float) -> int:
-    return math.floor((s.end - s.start) * rate * 0.95)
-
-
 def merged(sentences: list[Sentence], script: list[dict]) -> list[Sentence]:
     """Sentences that get a Vietnamese line; a line left empty hands its time to the line before it."""
     said = {row["id"] for row in script if row["phrases"].strip()}
@@ -64,7 +60,7 @@ def merged(sentences: list[Sentence], script: list[dict]) -> list[Sentence]:
     return out
 
 
-def check_script(sentences: list[Sentence], script: list[dict], rate: float) -> list[str]:
+def check_script(sentences: list[Sentence], script: list[dict]) -> list[str]:
     probs = []
     by_id = {row["id"]: row for row in script}
     want = {s.id for s in sentences}
@@ -84,6 +80,4 @@ def check_script(sentences: list[Sentence], script: list[dict], rate: float) -> 
             for ph in (p.strip() for p in text.split("|")):
                 if text_width(ph) > MAX_TEXT_W:
                     probs.append(f"Câu {s.id}: cụm '{ph}' rộng {text_width(ph):.0f}px, vượt {MAX_TEXT_W}px")
-        if syllables(text) > budget(s, rate):
-            probs.append(f"Câu {s.id}: quá dài ({syllables(text)} âm tiết, tối đa {budget(s, rate)})")
     return probs

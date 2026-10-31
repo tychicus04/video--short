@@ -1,7 +1,5 @@
 tts_model = "gemini-2.5-flash-preview-tts"
 voice = "Charon"
-syllables_per_sec = 4.0
-max_tempo = 1.10
 env_file = "~/Document/notebooklm-py-main/.env"
 notebooklm_dir = "~/Document/notebooklm-py-main"
 runs_dir = "~/notebooklm-videos"

@@ -1,6 +1,5 @@
 """A run folder (~/notebooklm-videos/<slug>/): its files, its config and which steps are done."""
 import json
-import re
 import tomllib
 from pathlib import Path
 from typing import Any
@@ -10,14 +9,6 @@ CONFIG = Path(__file__).resolve().parent.parent / "config.toml"
 
 def config() -> dict[str, Any]:
     return tomllib.loads(CONFIG.read_text())
-
-
-def set_config(key: str, value: float | str) -> None:
-    """Rewrite one `key = value` line of config.toml in place."""
-    text = CONFIG.read_text()
-    line = f"{key} = {json.dumps(value)}"
-    text, n = re.subn(rf"^{re.escape(key)} = .*$", line, text, flags=re.M)
-    CONFIG.write_text(text if n else text.rstrip("\n") + f"\n{line}\n")
 
 
 class Run:

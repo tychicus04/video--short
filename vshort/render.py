@@ -2,7 +2,6 @@
 import subprocess
 from pathlib import Path
 
-from vshort.captions import Fragment
 from vshort.media import FF, probe
 from vshort.plates import Plate
 from vshort.textfit import FONTS, MAX_TEXT_W, text_width
@@ -85,13 +84,6 @@ Style: Cap,Patrick Hand,{fs(CAP_EM)},&H00{INK},&H00{INK},&H00{INK},&H00000000,0,
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
     return head + "".join(ev)
-
-
-def outro_cut(frags: list[Fragment], cuts: list[float], duration: float, blank: float | None = None) -> float:
-    """The NotebookLM logo outro starts at the first scene cut or blank frame after the last caption."""
-    last = max(f.end for f in frags)
-    after = [c for c in cuts if c >= last - 1e-3] + ([blank] if blank is not None else [])
-    return min(after, default=duration)
 
 
 def compose(src: Path, narration: Path, ass: Path, plates: list[Plate], plates_dir: Path, cut: float, out: Path) -> None:

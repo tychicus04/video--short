@@ -202,8 +202,3 @@ def synth_script(lines: list[tuple[int, str]], out_dir: Path, speak: Speaker, ta
         for p, (b, e) in zip(paths, _sentence_spans(a, rate, [max(syllables(t), 1) for _, t in lines])):
             _write_wav(p, a[b:e], rate)
     return [Clip(i, p, _duration(p)) for (i, _), p in zip(lines, paths)]
-
-
-def measured_rate(clips: list[Clip], lines: list[tuple[int, str]]) -> float:
-    text = dict(lines)
-    return sum(syllables(text[c.id]) for c in clips) / sum(c.duration for c in clips)

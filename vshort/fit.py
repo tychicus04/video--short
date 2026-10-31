@@ -1,4 +1,4 @@
-"""Fit Vietnamese voice clips into the English sentence windows and lay out the subtitle phrases."""
+"""Lay the Vietnamese voice clips back to back and time the subtitle phrases on them."""
 import subprocess
 import wave
 from dataclasses import dataclass
@@ -7,11 +7,13 @@ from pathlib import Path
 import numpy as np
 
 from vshort.media import FF
-from vshort.script import Sentence, syllables
+from vshort.script import syllables
 from vshort.tts import Clip
 
 RATE = 24000
-GAP = 0.1  # minimum silence between two sentences
+GAP = 0.3  # silence between two sentences
+LEAD = 0.2  # before the first
+TAIL = 0.5  # after the last
 
 
 @dataclass
@@ -19,36 +21,25 @@ class Placement:
     id: int
     start: float
     dur: float
-    tempo: float
-    overflow: float
 
 
-def place(sentences: list[Sentence], clips: list[Clip], cut: float, max_tempo: float = 1.10) -> list[Placement]:
-    """Start each clip on its sentence (or after the previous clip spills), speeding up at most max_tempo."""
-    length = {c.id: c.duration for c in clips}
-    out, prev_end = [], float("-inf")
-    for k, s in enumerate(sentences):
-        start = max(s.start, prev_end + GAP)
-        next_start = sentences[k + 1].start if k + 1 < len(sentences) else cut
-        available = max(next_start - start, 1e-6)
-        tempo = min(max(1.0, length[s.id] / available), max_tempo)
-        dur = length[s.id] / tempo
-        out.append(Placement(s.id, start, dur, tempo, max(0.0, start + dur - next_start)))
-        prev_end = start + dur
+def sequence(clips: list[Clip]) -> list[Placement]:
+    """Clips in the order given, each GAP after the one before; the first starts at LEAD."""
+    out, t = [], LEAD
+    for c in clips:
+        out.append(Placement(c.id, t, c.duration))
+        t += c.duration + GAP
     return out
 
 
-def too_long(placements: list[Placement], tol: float = 0.25) -> list[int]:
-    """Sentences spilling too far into the next one; the last one may not spill at all (the video ends)."""
-    last = len(placements) - 1
-    return [p.id for k, p in enumerate(placements) if p.overflow > (0.0 if k == last else tol)]
+def total(placements: list[Placement]) -> float:
+    return placements[-1].start + placements[-1].dur + TAIL
 
 
-def _load(clip: Clip, tempo: float) -> np.ndarray:
-    """Clip as 24 kHz mono int16, sped up by tempo (pitch kept)."""
-    af = ["-filter:a", f"atempo={tempo}"] if tempo > 1.0001 else []
+def _load(clip: Clip) -> np.ndarray:
+    """Clip as 24 kHz mono int16."""
     raw = subprocess.run(
-        [FF, "-loglevel", "error", "-i", str(clip.path), *af, "-ar", str(RATE), "-ac", "1", "-f", "s16le", "-"],
+        [FF, "-loglevel", "error", "-i", str(clip.path), "-ar", str(RATE), "-ac", "1", "-f", "s16le", "-"],
         capture_output=True, check=True,
     ).stdout
     return np.frombuffer(raw, np.int16)
@@ -58,7 +49,7 @@ def build_narration(placements: list[Placement], clips: list[Clip], total: float
     by_id = {c.id: c for c in clips}
     track = np.zeros(round(total * RATE), np.int32)
     for p in placements:
-        a = _load(by_id[p.id], p.tempo)
+        a = _load(by_id[p.id])
         i = round(p.start * RATE)
         n = max(0, min(len(a), len(track) - i))
         track[i : i + n] += a[:n]

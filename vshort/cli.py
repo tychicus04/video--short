@@ -7,16 +7,15 @@ from dataclasses import asdict
 from pathlib import Path
 
 from vshort.captions import Fragment, detect_fragments, write_sheets
-from vshort.fit import Placement, build_narration, phrase_times, place, too_long
-from vshort.media import probe
-from vshort.plates import Plate, build_plates, first_blank, scene_cuts
-from vshort.render import build_ass, compose, outro_cut
-from vshort.run import Run, config, set_config
-from vshort.script import Sentence, budget, check_script, group_sentences, merge_text, merged
-from vshort.tts import Clip, QuotaExceeded, gemini_speaker, load_api_key, measured_rate, synth_script
+from vshort.fit import Placement, build_narration, phrase_times, sequence, total
+from vshort.plates import Plate, build_plates
+from vshort.render import build_ass, compose
+from vshort.run import Run, config
+from vshort.script import Sentence, check_script, group_sentences, merge_text
+from vshort.tts import Clip, QuotaExceeded, gemini_speaker, load_api_key, synth_script
 
 ROOT = Path(__file__).resolve().parent.parent
-OK, FAILED, BAD_INPUT, TOO_LONG, AUTH, QUOTA = 0, 1, 2, 3, 4, 75
+OK, FAILED, BAD_INPUT, AUTH, QUOTA = 0, 1, 2, 4, 75
 RELOGIN = (
     "NotebookLM đã hết phiên đăng nhập. Trên Mac chạy `notebooklm login`, rồi scp storage_state.json sang server:\n"
     "  scp ~/.notebooklm/profiles/default/storage_state.json tai@pve2:~/.notebooklm/profiles/default/\n"
@@ -119,16 +118,15 @@ def cmd_text(a) -> int:
     run.write("captions.json", [asdict(f) for f in captions])
     sents = group_sentences(captions)
     run.write("sentences.en.json", [asdict(s) for s in sents])
-    rate = config()["syllables_per_sec"]
     for s in sents:
-        print(f"{s.id}\t{s.end - s.start:5.2f}s\ttối đa {budget(s, rate)} âm tiết\t{s.en}")
+        print(f"{s.id}\t{s.start:.2f}–{s.end:.2f}\t{s.en}")
     run.mark("text")
     return OK
 
 
 def cmd_check(a) -> int:
     run = Run(a.run)
-    probs = check_script(_sentences(run), run.read("script.vi.json"), config()["syllables_per_sec"])
+    probs = check_script(_sentences(run), run.read("script.vi.json"))
     for p in probs:
         _err(p)
     if probs:
@@ -162,35 +160,25 @@ def cmd_tts(a) -> int:
         _err(str(e))
         return FAILED
     run.write("tts.json", [{"id": c.id, "path": str(c.path), "duration": c.duration} for c in clips])
-    if len(clips) >= 5:
-        rate = round(measured_rate(clips, lines), 2)
-        set_config("syllables_per_sec", rate)
-        print(f"Tốc độ đọc đo được: {rate} âm tiết/giây (đã lưu vào config.toml)")
     run.mark("tts")
     return OK
 
 
-def cmd_fit(a) -> int:
+def cmd_timeline(a) -> int:
     run = Run(a.run)
-    src = run.file("source.mp4")
-    captions = [Fragment(**f) for f in run.read("captions.json")]
-    blank = first_blank(src, max(f.end for f in captions))
-    cut = outro_cut(captions, scene_cuts(src), probe(src).duration, blank)
     clips = [Clip(c["id"], Path(c["path"]), c["duration"]) for c in run.read("tts.json")]
-    placements = place(merged(_sentences(run), run.read("script.vi.json")), clips, cut, config()["max_tempo"])
-    run.write("placements.json", {"cut": cut, "placements": [asdict(p) for p in placements]})
-    build_narration(placements, clips, cut, run.file("narration.wav"))
-    run.mark("fit")
-    if long := too_long(placements):
-        _err("Câu quá dài so với khung thời gian, cần rút gọn: " + ", ".join(map(str, long)))
-        return TOO_LONG
+    placements = sequence(clips)
+    end = total(placements)
+    run.write("timeline.json", {"total": end, "placements": [asdict(p) for p in placements]})
+    build_narration(placements, clips, end, run.file("narration.wav"))
+    run.mark("timeline")
     return OK
 
 
 def cmd_render(a) -> int:
     run = Run(a.run)
-    fitted = run.read("placements.json")
-    cut = fitted["cut"]
+    fitted = run.read("timeline.json")
+    cut = fitted["total"]
     phrases = phrase_times([Placement(**p) for p in fitted["placements"]], run.read("script.vi.json"))
     ass = run.file("subs.ass")
     ass.write_text(build_ass(phrases), encoding="utf-8")
@@ -205,7 +193,7 @@ def cmd_render(a) -> int:
 
 def cmd_status(a) -> int:
     run = Run(a.run)
-    steps = ["new", "fetch", "detect", "text", "plates", "tts", "fit", "render"]
+    steps = ["new", "fetch", "detect", "text", "plates", "tts", "timeline", "render"]
     for s in steps:
         print(f"{'✓' if run.done(s) else '·'} {s}")
     return OK
@@ -225,7 +213,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--prompt", help="video description passed to NotebookLM")
     p.set_defaults(fn=cmd_fetch)
     for name, fn in [("detect", cmd_detect), ("text", cmd_text), ("check", cmd_check), ("plates", cmd_plates),
-                     ("tts", cmd_tts), ("fit", cmd_fit), ("render", cmd_render), ("status", cmd_status)]:
+                     ("tts", cmd_tts), ("timeline", cmd_timeline), ("render", cmd_render), ("status", cmd_status)]:
         p = sub.add_parser(name)
         p.add_argument("run")
         p.set_defaults(fn=fn)

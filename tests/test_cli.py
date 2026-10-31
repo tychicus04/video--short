@@ -1,6 +1,8 @@
 import json
 from subprocess import CompletedProcess
 
+from conftest import write_silence
+
 from vshort import cli
 from vshort.cli import main
 from vshort.run import Run
@@ -43,8 +45,21 @@ def test_state_resume(tmp_path):
 
 def test_check_exit_2(tmp_path):
     (tmp_path / "sentences.en.json").write_text('[{"id": 1, "start": 0, "end": 1, "en": "Hi."}]')
-    (tmp_path / "script.vi.json").write_text('[{"id": 1, "phrases": "một hai ba bốn năm sáu bảy tám", "note": ""}]')
+    (tmp_path / "script.vi.json").write_text('[{"id": 1, "phrases": "", "note": ""}]')
     assert main(["check", str(tmp_path)]) == 2
+
+
+def test_timeline_writes_back_to_back_narration(tmp_path):
+    for i in (1, 3):
+        write_silence(tmp_path / f"{i}.wav", 1.0)
+    (tmp_path / "tts.json").write_text(json.dumps(
+        [{"id": i, "path": str(tmp_path / f"{i}.wav"), "duration": 1.0} for i in (1, 3)]))
+    (tmp_path / "script.vi.json").write_text(json.dumps(
+        [{"id": 1, "phrases": "a"}, {"id": 2, "phrases": ""}, {"id": 3, "phrases": "b"}]))
+    assert main(["timeline", str(tmp_path)]) == 0
+    t = json.loads((tmp_path / "timeline.json").read_text())
+    assert [p["id"] for p in t["placements"]] == [1, 3] and abs(t["total"] - 3.0) < 1e-6  # 0.2+1+0.3+1+0.5
+    assert (tmp_path / "narration.wav").exists() and Run(tmp_path).done("timeline")
 
 
 def test_tts_quota_exit_75(tmp_path, monkeypatch, capsys):
