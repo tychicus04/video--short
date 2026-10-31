@@ -37,17 +37,19 @@ Thiết kế: `~/video-pipeline/DESIGN.md` và `~/video-pipeline/docs/superpower
 5. **Dịch sát** — giao `vs-translator` đường dẫn `$RUN` và nguyên văn đầu ra của `vshort text`.
    Nó ghi `$RUN/script.vi.json` và tự chạy `vshort check $RUN` tới khi mã 0. Không có giới hạn độ dài câu.
 6. **Giọng đọc** (nền, song song với bước 7–9) — `vshort tts $RUN` (một lần gọi Gemini cho cả kịch bản, tự cắt thành từng câu).
-   Mã 75 → hết hạn mức Gemini trong ngày (gói miễn phí 10 lần/ngày mỗi model). Mã 1 với "Không tách được giọng đọc…" → báo nguyên văn.
-   Với cả hai mã: đợi bước 7–9 chạy xong rồi mới báo Tai và dừng; hạn mức hồi (hoặc đã sửa) thì gọi lại `/video-short`,
-   skill chạy tiếp từ `tts` vì phần hình đã xong.
+   Mã 75 → hết hạn mức Gemini trong ngày (gói miễn phí 10 lần/ngày mỗi model). Mã 1 với thông báo bắt đầu bằng "Không tách"
+   ("Không tách được giọng đọc…" hoặc "Không tách chắc chắn…") → báo nguyên văn.
+   Với cả hai mã: đợi bước 7–9 chạy xong rồi mới báo Tai và dừng. Khi Tai gọi lại `/video-short`, xem `vshort status $RUN`:
+   các bước đã ✓ (`plates`, `stills`, `visuals`) được bỏ qua, chạy tiếp từ `tts`.
 7. **Nền sạch** — `vshort plates $RUN` (cần `captions.json` từ bước 4).
 8. **Ảnh tĩnh** — `vshort stills $RUN`. Ghi `$RUN/clean.mp4` (video đã xóa phụ đề cũ và watermark), `$RUN/stills.json`,
    `$RUN/stills/<id>.png` (một ảnh vẽ xong cho mỗi câu), `stills/grid/<id>.png` (phủ lưới), `stills/sheet.png` (tất cả trên một tờ).
 9. **Hình theo lời** — giao `vs-visuals` đường dẫn `$RUN`. Nó vá chữ sai trong hình, chọn 3–5 câu thay bằng tư liệu thật vẽ lại,
    ghi `$RUN/visuals.json` và tự chạy `vshort visuals $RUN` tới khi mã 0 (ra `$RUN/frames/<id>.png`, `frames.json`).
-   Giữ nguyên đầu ra của nó (mỗi mục một dòng) cho câu trả lời cuối. Nếu nó không đưa được `vshort visuals` tới mã 0:
-   giữ bản của nó (`mv $RUN/visuals.json $RUN/visuals.loi.json`), ghi `[]` vào `$RUN/visuals.json`, chạy `vshort visuals $RUN`
-   để có khung hình gốc, và báo lý do cho Tai.
+   Giữ nguyên đầu ra của nó (mỗi mục một dòng) cho câu trả lời cuối. Đừng tin lời nó: tự chạy `vshort visuals $RUN` một lần và
+   lấy mã thoát đó. Mã khác 0 → giữ bản của nó (`mv $RUN/visuals.json $RUN/visuals.loi.json`), ghi `[]` vào `$RUN/visuals.json`,
+   chạy lại `vshort visuals $RUN` để có khung hình gốc, và báo lý do cho Tai. Nếu `[]` vẫn không qua, chạy lại `vshort stills $RUN`
+   trước rồi `vshort visuals $RUN`.
 10. **Ghép & soát** — chờ bước 6 và bước 9 xong (có `tts.json` và `frames.json`). `vshort timeline $RUN` (xếp giọng đọc nối tiếp,
    ra `timeline.json` và `narration.wav`; không gọi TTS), rồi `vshort render $RUN` (ra `final.mp4`; lỗi thì giữ bản cũ)
    → giao `vs-reviewer` đường dẫn `$RUN`; nó ghi `$RUN/review.md`.

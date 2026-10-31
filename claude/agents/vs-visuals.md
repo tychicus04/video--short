@@ -41,18 +41,24 @@ Chọn 3–5 câu mà một hình thật giúp người xem tin hơn hoặc hi�
 tiêu đề báo cáo của bên phát hiện, mốc thời gian, ảnh trong bài báo gốc. Tìm trong `sources.md` trước, rồi WebSearch nguồn chính thức.
 Mỗi câu tối đa một hình; hình thay hẳn ảnh tĩnh của câu đó (kể cả chỗ vá nếu có).
 
+**Đọc nguồn thật**: WebSearch chỉ để tìm trang. Đọc chính trang đó bằng `curl -sL <url>`, bỏ thẻ HTML (ví dụ `python3` với
+`html.parser`, hoặc `re.sub(r"<[^>]+>", " ", html)`), rồi chép chữ và con số từ văn bản đã tải, không chép từ đoạn trích của WebSearch hay từ trí nhớ.
 Chép đúng từng chữ và con số từ nguồn; không bịa giao diện, tiêu đề báo hay ngày mà nguồn không có.
-Tư liệu có thể chỉ đường tới mã tấn công (tên/chủ repo, URL tải mã khai thác) thì bỏ đi, không chép; ghi việc đã bỏ vào `note`.
-Luật "không hướng dẫn tấn công" thắng luật "chép đúng từng chữ".
+`source` là URL của trang mà người xem có thể mở ra kiểm (không phải URL file ảnh); với `photo`, ghi thêm URL file ảnh trong `note`.
+
+**Không hướng dẫn tấn công** (luật này thắng luật "chép đúng từng chữ"): không vẽ hay chép mã khai thác, lệnh, payload, offset,
+quy trình tấn công từng bước hay bất cứ thứ gì giúp dựng lại một cuộc tấn công. Tư liệu chỉ đường tới mã tấn công (tên/chủ repo,
+URL tải mã khai thác) thì bỏ đi. Trang báo cáo hay GitHub vẽ lại chỉ giữ chi tiết cấp tiêu đề: ai phát hiện, chuyện gì, khi nào,
+phiên bản nào bị ảnh hưởng, đã có bản vá. Ghi mọi thứ đã bỏ vào `note`.
 
 **Giao diện, trang chữ → `svg`** (viết tay file `RUN/visuals/<tên>.svg`):
 - `viewBox="0 0 720 1280"`, nền trong suốt (code đặt giấy kem phía sau). Nét xám như bút chì `#4a4a4a`, khung mảnh,
   điểm nhấn xanh lơ nhạt. Chữ viết tay dùng font `Patrick Hand`, chữ giao diện dùng `Be Vietnam Pro`; chỉ hai font này có sẵn.
 - Giao diện iOS dùng nhãn tiếng Việt thật ("Cài đặt › Cài đặt chung › Cập nhật phần mềm").
-- Giữ chữ trong x 40–680 và trên y 1080: dải phụ đề nằm ở y 1094–1206, và cảnh tham chiếu phóng lên tới 8 % nên mép bị cắt.
+- Giữ chữ trong x 40–680, y 60–1050: hình tham chiếu phóng 1,08 lần quanh tâm nên mép trên/dưới bị cắt khoảng 47 px, và dải phụ đề nằm ở y 1094–1206.
 - `<image>` chỉ vẽ được khi `href` là `data:` URI; file liên kết ra trống trơn. Nhúng ảnh bằng `data:` hoặc đừng dùng ảnh trong SVG.
 - Chỉ dùng hình cơ bản (`rect`, `path`, `line`, `circle`, `text`); tránh `filter`, `foreignObject`, CSS phức tạp.
-- Tự vẽ một dòng nguồn nhỏ trong chính SVG, trên y 1080 (ví dụ "Nguồn: Google Threat Intelligence").
+- Tự vẽ một dòng nguồn nhỏ trong chính SVG, trong vùng an toàn trên, dưới y 1050 (ví dụ "Nguồn: Google Threat Intelligence").
 
 **Ảnh thật → `photo`**: tải về từ trang chính thức hoặc báo chí bằng `curl -L -o RUN/visuals/<tên>.jpg <url>`
 (đổi đuôi theo định dạng; kiểm bằng Read rằng ảnh mở được và đủ nét). Code tự chuyển thành nét chì, đặt trên giấy trong khung mảnh
@@ -79,7 +85,10 @@ và vẽ dòng `credit` ngay dưới ảnh; đừng tự vẽ thêm gì lên ả
 - `note` luôn ghi: lý do vá, hoặc hình vẽ lại gì và đã bỏ gì.
 
 Chạy `cd ~/video-pipeline && uv run vshort visuals RUN`. Mã 2 in mỗi lỗi một dòng → sửa `visuals.json` hoặc file hình đúng các lỗi đó
-rồi chạy lại, tới khi mã 0. Mã 1 ("không dựng được khung hình <id>") thường do file hình của câu đó hỏng: thay file. Lệnh ghi lại `RUN/frames/<id>.png` và `RUN/frames.json` mỗi lần chạy.
+rồi chạy lại, tới khi mã 0. File `svg`/`photo` không mở hay vẽ được cũng là mã 2 ("không đọc/vẽ được <file>"): sửa hoặc thay file đó.
+Mã 1 ("không dựng được khung hình <id>") đến từ ảnh tĩnh của câu `<id>`: chữ vá không vẽ được hoặc `stills/<id>.png` hỏng → sửa hoặc bỏ
+mục `patch` có id đó; nếu ảnh tĩnh hỏng thì ghi rõ vào phần trả về để người điều phối chạy lại `vshort stills`. `RUN/frames/<id>.png` và `RUN/frames.json` chỉ được ghi lại khi mã 0;
+lỗi thì giữ nguyên bản trước.
 
 Rồi **mở từng ảnh** `RUN/frames/<id>.png` mà bạn đã tạo: mọi id trong mọi `patch` và mọi câu có `svg`/`photo`, đối chiếu với `stills/<id>.png`
 (các ảnh cùng cảnh là hình đang được vẽ dần: ảnh sớm có thể chưa có nhãn, hoặc xung quanh khác).

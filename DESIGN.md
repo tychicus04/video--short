@@ -52,7 +52,8 @@ thời gian, file giọng đọc, `visuals.json` (chỗ vá chữ và hình tư 
 ## Không làm (non-goals)
 
 - Nhạc nền, hiệu ứng âm thanh.
-- Vẽ lại hình bằng AI tạo ảnh (Gemini image) hoặc video AI; giữ animation gốc của NotebookLM.
+- Vẽ lại hình bằng AI tạo ảnh (Gemini image) hoặc video AI.
+- Giữ lại animation gốc của NotebookLM ở bất kỳ đoạn nào.
 - Sửa nét vẽ sai (không phải chữ) trong hình NotebookLM: chỉ báo cáo. Chữ sai thì `vs-visuals` vá,
   tư liệu thật thì vẽ lại bằng SVG hoặc bộ lọc nét chì (xem spec "hình theo lời").
 - Đăng lên TikTok/Reels.

@@ -45,6 +45,13 @@ def test_state_resume(tmp_path):
     assert Run(tmp_path).done("detect") and not Run(tmp_path).done("tts")
 
 
+def test_parallel_marks_both_survive(tmp_path):
+    a, b = Run(tmp_path), Run(tmp_path)  # both opened before either marks: tts | plates -> stills
+    a.mark("tts")
+    b.mark("stills")
+    assert Run(tmp_path).done("tts") and Run(tmp_path).done("stills")
+
+
 def test_check_exit_2(tmp_path):
     (tmp_path / "sentences.en.json").write_text('[{"id": 1, "start": 0, "end": 1, "en": "Hi."}]')
     (tmp_path / "script.vi.json").write_text('[{"id": 1, "phrases": "", "note": ""}]')

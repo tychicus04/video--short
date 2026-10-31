@@ -30,7 +30,9 @@ Kiểm:
    mọi đoạn lặng dài hơn 0,8 giây, trừ đoạn ở đầu và cuối file, = lỗi (ghi khoảng thời gian).
 5. **Hình tư liệu khớp nguồn**: với mỗi mục `svg`/`photo` trong `visuals.json`, xem `frames/<id>.png`, chép lại mọi chữ và con số
    trong hình, rồi đối chiếu với trang `source` (tải bằng `curl -sL`). Chữ/số lệch nguồn, thứ nguồn không có, thiếu dòng nguồn/credit
-   = lỗi. Hình có chỉ đường tới mã tấn công (tên/chủ repo, URL tải mã) = lỗi nặng. Giao diện iOS phải có nhãn tiếng Việt.
+   = lỗi. Hình có chỉ đường tới mã tấn công (tên/chủ repo, URL tải mã) hoặc thứ giúp dựng lại một cuộc tấn công (mã khai thác, lệnh,
+   payload, offset, quy trình từng bước) = lỗi nặng; hình vẽ lại chỉ được có chi tiết cấp tiêu đề (ai phát hiện, chuyện gì, khi nào,
+   phiên bản nào bị ảnh hưởng, đã có bản vá). Giao diện iOS phải có nhãn tiếng Việt.
 6. **Chỗ vá chữ**: với mỗi mục `patch`, xem khung của `final.mp4` tại các câu thuộc `ids` (tra `timeline.json`; đừng chỉ xem `frames/`) và một câu cùng cảnh không vá nếu có.
    Chữ vá phải đọc tự nhiên như chữ gốc: không viền hộp, không mảng nền khác màu, không vệt chữ cũ, cỡ và độ đậm hợp chữ quanh nó,
    cùng một chữ trên mọi khung của cảnh; chữ thay không phải địa chỉ web thật (chỉ `.example`, `.test`, `.invalid`).

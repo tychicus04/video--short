@@ -21,6 +21,8 @@ class Run:
         return self.state.get(step) == "done"
 
     def mark(self, step: str) -> None:
+        # re-read first: another process (tts | plates -> stills run in parallel) may have marked a step since we started
+        self.state = json.loads(self._state_file.read_text()) if self._state_file.exists() else {}
         self.state[step] = "done"
         self._state_file.write_text(json.dumps(self.state, indent=1))
 
