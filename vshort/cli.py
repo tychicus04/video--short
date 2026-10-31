@@ -1,12 +1,13 @@
 """`vshort <command> <run_dir>`: every pipeline step as a command that can be re-run."""
 import argparse
 import json
+import shutil
 import subprocess
 import sys
 from dataclasses import asdict
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageOps
 
 from vshort.captions import Fragment, detect_fragments, write_sheets
 from vshort.fit import Placement, build_narration, phrase_times, sequence, total
@@ -17,6 +18,7 @@ from vshort.run import Run, config
 from vshort.script import Sentence, check_script, group_sentences, merge_text, merged
 from vshort.stills import contact_sheet, grid_image, pick_still, scene_of
 from vshort.tts import Clip, QuotaExceeded, gemini_speaker, load_api_key, synth_script
+from vshort.visuals import patch_text, pencil, svg_frame, validate
 
 ROOT = Path(__file__).resolve().parent.parent
 OK, FAILED, BAD_INPUT, AUTH, QUOTA = 0, 1, 2, 4, 75
@@ -177,6 +179,57 @@ def cmd_stills(a) -> int:
     return OK
 
 
+def cmd_visuals(a) -> int:
+    run = Run(a.run)
+    stills = run.read("stills.json")
+    src = run.file("visuals.json")
+    try:
+        items = json.loads(src.read_text(encoding="utf-8")) if src.exists() else []
+    except ValueError as e:
+        _err(f"visuals.json không phải JSON hợp lệ: {e}")
+        return BAD_INPUT
+    if not isinstance(items, list):
+        _err("visuals.json phải là một danh sách các mục")
+        return BAD_INPUT
+    probs = validate(items, {s["id"] for s in stills}, run.path)
+    probs += [f"thiếu stills/{s['id']}.png (chạy lại `vshort stills`)" for s in stills
+              if not run.file(f"stills/{s['id']}.png").exists()]
+    refs = {}
+    if not probs:  # render every reference now: a corrupt file must fail before frames/ is touched
+        for n, it in enumerate(items, 1):
+            if it["kind"] == "patch":
+                continue
+            try:
+                refs[it["id"]] = svg_frame(run.file(it["file"])) if it["kind"] == "svg" else pencil(
+                    ImageOps.exif_transpose(Image.open(run.file(it["file"]))), it["credit"])
+            except Exception as e:  # agent-made file: any decoder error is a bad item
+                probs.append(f"visuals.json mục {n} ({it['kind']}): không đọc/vẽ được {it['file']}: {e}")
+    for p in probs:
+        _err(p)
+    if probs:
+        return BAD_INPUT
+    patches = [it for it in items if it["kind"] == "patch"]
+    out = run.file("frames")
+    shutil.rmtree(out, ignore_errors=True)  # a rerun must not keep frames of lines that are gone
+    out.mkdir()
+    rows = []
+    for s in stills:
+        i = s["id"]
+        if i in refs:  # a reference replaces the still, patches included
+            img, group = refs[i], f"v{i}"
+        else:
+            img, group = Image.open(run.file(f"stills/{i}.png")).convert("RGB"), f"s{s['scene']}"
+            for p in patches:
+                if i in p["ids"]:
+                    img = patch_text(img, tuple(p["box"]), p["text"])
+        img.save(out / f"{i}.png")
+        rows.append({"id": i, "file": f"frames/{i}.png", "group": group})
+    run.write("frames.json", rows)
+    run.mark("visuals")
+    print(f"{len(rows)} khung hình: {len(refs)} hình tư liệu, {len(patches)} chỗ vá chữ")
+    return OK
+
+
 def cmd_tts(a) -> int:
     run = Run(a.run)
     cfg = config()
@@ -243,8 +296,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--prompt", help="video description passed to NotebookLM")
     p.set_defaults(fn=cmd_fetch)
     for name, fn in [("detect", cmd_detect), ("text", cmd_text), ("check", cmd_check), ("plates", cmd_plates),
-                     ("tts", cmd_tts), ("stills", cmd_stills), ("timeline", cmd_timeline), ("render", cmd_render),
-                     ("status", cmd_status)]:
+                     ("tts", cmd_tts), ("stills", cmd_stills), ("visuals", cmd_visuals), ("timeline", cmd_timeline),
+                     ("render", cmd_render), ("status", cmd_status)]:
         p = sub.add_parser(name)
         p.add_argument("run")
         p.set_defaults(fn=fn)
