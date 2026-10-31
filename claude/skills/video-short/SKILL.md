@@ -21,6 +21,8 @@ Thiết kế: `~/video-pipeline/DESIGN.md`. Mọi bước cố định là lện
    viết `$RUN/brief.vi.md`, `$RUN/brief.en.md`, `$RUN/sources.md`, và đề xuất dòng nhỏ (kicker, chữ HOA) + tiêu đề. Nó trả về notebook id.
 2. **ĐIỂM DỪNG DUY NHẤT** — đưa Tai brief tiếng Việt + kicker + tiêu đề (dán nội dung, không chỉ đường dẫn). Chờ Tai duyệt hoặc sửa;
    sửa thì cập nhật cả `brief.vi.md` lẫn `brief.en.md`. Sau khi Tai duyệt, chạy liền một mạch đến cuối, không hỏi thêm.
+   **Chế độ tự động** (Tai nói "chạy tự động" / "không cần duyệt"): không dừng ở đây. Tự soát brief với `sources.md`
+   (dữ kiện, ngày, điểm tranh cãi), sửa nếu lệch, rồi đi tiếp; đưa brief + kicker + tiêu đề vào câu trả lời cuối.
 3. **Tạo video tiếng Anh** — chạy tiếp một video dở (đã có `$RUN/run.json` với `artifact_id`) thì bỏ qua `new` và
    `source add`, chỉ chạy lại `vshort fetch $RUN` (nó tiếp tục đúng video đã yêu cầu, không tạo video mới).
    - `vshort new <slug> --kicker "<KICKER>" --title "<Tiêu đề>" --notebook <id>`
