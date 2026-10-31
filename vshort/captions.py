@@ -31,8 +31,7 @@ def find_bands(video: Path) -> list[tuple[int, int]]:
             toggles = hit.astype(int) if toggles is None else toggles + hit
             n += 1
         prev = ink
-    # 5 % of samples on short clips, never more than 3 toggles: a caption height used by one short scene counts
-    rows = np.where(toggles >= min(3, max(1, 0.05 * n)))[0] if n else []
+    rows = np.where(toggles >= max(1, 0.05 * n))[0] if n else []
     bands, start = [], None
     for a, b in zip(rows, list(rows[1:]) + [None]):
         start = a if start is None else start
