@@ -27,7 +27,8 @@ def test_fetch_generates_waits_and_downloads_that_video(tmp_path, monkeypatch):
         return CompletedProcess(args, 0, "saved", "")
 
     monkeypatch.setattr(cli, "run_notebooklm", fake)
-    assert main(["fetch", str(tmp_path / "demo"), "--notebook", "abc"]) == 0
+    assert main(["fetch", str(tmp_path / "demo"), "--notebook", "abc", "--prompt", "Follow the brief"]) == 0
+    assert calls[0][-1] == "Follow the brief"
     assert calls[0][:2] == ["generate", "video"] and " --format short --language en " in f" {' '.join(calls[0])} "
     assert calls[2][:2] == ["download", "video"] and "art1" in calls[2]
     assert json.loads((tmp_path / "demo" / "run.json").read_text())["notebook_id"] == "abc"

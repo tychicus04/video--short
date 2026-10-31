@@ -76,7 +76,9 @@ def cmd_fetch(a) -> int:
         return BAD_INPUT
     meta["notebook_id"] = nb
     run.write("run.json", meta)
-    cp, code = _notebooklm(["generate", "video", "--format", "short", "--language", "en", "-n", nb, "--no-wait", "--json"])
+    prompt = [a.prompt] if a.prompt else []  # steers NotebookLM to follow the approved brief
+    cp, code = _notebooklm(["generate", "video", "--format", "short", "--language", "en", "-n", nb, "--no-wait", "--json",
+                            *prompt])
     if code:
         return code
     task = _json(cp.stdout)["task_id"]
@@ -216,6 +218,7 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("fetch")
     p.add_argument("run")
     p.add_argument("--notebook")
+    p.add_argument("--prompt", help="video description passed to NotebookLM")
     p.set_defaults(fn=cmd_fetch)
     for name, fn in [("detect", cmd_detect), ("text", cmd_text), ("check", cmd_check), ("plates", cmd_plates),
                      ("tts", cmd_tts), ("fit", cmd_fit), ("render", cmd_render), ("status", cmd_status)]:
