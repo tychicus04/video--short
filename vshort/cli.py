@@ -9,7 +9,7 @@ from pathlib import Path
 from vshort.captions import Fragment, detect_fragments, write_sheets
 from vshort.fit import Placement, build_narration, phrase_times, place, too_long
 from vshort.media import probe
-from vshort.plates import Plate, build_plates, scene_cuts
+from vshort.plates import Plate, build_plates, first_blank, scene_cuts
 from vshort.render import build_ass, compose, outro_cut
 from vshort.run import Run, config, set_config
 from vshort.script import Sentence, budget, check_script, group_sentences, merge_text
@@ -170,7 +170,8 @@ def cmd_fit(a) -> int:
     run = Run(a.run)
     src = run.file("source.mp4")
     captions = [Fragment(**f) for f in run.read("captions.json")]
-    cut = outro_cut(captions, scene_cuts(src), probe(src).duration)
+    blank = first_blank(src, max(f.end for f in captions))
+    cut = outro_cut(captions, scene_cuts(src), probe(src).duration, blank)
     clips = [Clip(c["id"], Path(c["path"]), c["duration"]) for c in run.read("tts.json")]
     placements = place(_sentences(run), clips, cut, config()["max_tempo"])
     run.write("placements.json", {"cut": cut, "placements": [asdict(p) for p in placements]})

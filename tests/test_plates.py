@@ -3,7 +3,7 @@ from pathlib import Path
 from PIL import Image
 
 from vshort.captions import Fragment, detect_fragments
-from vshort.plates import build_plates, scene_cuts
+from vshort.plates import build_plates, first_blank, scene_cuts
 
 
 def test_scene_cuts(make_video, tmp_path):
@@ -65,3 +65,9 @@ def test_caption_over_static_art_keeps_full_text_width(make_video, tmp_path):
     plates = build_plates(v, detect_fragments(v), tmp_path / "p", Path("unused"), inpaint=lambda img, mask: img)
     width = Image.open(tmp_path / "p" / f"{plates[0].name}.png").width
     assert plates[0].x < 170 and plates[0].x + width > 550  # spans the widest caption, art or not
+
+
+def test_first_blank_frame_after_a_time(make_video, tmp_path):
+    v = make_video(tmp_path, scenes=[(0, 1, "moving"), (1, 2, "#F8F8F8")], captions=[])
+    assert abs(first_blank(v, after=0.5) - 1.0) < 0.04
+    assert first_blank(make_video(tmp_path, scenes=[(0, 1, "moving")], captions=[]), after=0.2) is None

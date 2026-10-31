@@ -117,10 +117,11 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     return head + "".join(ev)
 
 
-def outro_cut(frags: list[Fragment], cuts: list[float], duration: float) -> float:
-    """The NotebookLM logo outro starts at the first scene cut after the last caption."""
+def outro_cut(frags: list[Fragment], cuts: list[float], duration: float, blank: float | None = None) -> float:
+    """The NotebookLM logo outro starts at the first scene cut or blank frame after the last caption."""
     last = max(f.end for f in frags)
-    return next((c for c in sorted(cuts) if c >= last - 1e-3), duration)
+    after = [c for c in cuts if c >= last - 1e-3] + ([blank] if blank is not None else [])
+    return min(after, default=duration)
 
 
 def compose(src: Path, narration: Path, ass: Path, plates: list[Plate], plates_dir: Path, cut: float, out: Path) -> None:

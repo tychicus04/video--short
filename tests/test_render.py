@@ -28,3 +28,8 @@ def test_compose_output(make_video, tmp_path):
     compose(v, wav, ass, [], tmp_path, cut=2.5, out=out)
     p = probe(out)
     assert abs(p.duration - 2.5) < 0.1 and frame_at(out, 1.0)[1150, 150].max() < 40  # dark sub box (x 120-600), clear of the text
+
+
+def test_outro_cut_takes_a_blank_frame_when_there_is_no_hard_cut():
+    assert outro_cut([Fragment(0, 0, 85.13, 0, 0, "x")], [], 88.49, blank=85.4) == 85.4
+    assert outro_cut([Fragment(0, 0, 57.13, 0, 0, "x")], [57.3], 60.35, blank=57.5) == 57.3

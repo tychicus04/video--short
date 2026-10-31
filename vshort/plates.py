@@ -38,6 +38,14 @@ def scene_cuts(video: Path) -> list[float]:
     return cuts
 
 
+def first_blank(video: Path, after: float) -> float | None:
+    """First near-uniform frame after `after` — NotebookLM fades into its logo outro through a blank screen."""
+    for t, f in iter_frames(video, start=after):
+        if f.std() < 3:
+            return t
+    return None
+
+
 def _text_columns(video: Path, spans: list[tuple[float, float]], y0: int, y1: int) -> tuple[int, int]:
     """Columns where one caption's frame differs strongly from the next one's.
 
