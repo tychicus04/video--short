@@ -27,6 +27,14 @@ def write_silence(path: Path, seconds: float) -> None:
 
 
 def _frame(kind: str, t: float, t0: float, t1: float) -> np.ndarray:
+    if kind == "jitter":  # cream background, an art line flickering across the ink threshold (compression noise)
+        f = np.full((H, W, 3), (243, 239, 230), np.uint8)
+        f[860:1000, 640:644] = 80 if round(t * 30) % 2 else 100
+        return f
+    if kind == "artbar":  # cream background, a static dark art bar under the right part of the captions
+        f = np.full((H, W, 3), (243, 239, 230), np.uint8)
+        f[860:1000, 500:560] = 0
+        return f
     if kind == "moving":
         f = np.full((H, W, 3), 160, np.uint8)
         x = 200 + round(200 * (t - t0) / (t1 - t0))

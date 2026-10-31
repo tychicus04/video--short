@@ -37,7 +37,7 @@ def find_bands(video: Path) -> list[tuple[int, int]]:
         start = a if start is None else start
         if b is None or b - a > 12:
             y0, y1 = int(start) - 8, int(a) + 8
-            if 40 <= y1 - y0 <= 120:
+            if 24 <= y1 - y0 <= 120:
                 bands.append((y0, y1))
             start = None
     return bands

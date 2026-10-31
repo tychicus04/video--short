@@ -58,6 +58,8 @@ def iter_frames(
             yield (start or 0) + n / rate, f
             n += 1
     finally:
+        if p.poll() is None:  # caller stopped early: stop ffmpeg before it hits a broken pipe
+            p.kill()
         p.stdout.close()
         p.wait()
 

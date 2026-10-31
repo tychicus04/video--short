@@ -17,3 +17,10 @@ def test_iter_frames_crop_and_times(make_video, tmp_path):
 def test_frame_at_exact(make_video, tmp_path):
     v = make_video(tmp_path, scenes=[(0, 1, "#000000"), (1, 2, "#FFFFFF")], captions=[])
     assert frame_at(v, 1.02, gray=True).mean() > 235
+
+
+def test_iter_frames_early_stop_is_quiet(make_video, tmp_path, capfd):
+    v = make_video(tmp_path, scenes=[(0, 2, "#000000")], captions=[])
+    for _ in iter_frames(v):
+        break
+    assert "Broken pipe" not in capfd.readouterr().err
