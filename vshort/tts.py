@@ -113,10 +113,11 @@ def _script_text(lines: list[tuple[int, str]]) -> str:
 
 
 def _sentence_spans(a: np.ndarray, rate: int, weights: list[int]) -> list[tuple[int, int]]:
-    """Cut one narration into len(weights) sentences at the silences that best match where each should end.
+    """Cut one narration into len(weights) sentences at silences.
 
-    Expected ends follow the sentences' share of syllables; longer silences are preferred, so a comma's
-    short pause loses to the pause between paragraphs.
+    Each sentence's piece should last about its syllables / the average speaking rate (judged per
+    sentence, so speed changes don't accumulate), and longer pauses are preferred, so a comma's short
+    pause loses to the pause between paragraphs.
     """
     hop = rate // 50  # 20 ms frames
     rms = np.sqrt(np.mean(a[: len(a) // hop * hop].astype(np.float64).reshape(-1, hop) ** 2, axis=1))
@@ -131,32 +132,35 @@ def _sentence_spans(a: np.ndarray, rate: int, weights: list[int]) -> list[tuple[
             if f - run >= 6:  # ≥ 0.12 s
                 gaps.append((run, f))
             run = None
-    n = len(weights)
-    if len(gaps) < n - 1:
-        raise ValueError(f"Không tách được giọng đọc thành {n} câu: chỉ có {len(gaps)} khoảng lặng giữa câu")
-    cum = np.cumsum(weights) / sum(weights)
-    expected = [s0 + cum[k] * (s1 - s0) for k in range(n - 1)]
-    span = s1 - s0
+    n, m = len(weights), len(gaps)
+    if m < n - 1:
+        raise ValueError(f"Không tách được giọng đọc thành {n} câu: chỉ có {m} khoảng lặng giữa câu")
+    speech = max((s1 - s0) - 25 * (n - 1), 1)  # minus ~0.5 s of pause per sentence break
+    expected = [w * speech / sum(weights) for w in weights]
 
-    def cost(k: int, j: int) -> float:
-        g0, g1 = gaps[j]
-        return 4 * abs((g0 + g1) / 2 - expected[k]) / span - (g1 - g0) / 50
+    def piece(k: int, b: int, e: int) -> float:
+        return abs((e - b) - expected[k]) / expected[k]
 
-    m = len(gaps)
-    best = [[float("inf")] * m for _ in range(n - 1)]
-    back = [[-1] * m for _ in range(n - 1)]
-    for k in range(n - 1):
-        for j in range(k, m - (n - 2 - k)):
-            if k == 0:
-                best[k][j] = cost(k, j)
-            else:
-                prev = min(range(k - 1, j), key=lambda jj: best[k - 1][jj])
-                best[k][j], back[k][j] = best[k - 1][prev] + cost(k, j), prev
-    chosen, j = [], min(range(m), key=lambda jj: best[n - 2][jj]) if n > 1 else -1
-    for k in range(n - 2, -1, -1):
-        chosen.append(gaps[j])
-        j = back[k][j]
-    chosen.reverse()
+    def bonus(j: int) -> float:
+        return 2 * (gaps[j][1] - gaps[j][0]) / 50
+
+    chosen: list[tuple[int, int]] = []
+    if n > 1:
+        best = [[float("inf")] * m for _ in range(n - 1)]
+        back = [[-1] * m for _ in range(n - 1)]
+        for j in range(m):
+            best[0][j] = piece(0, s0, gaps[j][0]) - bonus(j)
+        for k in range(1, n - 1):
+            for j in range(k, m):
+                for jj in range(k - 1, j):
+                    c = best[k - 1][jj] + piece(k, gaps[jj][1], gaps[j][0]) - bonus(j)
+                    if c < best[k][j]:
+                        best[k][j], back[k][j] = c, jj
+        j = min(range(n - 2, m), key=lambda jj: best[n - 2][jj] + piece(n - 1, gaps[jj][1], s1))
+        for k in range(n - 2, -1, -1):
+            chosen.append(gaps[j])
+            j = back[k][j]
+        chosen.reverse()
     pad = hop * 5 // 2  # 0.05 s
     edges = [s0] + [x for g in chosen for x in g] + [s1]
     return [(max(edges[2 * k] * hop - pad, 0), min(edges[2 * k + 1] * hop + pad, len(a))) for k in range(n)]

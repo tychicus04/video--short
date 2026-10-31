@@ -139,3 +139,14 @@ def test_per_day_limit_stops_at_once():
 def test_silent_audio_is_reported(tmp_path):
     with pytest.raises(ValueError, match="khoảng lặng"):
         synth_script(LINES, tmp_path, lambda text: _speech_wav([("gap", 2.0)]), tag="t")
+
+
+def test_uneven_speed_does_not_pull_cuts_onto_commas(tmp_path):
+    # sentences 1–2 spoken slowly, 3–4 fast; sentence 2 has a comma pause where a whole-script
+    # proportional estimate would expect the 2|3 boundary
+    lines = [(1, "a b c d e f"), (2, "g h, i j k l"), (3, "m n o p q r"), (4, "s t u v w x")]
+    audio = [("gap", 0.3), ("tone", 2.4), ("gap", 0.6), ("tone", 0.8), ("gap", 0.45), ("tone", 1.15), ("gap", 0.6),
+             ("tone", 1.2), ("gap", 0.6), ("tone", 1.2), ("gap", 0.4)]
+    clips = synth_script(lines, tmp_path, lambda text: _speech_wav(audio), tag="t")
+    for c, speech in zip(clips, [2.4, 2.4, 1.2, 1.2]):
+        assert abs(c.duration - (speech + 0.1)) < 0.06
