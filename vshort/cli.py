@@ -6,12 +6,16 @@ import sys
 from dataclasses import asdict
 from pathlib import Path
 
+from PIL import Image
+
 from vshort.captions import Fragment, detect_fragments, write_sheets
 from vshort.fit import Placement, build_narration, phrase_times, sequence, total
-from vshort.plates import Plate, build_plates
-from vshort.render import build_ass, compose
+from vshort.media import frame_at
+from vshort.plates import Plate, build_plates, scene_cuts
+from vshort.render import build_ass, clean_video, compose
 from vshort.run import Run, config
-from vshort.script import Sentence, check_script, group_sentences, merge_text
+from vshort.script import Sentence, check_script, group_sentences, merge_text, merged
+from vshort.stills import contact_sheet, grid_image, pick_still, scene_of
 from vshort.tts import Clip, QuotaExceeded, gemini_speaker, load_api_key, synth_script
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -145,6 +149,34 @@ def cmd_plates(a) -> int:
     return OK
 
 
+def _plates(run: Run) -> list[Plate]:
+    pj = run.file("plates/plates.json")
+    return [Plate(**p) for p in json.loads(pj.read_text())] if pj.exists() else []
+
+
+def cmd_stills(a) -> int:
+    run = Run(a.run)
+    lines = merged(_sentences(run), run.read("script.vi.json"))
+    clean = run.file("clean.mp4")
+    clean_video(run.file("source.mp4"), _plates(run), run.file("plates"), lines[-1].end, clean)
+    cuts = scene_cuts(clean)
+    out = run.file("stills")
+    (out / "grid").mkdir(parents=True, exist_ok=True)
+    rows, shots = [], []
+    for s in lines:
+        t = pick_still(clean, s.start, s.end, cuts)
+        img = Image.fromarray(frame_at(clean, t))
+        img.save(out / f"{s.id}.png")
+        grid_image(img).save(out / "grid" / f"{s.id}.png")
+        shots.append((s.id, img))
+        rows.append({"id": s.id, "t": round(t, 3), "scene": scene_of(t, cuts)})
+    contact_sheet(shots).save(out / "sheet.png")
+    run.write("stills.json", rows)
+    run.mark("stills")
+    print(f"{len(rows)} ảnh tĩnh; ảnh để xem: {out / 'sheet.png'}")
+    return OK
+
+
 def cmd_tts(a) -> int:
     run = Run(a.run)
     cfg = config()
@@ -182,9 +214,7 @@ def cmd_render(a) -> int:
     phrases = phrase_times([Placement(**p) for p in fitted["placements"]], run.read("script.vi.json"))
     ass = run.file("subs.ass")
     ass.write_text(build_ass(phrases), encoding="utf-8")
-    pj = run.file("plates/plates.json")
-    plates = [Plate(**p) for p in json.loads(pj.read_text())] if pj.exists() else []
-    compose(run.file("source.mp4"), run.file("narration.wav"), ass, plates, run.file("plates"), cut,
+    compose(run.file("source.mp4"), run.file("narration.wav"), ass, _plates(run), run.file("plates"), cut,
             run.file("final.mp4"))
     run.mark("render")
     print(run.file("final.mp4"))
@@ -213,7 +243,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--prompt", help="video description passed to NotebookLM")
     p.set_defaults(fn=cmd_fetch)
     for name, fn in [("detect", cmd_detect), ("text", cmd_text), ("check", cmd_check), ("plates", cmd_plates),
-                     ("tts", cmd_tts), ("timeline", cmd_timeline), ("render", cmd_render), ("status", cmd_status)]:
+                     ("tts", cmd_tts), ("stills", cmd_stills), ("timeline", cmd_timeline), ("render", cmd_render),
+                     ("status", cmd_status)]:
         p = sub.add_parser(name)
         p.add_argument("run")
         p.set_defaults(fn=fn)

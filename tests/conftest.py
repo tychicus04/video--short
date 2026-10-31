@@ -44,6 +44,13 @@ def _frame(kind: str, t: float, t0: float, t1: float) -> np.ndarray:
         x = 200 + round(200 * (t - t0) / (t1 - t0))
         f[400:520, x : x + 120] = 0
         return f
+    if kind in ("drawn", "flash"):  # cream page, dark bar after 1 s (drawn) or after a 0.2 s checkerboard (flash)
+        f = np.full((H, W, 3), (243, 239, 230), np.uint8)
+        if kind == "flash" and t < t0 + 0.2:
+            f[:] = ((np.indices((H, W)).sum(0) // 8 % 2) * 255)[..., None]
+        elif t >= t0 + (1.0 if kind == "drawn" else 0.2):
+            f[300:700, 200:520] = 60
+        return f
     rgb = [int(kind[i : i + 2], 16) for i in (1, 3, 5)]
     return np.broadcast_to(np.array(rgb, np.uint8), (H, W, 3)).copy()
 

@@ -103,3 +103,20 @@ def compose(src: Path, narration: Path, ass: Path, plates: list[Plate], plates_d
          "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(out.resolve())],
         cwd=ass.parent, check=True,
     )
+
+
+def clean_video(src: Path, plates: list[Plate], plates_dir: Path, end: float, out: Path) -> None:
+    """The source without watermark or old captions, picture only."""
+    fps = probe(src).fps
+    inputs, chain, last = [], [f"[0:v]{WATERMARK}[v0]"], "v0"
+    for i, pl in enumerate(plates, 1):
+        inputs += ["-i", str(plates_dir / f"{pl.name}.png")]
+        n0, n1 = round(pl.start * fps), round(pl.end * fps)  # frame numbers: rounded seconds can miss a frame
+        chain.append(f"[{last}][{i}:v]overlay={pl.x}:{pl.y}:enable='between(n,{n0},{n1 - 1})'[v{i}]")
+        last = f"v{i}"
+    subprocess.run(
+        [FF, "-loglevel", "error", "-y", "-i", str(src), *inputs, "-t", str(end),
+         "-filter_complex", ";".join(chain), "-map", f"[{last}]", "-an",
+         "-c:v", "libx264", "-crf", "12", "-preset", "medium", "-pix_fmt", "yuv420p", str(out.resolve())],
+        check=True,
+    )
