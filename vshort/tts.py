@@ -1,8 +1,10 @@
 """Gemini text-to-speech: one WAV per sentence, cached by text, stopping cleanly when quota runs out."""
 import hashlib
+import json
 import io
 import os
 import re
+import time
 import wave
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -51,7 +53,17 @@ def _pcm_to_wav(data: bytes, mime: str) -> bytes:
     return buf.getvalue()
 
 
-def _speaker_from_client(client, model: str, voice: str) -> Callable[[str], bytes]:
+def _per_minute_wait(e) -> float | None:
+    """Seconds to wait when a 429 is a per-minute limit (free tier); None when the daily quota is gone."""
+    body = json.dumps(e.details) if isinstance(getattr(e, "details", None), dict) else str(e)
+    if "PerMinute" not in body:
+        return None
+    m = re.search(r'"retryDelay":\s*"(\d+(?:\.\d+)?)s"', body)
+    return (float(m.group(1)) if m else 59.0) + 1.0
+
+
+def _speaker_from_client(client, model: str, voice: str, sleep: Callable[[float], None] = time.sleep,
+                         retries: int = 10) -> Callable[[str], bytes]:
     from google.genai import errors, types
 
     config = types.GenerateContentConfig(
@@ -63,12 +75,19 @@ def _speaker_from_client(client, model: str, voice: str) -> Callable[[str], byte
     )
 
     def speak(text: str) -> bytes:
-        try:
-            resp = client.models.generate_content(model=model, contents=text, config=config)
-        except errors.APIError as e:
-            if e.code == 429 or "RESOURCE_EXHAUSTED" in str(e):
-                raise QuotaExceeded() from None
-            raise
+        for _ in range(retries + 1):
+            try:
+                resp = client.models.generate_content(model=model, contents=text, config=config)
+                break
+            except errors.APIError as e:
+                if not (e.code == 429 or "RESOURCE_EXHAUSTED" in str(e)):
+                    raise
+                wait = _per_minute_wait(e)
+                if wait is None:
+                    raise QuotaExceeded() from None
+                sleep(wait)
+        else:
+            raise QuotaExceeded()
         part = next(p for p in resp.candidates[0].content.parts if p.inline_data)
         return _pcm_to_wav(part.inline_data.data, part.inline_data.mime_type or "")
 

@@ -1,6 +1,6 @@
 tts_model = "gemini-3.8-flash-tts"
 voice = "Charon"
-syllables_per_sec = 5.0
+syllables_per_sec = 3.54
 max_tempo = 1.10
 env_file = "~/Document/notebooklm-py-main/.env"
 notebooklm_dir = "~/Document/notebooklm-py-main"

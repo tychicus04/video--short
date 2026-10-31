@@ -72,3 +72,36 @@ def test_429_becomes_quota_exceeded():
     err = errors.ClientError(429, {"error": {"code": 429, "status": "RESOURCE_EXHAUSTED", "message": "quota"}})
     with pytest.raises(QuotaExceeded):
         _speaker_from_client(SimpleNamespace(models=FakeModels(err)), "m", "v")("x")
+
+
+def _quota_error(quota_id: str, delay: str = "2s") -> errors.ClientError:
+    return errors.ClientError(429, {"error": {"code": 429, "status": "RESOURCE_EXHAUSTED", "message": "quota", "details": [
+        {"@type": "type.googleapis.com/google.rpc.QuotaFailure", "violations": [{"quotaId": quota_id}]},
+        {"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": delay}]}})
+
+
+class FlakyModels(FakeModels):
+    def __init__(self, errors_first, result):
+        super().__init__(result)
+        self.errors_first = list(errors_first)
+
+    def generate_content(self, **kw):
+        if self.errors_first:
+            raise self.errors_first.pop(0)
+        return super().generate_content(**kw)
+
+
+def test_per_minute_limit_waits_and_retries():
+    waits = []
+    models = FlakyModels([_quota_error("GenerateRequestsPerMinutePerProjectPerModel-FreeTier", "7s")],
+                         _response(b"\0\0" * 240, "audio/L16;rate=24000"))
+    speak = _speaker_from_client(SimpleNamespace(models=models), "m", "v", sleep=waits.append)
+    assert speak("x")[:4] == b"RIFF" and waits == [8.0]  # suggested delay + 1 s margin
+
+
+def test_per_day_limit_stops_at_once():
+    waits = []
+    models = FlakyModels([_quota_error("GenerateRequestsPerDayPerProjectPerModel-FreeTier")], _response(b"", "audio/L16"))
+    with pytest.raises(QuotaExceeded):
+        _speaker_from_client(SimpleNamespace(models=models), "m", "v", sleep=waits.append)("x")
+    assert waits == []
