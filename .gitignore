@@ -1,0 +1,7 @@
+.venv/
+models/
+assets/fonts/
+__pycache__/
+.superpowers/
+*.egg-info/
+.pytest_cache/
