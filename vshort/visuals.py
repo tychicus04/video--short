@@ -17,9 +17,11 @@ SUBTITLE = (0, 1094, W, 1206)  # patched text must stay readable: out of the sub
 WATERMARK = (524, 1232, 704, 1264)
 MIN_PATCH_EM = 14
 MIN_CONTRAST = 40  # colour distance from the fill that counts as old ink
+MIN_SPAN, MIN_BAND, MIN_EM = 6, 4, 8  # old ink thinner than this is a rule or speck, not text; smallest font drawn
 SLOT = (640, 920)  # photos fit inside this, centred at (360, 520); the credit goes 14 px under the photo (<= y 1030)
 CREDIT_EM, MIN_CREDIT_EM, CREDIT_W = 26, 14, 680
 SAFE_TLDS = (".example", ".test", ".invalid")  # reserved, never a real site
+REAL_TLDS = {"com", "net", "org", "io", "co", "vn", "gov", "edu", "info", "app", "dev", "site", "xyz", "me", "ai"}
 LUMA = np.array([0.299, 0.587, 0.114])
 
 
@@ -44,8 +46,31 @@ def _fit_em(text: str, bold: bool, w: int, h: float) -> int:
     return em
 
 
+def _band(mask: np.ndarray) -> tuple[int, float]:
+    """Height and centre row of the x-height band: the rows holding at least half the ink of the busiest row."""
+    n = mask.sum(1)
+    rows = np.flatnonzero(n >= 0.5 * n.max())
+    return rows[-1] - rows[0] + 1, (rows[0] + rows[-1] + 1) / 2
+
+
+def _drawn(text: str, bold: bool, em: int) -> np.ndarray:
+    font = _sans(bold, em)
+    l, t, r, b = font.getbbox(text)
+    im = Image.new("L", (r + 4, b + 4))
+    ImageDraw.Draw(im).text((0, 0), text, fill=255, font=font)
+    return np.asarray(im) > 0.45 * 255
+
+
+def _match_em(text: str, bold: bool, w: int, band: int) -> int:
+    """Size whose x-height band is `band` px tall (the band does not count descenders), within the box width."""
+    cap = _fit_em(text, bold, w, 4000)
+    est = round(band * 100 / _band(_drawn(text, bold, 100))[0])
+    sizes = {max(min(e, cap), MIN_EM) for e in range(est - 4, est + 5)}
+    return min(sizes, key=lambda em: (abs(_band(_drawn(text, bold, em))[0] - band), -em))
+
+
 def patch_text(img: Image.Image, box: tuple[int, int, int, int], text: str, bold: bool = False) -> Image.Image:
-    """Cover the box with the colour of its edge and write `text` as tall and as dark as the old text was."""
+    """Cover the box with the colour of its edge and write `text` with the old text's x-height, baseline and ink."""
     x0, y0, x1, y1 = box
     w, h = x1 - x0, y1 - y0
     crop = np.asarray(img.convert("RGB").crop(box)).astype(float)
@@ -54,16 +79,23 @@ def patch_text(img: Image.Image, box: tuple[int, int, int, int], text: str, bold
     fill = np.median(crop[ring], axis=0)
     dist = np.linalg.norm(crop - fill, axis=2)
     top = dist.max()
-    if top < MIN_CONTRAST:  # nothing to copy from: plain text at 60 % of the box height
-        ink, height, mid = (60,) * 3 if fill @ LUMA > 128 else (235,) * 3, 0.6 * h, h / 2
-    else:
-        rows = np.flatnonzero((dist > max(MIN_CONTRAST, 0.45 * top)).any(1))
+    mask = dist > max(MIN_CONTRAST, 0.45 * top)
+    rows = np.flatnonzero(mask.any(1))
+    span = rows[-1] - rows[0] + 1 if len(rows) else 0
+    band, mid = _band(mask) if span else (0, 0)
+    old = span >= MIN_SPAN and band >= MIN_BAND
+    if old:
         ink = np.median(crop[dist >= 0.8 * top], axis=0)  # the strongest strokes, anti-aliasing left out
-        height, mid = rows[-1] - rows[0] + 1, (rows[0] + rows[-1] + 1) / 2
-    font = _sans(bold, _fit_em(text, bold, w, height))
+        em = _match_em(text, bold, w, band)
+    else:  # nothing to copy from (blank box, a hairline): plain text at 60 % of the box height
+        ink = (60,) * 3 if fill @ LUMA > 128 else (235,) * 3
+        em = max(_fit_em(text, bold, w, 0.6 * h), MIN_EM)
+    font = _sans(bold, em)
     l, t, r, b = font.getbbox(text)
+    y = mid - _band(_drawn(text, bold, em))[1] if old else h / 2 - (t + b) / 2
+    y = min(max(y, -t), h - b)  # a descender must not be cut off by the box
     patch = Image.new("RGB", (w, h), tuple(int(c) for c in fill))
-    ImageDraw.Draw(patch).text(((w - l - r) / 2, mid - (t + b) / 2), text, fill=tuple(int(c) for c in ink), font=font)
+    ImageDraw.Draw(patch).text(((w - l - r) / 2, y), text, fill=tuple(int(c) for c in ink), font=font)
     out = img.convert("RGB")
     out.paste(patch, (x0, y0))
     return out
@@ -104,10 +136,14 @@ def _hits(box, area) -> bool:
     return box[0] < area[2] and box[2] > area[0] and box[1] < area[3] and box[3] > area[1]
 
 
-def _real_domain(text: str) -> bool:
-    """Text that reads as a web address but is not on a reserved TLD."""
-    host = re.split(r"[/:?#]", re.sub(r"^[a-z][a-z0-9+.-]*://", "", text, flags=re.I))[0]
-    return bool(re.fullmatch(r"[\w-]+(\.[\w-]+)*\.[A-Za-z]{2,}", host)) and not host.lower().endswith(SAFE_TLDS)
+def _real_domain(text: str) -> str:
+    """The first word of `text` that is a web address on a common real TLD ('' when there is none)."""
+    for word in text.split():
+        host = re.sub(r"^[a-z][a-z0-9+.-]*://", "", word.rpartition("@")[2], flags=re.I)
+        host = re.split(r"[/:?#]", host)[0].strip(".,;!?()[]{}<>\"'")
+        if "." in host and host.rsplit(".", 1)[1].lower() in REAL_TLDS:
+            return host
+    return ""
 
 
 def _patch_problems(it: dict, ids: set[int]) -> list[str]:
@@ -122,8 +158,8 @@ def _patch_problems(it: dict, ids: set[int]) -> list[str]:
     text_ok = isinstance(text, str) and bool(text.strip()) and "\n" not in text
     if not text_ok:
         probs.append("text phải là một dòng chữ, không rỗng")
-    elif _real_domain(text):
-        probs.append(f"text {text!r} giống địa chỉ web thật; dùng tên chung kết thúc bằng {', '.join(SAFE_TLDS)}")
+    elif host := _real_domain(text):
+        probs.append(f"text {text!r} có địa chỉ web thật ({host}); dùng tên chung kết thúc bằng {', '.join(SAFE_TLDS)}")
     box_ok = isinstance(box, list) and len(box) == 4 and all(_int(v) for v in box)
     if not box_ok:
         probs.append(f"box {box} phải là [x0, y0, x1, y1] số nguyên")

@@ -209,19 +209,26 @@ def cmd_visuals(a) -> int:
     if probs:
         return BAD_INPUT
     patches = [it for it in items if it["kind"] == "patch"]
+    frames = []  # drawn in memory first: a failure must leave the previous frames/ and frames.json as they were
+    try:
+        for s in stills:
+            i = s["id"]
+            if i in refs:  # a reference replaces the still, patches included
+                img, group = refs[i], f"v{i}"
+            else:
+                img, group = Image.open(run.file(f"stills/{i}.png")).convert("RGB"), f"s{s['scene']}"
+                for p in patches:
+                    if i in p["ids"]:
+                        img = patch_text(img, tuple(p["box"]), p["text"], p.get("bold", False))
+            frames.append((i, img, group))
+    except Exception as e:  # any drawing error: report it, touch nothing
+        _err(f"không dựng được khung hình {i}: {e}")
+        return FAILED
     out = run.file("frames")
     shutil.rmtree(out, ignore_errors=True)  # a rerun must not keep frames of lines that are gone
     out.mkdir()
     rows = []
-    for s in stills:
-        i = s["id"]
-        if i in refs:  # a reference replaces the still, patches included
-            img, group = refs[i], f"v{i}"
-        else:
-            img, group = Image.open(run.file(f"stills/{i}.png")).convert("RGB"), f"s{s['scene']}"
-            for p in patches:
-                if i in p["ids"]:
-                    img = patch_text(img, tuple(p["box"]), p["text"], p.get("bold", False))
+    for i, img, group in frames:
         img.save(out / f"{i}.png")
         rows.append({"id": i, "file": f"frames/{i}.png", "group": group})
     run.write("frames.json", rows)

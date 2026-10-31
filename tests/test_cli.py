@@ -223,3 +223,34 @@ def test_visuals_cmd_reference_replaces_a_patched_line(tmp_path):
     assert [r["group"] for r in json.loads((tmp_path / "frames.json").read_text())] == ["s0", "v2"]
     f2 = _png(tmp_path / "frames" / "2.png")
     assert tuple(f2[0, 0]) == (238, 234, 226) and tuple(f2[400, 200]) == (74, 74, 74) and f2[96:144, 96:404].min() > 200
+
+
+def test_visuals_cmd_hairline_in_the_box_is_not_text(tmp_path):
+    _visuals_run(tmp_path, ids=(1, 3), scenes=(0, 0))
+    for i in (1, 3):
+        img = Image.new("RGB", (720, 1280), (243, 239, 230))
+        ImageDraw.Draw(img).line((110, 120, 390, 120), fill=(40, 40, 40), width=1)
+        img.save(tmp_path / "stills" / f"{i}.png")
+    (tmp_path / "visuals.json").write_text(json.dumps(
+        [{"kind": "patch", "ids": [3], "box": [96, 96, 404, 144], "text": "Cập nhật"}]))
+    assert main(["visuals", str(tmp_path)]) == 0
+    ink = _png(tmp_path / "frames" / "3.png")[96:144, 96:404].sum(2) < 400
+    assert ink.any(1).sum() >= 12  # readable text, not a crash and not a hairline
+
+
+def test_visuals_cmd_render_failure_keeps_the_previous_frames(tmp_path, monkeypatch, capsys):
+    _visuals_run(tmp_path, ids=(1, 3), scenes=(0, 0))
+    assert main(["visuals", str(tmp_path)]) == 0
+    kept = {p.name: p.read_bytes() for p in (tmp_path / "frames").iterdir()}
+    rows = (tmp_path / "frames.json").read_text()
+    (tmp_path / "visuals.json").write_text(json.dumps(
+        [{"kind": "patch", "ids": [1, 3], "box": [96, 96, 404, 144], "text": "tin-tuc.example"}]))
+
+    def boom(*args, **kw):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(cli, "patch_text", boom)
+    assert main(["visuals", str(tmp_path)]) == 1
+    assert "boom" in capsys.readouterr().err
+    assert {p.name: p.read_bytes() for p in (tmp_path / "frames").iterdir()} == kept
+    assert (tmp_path / "frames.json").read_text() == rows

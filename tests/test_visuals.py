@@ -8,9 +8,9 @@ from vshort.visuals import PAPER, patch_text, pencil, svg_frame, validate
 PAGE = (243, 239, 230)
 
 
-def _label_image() -> Image.Image:
+def _label_image(text="untrusted-site.com") -> Image.Image:
     img = Image.new("RGB", (720, 1280), PAGE)
-    ImageDraw.Draw(img).text((104, 100), "untrusted-site.com", fill=(40, 40, 40),
+    ImageDraw.Draw(img).text((104, 100), text, fill=(40, 40, 40),
                              font=ImageFont.truetype(str(FONTS / "PatrickHand-Regular.ttf"), 36))
     return img
 
@@ -40,16 +40,37 @@ def test_patch_text_replaces_the_label():
     assert _ink(img, box).any()  # the caller's image is untouched
 
 
-def test_patch_text_matches_the_old_text_size_in_a_loose_or_tight_box():
-    img = _label_image()
-    old_h = _height(_ink(img, (0, 0, 720, 300)))
-    heights = []
+def _band(mask) -> tuple[int, float]:
+    """Height and centre row of the x-height band: rows with at least half the ink of the busiest row."""
+    n = mask.sum(1)
+    rows = np.flatnonzero(n >= 0.5 * n.max())
+    return rows[-1] - rows[0] + 1, (rows[0] + rows[-1]) / 2
+
+
+@pytest.mark.parametrize("old, new", [
+    ("untrusted-site.com", "tin-tuc.example"),  # the new text has a descender (p), the old one has none
+    ("copying.page", "tin-tuc.test"),  # the old text has descenders (p, y, g), the new one has none
+])
+def test_patch_text_matches_the_old_x_height_in_a_loose_or_tight_box(old, new):
+    img = _label_image(old)
+    old_h, old_mid = _band(_ink(img, (0, 0, 720, 300)))
+    bands = []
     for box in [(96, 96, 404, 144), (20, 60, 700, 200)]:  # tight, loose
-        out = patch_text(img, box, "tin-tuc.test")  # no descender, like the old label
-        heights.append(_height(_ink(out, box)))
+        out = patch_text(img, box, new)
+        bands.append(_band(_ink(out, box)))
+        bands[-1] = (bands[-1][0], bands[-1][1] + box[1])
         ink = np.asarray(out).astype(int)[box[1]:box[3], box[0]:box[2]][_ink(out, box)]
         assert ink.sum(1).min() < 150  # the old dark ink colour, not a lightened mix with paper
-    assert abs(heights[0] - heights[1]) <= 1 and abs(heights[0] - old_h) <= 0.2 * old_h
+    assert abs(bands[0][0] - bands[1][0]) <= 1
+    assert all(abs(h - old_h) <= 2 and abs(mid - old_mid) <= 3 for h, mid in bands)  # same size, same baseline
+
+
+def test_patch_text_ignores_a_hairline_as_old_text():
+    img = Image.new("RGB", (720, 1280), PAGE)
+    ImageDraw.Draw(img).line((110, 120, 390, 120), fill=(40, 40, 40), width=1)
+    for text in ("Cập nhật", "Ế"):  # used to ask for a font of size 0
+        ink = _ink(patch_text(img, (96, 96, 404, 144), text), (96, 96, 404, 144))
+        assert 12 <= _height(ink) <= 29  # 60 % of the box, readable
 
 
 def test_patch_text_bold_flag_changes_the_weight():
@@ -110,8 +131,8 @@ def test_svg_frame_resolves_patrick_hand(tmp_path):
 
 
 def _item(**kw):
-    return {"kind": "photo", "id": 1, "file": "visuals/1.jpg", "source": "https://a.example/x", "accessed": "2026-10-31",
-            "credit": "Nguồn: A", **kw}
+    return {"kind": "photo", "id": 1, "file": "visuals/1.jpg", "source": "https://a.example/x",
+            "accessed": "2026-10-31", "credit": "Nguồn: A", **kw}
 
 
 @pytest.mark.parametrize("item, needle", [
@@ -141,6 +162,10 @@ def _item(**kw):
     (_item(credit="Nguồn:\nA"), "credit"),
     (_item(credit="Nguồn: " + "rất dài " * 20), "credit"),
     (_item(id=7), "7"),
+    ({"kind": "patch", "ids": [1], "box": [0, 0, 300, 50], "text": "Tải tại apple.com"}, ".example"),
+    ({"kind": "patch", "ids": [1], "box": [0, 0, 300, 50], "text": "user@evil.com"}, ".example"),
+    ({"kind": "patch", "ids": [1], "box": [0, 0, 300, 50], "text": "evil.com."}, ".example"),
+    ({"kind": "patch", "ids": [1], "box": [0, 0, 300, 50], "text": "Cài đặt.app mới"}, ".example"),
 ])
 def test_validate_reports(item, needle, tmp_path):
     (tmp_path / "visuals").mkdir()
@@ -155,7 +180,8 @@ def test_validate_accepts_good_items_and_flags_duplicate_references(tmp_path):
     (tmp_path / "visuals" / "1.jpg").write_bytes(b"x")
     patch = {"kind": "patch", "ids": [1, 2], "box": [96, 96, 404, 144], "text": "tin-tuc.example", "note": ""}
     assert validate([patch, _item()], {1, 2}, tmp_path) == []  # a patch plus a reference on one line is fine
-    for text in ("tin-tuc.test", "mạng.invalid", "iOS 26.3.1", "26.3.1+", "Cài đặt.app mới", "OS Kernel"):
+    for text in ("tin-tuc.test", "mạng.invalid", "tin-tuc.example.", "Tải tại tin-tuc.example", "iOS 26.3.1", "26.3.1+",
+                 "OS Kernel", "payload.dylib", "WebKit.framework", "update.zip"):
         assert validate([{**patch, "text": text, "bold": True}], {1, 2}, tmp_path) == []
     assert any("1" in p for p in validate([_item(), _item()], {1}, tmp_path))
 
