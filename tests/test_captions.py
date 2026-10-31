@@ -32,3 +32,11 @@ def test_low_captions_found_while_a_dark_label_fills_the_upper_band(make_video, 
     fr = detect_fragments(v)
     assert [round(f.start, 2) for f in fr if f.y0 > 1000] == [1.0, 1.5]
     assert [f.i for f in fr] == list(range(len(fr)))
+
+
+def test_write_sheets_keeps_simultaneous_captions_in_two_bands(make_video, tmp_path):
+    caps = [(0.0, 1.0, 930, "Upper"), (0.0, 1.0, 1147, "Lower"), (1.0, 2.0, 930, "Upper two")]
+    v = make_video(tmp_path, scenes=[(0, 2, "#F3EFE6")], captions=caps)
+    fr = detect_fragments(v)
+    sheets = write_sheets(v, fr, tmp_path / "sheets", per_sheet=22)
+    assert len(fr) == 3 and len(sheets) == 1

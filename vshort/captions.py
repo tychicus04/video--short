@@ -78,11 +78,12 @@ def write_sheets(video: Path, frags: list[Fragment], out_dir: Path, per_sheet: i
     """Stack each fragment's caption crop (from its middle frame) with its index, per_sheet per image."""
     out_dir.mkdir(parents=True, exist_ok=True)
     fps = probe(video).fps
-    want = {round((f.start + f.end) / 2 * fps): f for f in frags}
+    want: dict[int, list[Fragment]] = {}  # two bands can share a middle frame
+    for f in frags:
+        want.setdefault(round((f.start + f.end) / 2 * fps), []).append(f)
     crops = {}
     for t, frame in iter_frames(video):
-        f = want.get(round(t * fps))
-        if f:
+        for f in want.get(round(t * fps), []):
             crops[f.i] = Image.fromarray(frame[f.y0 : f.y1, 30:690])
     sheets = []
     for k in range(0, len(frags), per_sheet):
