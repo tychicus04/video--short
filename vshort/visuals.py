@@ -1,6 +1,7 @@
 """Turn stills into frames: patch wrong on-screen text, redraw references as SVG or pencil-filtered photos."""
 import io
 import re
+import unicodedata
 from datetime import date
 from functools import lru_cache
 from pathlib import Path
@@ -61,9 +62,9 @@ def _drawn(text: str, bold: bool, em: int) -> np.ndarray:
     return np.asarray(im) > 0.45 * 255
 
 
-def _match_em(text: str, bold: bool, w: int, band: int) -> int:
-    """Size whose x-height band is `band` px tall (the band does not count descenders), within the box width."""
-    cap = _fit_em(text, bold, w, 4000)
+def _match_em(text: str, bold: bool, w: int, h: int, band: int) -> int:
+    """Size whose x-height band is `band` px tall, but small enough for all the ink (marks, descenders) to fit."""
+    cap = _fit_em(text, bold, w, h - 2)
     est = round(band * 100 / _band(_drawn(text, bold, 100))[0])
     sizes = {max(min(e, cap), MIN_EM) for e in range(est - 4, est + 5)}
     return min(sizes, key=lambda em: (abs(_band(_drawn(text, bold, em))[0] - band), -em))
@@ -86,14 +87,14 @@ def patch_text(img: Image.Image, box: tuple[int, int, int, int], text: str, bold
     old = span >= MIN_SPAN and band >= MIN_BAND
     if old:
         ink = np.median(crop[dist >= 0.8 * top], axis=0)  # the strongest strokes, anti-aliasing left out
-        em = _match_em(text, bold, w, band)
+        em = _match_em(text, bold, w, h, band)
     else:  # nothing to copy from (blank box, a hairline): plain text at 60 % of the box height
         ink = (60,) * 3 if fill @ LUMA > 128 else (235,) * 3
         em = max(_fit_em(text, bold, w, 0.6 * h), MIN_EM)
     font = _sans(bold, em)
     l, t, r, b = font.getbbox(text)
     y = mid - _band(_drawn(text, bold, em))[1] if old else h / 2 - (t + b) / 2
-    y = min(max(y, -t), h - b)  # a descender must not be cut off by the box
+    y = min(max(y, 1 - t), h - 1 - b)  # marks and descenders stay inside the box, 1 px from its edge
     patch = Image.new("RGB", (w, h), tuple(int(c) for c in fill))
     ImageDraw.Draw(patch).text(((w - l - r) / 2, y), text, fill=tuple(int(c) for c in ink), font=font)
     out = img.convert("RGB")
@@ -136,13 +137,22 @@ def _hits(box, area) -> bool:
     return box[0] < area[2] and box[2] > area[0] and box[1] < area[3] and box[3] > area[1]
 
 
+def _strip_marks(word: str) -> str:
+    """Drop punctuation and symbols (any script: quotes, ellipsis, brackets) from both ends of a word."""
+    i, j = 0, len(word)
+    while i < j and unicodedata.category(word[i])[0] in "PS":
+        i += 1
+    while j > i and unicodedata.category(word[j - 1])[0] in "PS":
+        j -= 1
+    return word[i:j]
+
+
 def _real_domain(text: str) -> str:
     """The first word of `text` that is a web address on a common real TLD ('' when there is none)."""
-    for word in text.split():
-        host = re.sub(r"^[a-z][a-z0-9+.-]*://", "", word.rpartition("@")[2], flags=re.I)
-        host = re.split(r"[/:?#]", host)[0].strip(".,;!?()[]{}<>\"'")
-        if "." in host and host.rsplit(".", 1)[1].lower() in REAL_TLDS:
-            return host
+    for word in re.split(r"[\s/:@?#]+", text):  # also cuts 'Link:apple.com', 'user@apple.com' and URLs apart
+        word = _strip_marks(word)
+        if "." in word and word.rsplit(".", 1)[1].lower() in REAL_TLDS:
+            return word
     return ""
 
 

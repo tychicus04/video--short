@@ -65,6 +65,29 @@ def test_patch_text_matches_the_old_x_height_in_a_loose_or_tight_box(old, new):
     assert all(abs(h - old_h) <= 2 and abs(mid - old_mid) <= 3 for h, mid in bands)  # same size, same baseline
 
 
+def _full_height(text: str, width: int) -> int:
+    """Ink height of `text` in Be Vietnam Pro Regular at the size where it is `width` px wide (nothing cut off)."""
+    def bbox(em):
+        return ImageFont.truetype(str(FONTS / "BeVietnamPro-Regular.ttf"), em).getbbox(text)
+    em = min(range(8, 120), key=lambda e: abs(bbox(e)[2] - bbox(e)[0] - width))
+    return bbox(em)[3] - bbox(em)[1]
+
+
+@pytest.mark.parametrize("old, new", [
+    ("SOFTWARE UPDATE", "CẬP NHẬT"),  # caps only: stacked marks need more room than the old ink has
+    ("secure.com", "Ứng dụng Ếch"),  # x-height only
+])
+def test_patch_text_never_clips_stacked_diacritics_in_a_tight_box(old, new):
+    img = _label_image(old)
+    old = _ink(img, (0, 0, 720, 300))
+    rows, cols = old.any(1).nonzero()[0], old.any(0).nonzero()[0]
+    box = (cols[0] - 6, rows[0] - 6, cols[-1] + 7, rows[-1] + 7)  # a 6 px margin around the old ink
+    ink = _ink(patch_text(img, box, new), box)
+    cut = ink.any(0).nonzero()[0]
+    assert not ink[0].any() and not ink[-1].any()  # nothing touches the top or the bottom edge
+    assert _height(ink) >= _full_height(new, cut[-1] - cut[0] + 1) - 2  # all of the glyphs are there
+
+
 def test_patch_text_ignores_a_hairline_as_old_text():
     img = Image.new("RGB", (720, 1280), PAGE)
     ImageDraw.Draw(img).line((110, 120, 390, 120), fill=(40, 40, 40), width=1)
@@ -166,6 +189,13 @@ def _item(**kw):
     ({"kind": "patch", "ids": [1], "box": [0, 0, 300, 50], "text": "user@evil.com"}, ".example"),
     ({"kind": "patch", "ids": [1], "box": [0, 0, 300, 50], "text": "evil.com."}, ".example"),
     ({"kind": "patch", "ids": [1], "box": [0, 0, 300, 50], "text": "Cài đặt.app mới"}, ".example"),
+    ({"kind": "patch", "ids": [1], "box": [0, 0, 300, 50], "text": "Tải tại “apple.com”"}, ".example"),
+    ({"kind": "patch", "ids": [1], "box": [0, 0, 300, 50], "text": "«apple.com»"}, ".example"),
+    ({"kind": "patch", "ids": [1], "box": [0, 0, 300, 50], "text": "apple.com…"}, ".example"),
+    ({"kind": "patch", "ids": [1], "box": [0, 0, 300, 50], "text": "<apple.com>"}, ".example"),
+    ({"kind": "patch", "ids": [1], "box": [0, 0, 300, 50], "text": "Link:apple.com"}, ".example"),
+    ({"kind": "patch", "ids": [1], "box": [0, 0, 300, 50], "text": "Nguồn/apple.com"}, ".example"),
+    ({"kind": "patch", "ids": [1], "box": [0, 0, 300, 50], "text": "apple.com:8080"}, ".example"),
 ])
 def test_validate_reports(item, needle, tmp_path):
     (tmp_path / "visuals").mkdir()
@@ -181,7 +211,8 @@ def test_validate_accepts_good_items_and_flags_duplicate_references(tmp_path):
     patch = {"kind": "patch", "ids": [1, 2], "box": [96, 96, 404, 144], "text": "tin-tuc.example", "note": ""}
     assert validate([patch, _item()], {1, 2}, tmp_path) == []  # a patch plus a reference on one line is fine
     for text in ("tin-tuc.test", "mạng.invalid", "tin-tuc.example.", "Tải tại tin-tuc.example", "iOS 26.3.1", "26.3.1+",
-                 "OS Kernel", "payload.dylib", "WebKit.framework", "update.zip"):
+                 "OS Kernel", "payload.dylib", "WebKit.framework", "update.zip", "“tin-tuc.example”",
+                 "Link:tin-tuc.test"):
         assert validate([{**patch, "text": text, "bold": True}], {1, 2}, tmp_path) == []
     assert any("1" in p for p in validate([_item(), _item()], {1}, tmp_path))
 
