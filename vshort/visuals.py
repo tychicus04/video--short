@@ -236,5 +236,7 @@ def validate(items: list[dict], ids: set[int], run_dir: Path) -> list[str]:
                 refs.setdefault(it["id"], n)
         else:
             found = [f"kind {kind!r} không hợp lệ (patch, svg hoặc photo)"]
+        if kind in ("patch", "svg", "photo") and not (isinstance(it.get("note"), str) and it["note"].strip()):
+            found.append("thiếu note: một dòng ghi vì sao vá, hoặc hình vẽ lại gì và đã bỏ gì")
         probs += [f"visuals.json mục {n} ({kind}): {p}" for p in found]
     return probs

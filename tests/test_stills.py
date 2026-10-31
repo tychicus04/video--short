@@ -58,3 +58,10 @@ def test_plate_applies_from_its_first_frame(make_video, tmp_path):
     out = tmp_path / "o.mp4"
     clean_video(v, plates, tmp_path, end=1.0, out=out)
     assert frame_at(out, 2 / 30)[125, 125].min() > 200 and frame_at(out, 1 / 30)[125, 125].max() < 60
+
+
+def test_stills_cmd_refuses_to_run_without_plates(tmp_path, capsys):
+    assert main(["stills", str(tmp_path)]) == 2  # the old English captions would be baked into every still
+    err = capsys.readouterr().err
+    assert "thiếu plates/plates.json" in err and "chạy `vshort plates` trước" in err
+    assert not (tmp_path / "clean.mp4").exists() and not Run(tmp_path).done("stills")

@@ -181,6 +181,16 @@ def _write_wav(path: Path, a: np.ndarray, rate: int) -> None:
     tmp.rename(path)
 
 
+def _key(lines: list[tuple[int, str]], tag: str) -> str:
+    return hashlib.sha1((tag + _script_text(lines)).encode()).hexdigest()[:10]
+
+
+def clip_paths(lines: list[tuple[int, str]], out_dir: Path, tag: str) -> list[Path]:
+    """Where the clips of this voice reading these lines go; a different script or voice gives different names."""
+    key = _key(lines, tag)
+    return [out_dir / f"{i}-{key}.wav" for i, _ in lines]
+
+
 def synth_script(lines: list[tuple[int, str]], out_dir: Path, speak: Speaker, tag: str) -> list[Clip]:
     """One TTS call for the whole script (free tier: 10 calls/day), cut into one clip per sentence.
 
@@ -188,14 +198,13 @@ def synth_script(lines: list[tuple[int, str]], out_dir: Path, speak: Speaker, ta
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     text = _script_text(lines)
-    key = hashlib.sha1((tag + text).encode()).hexdigest()[:10]
-    full = out_dir / f"script-{key}.wav"
+    full = out_dir / f"script-{_key(lines, tag)}.wav"
     if not full.exists():
         data = speak(text)  # QuotaExceeded propagates before anything is written
         tmp = full.with_suffix(".part")
         tmp.write_bytes(data)
         tmp.rename(full)
-    paths = [out_dir / f"{i}-{key}.wav" for i, _ in lines]
+    paths = clip_paths(lines, out_dir, tag)
     if not all(p.exists() for p in paths):
         with wave.open(str(full)) as w:
             rate, a = w.getframerate(), np.frombuffer(w.readframes(w.getnframes()), np.int16)

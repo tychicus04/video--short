@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 from google.genai import errors
 
-from vshort.tts import QuotaExceeded, _speaker_from_client, load_api_key, synth_script
+from vshort.tts import QuotaExceeded, _speaker_from_client, clip_paths, load_api_key, synth_script
 
 
 def _speech_wav(parts: list[tuple[str, float]]) -> bytes:
@@ -33,6 +33,13 @@ def test_one_call_split_at_sentence_gaps_not_commas(tmp_path):
     assert [c.id for c in clips] == [1, 2, 3]
     for c, speech in zip(clips, [1.2, 2.05, 1.2]):
         assert abs(c.duration - (speech + 0.1)) < 0.06  # speech + 0.05 s pad each side
+
+
+def test_clip_paths_name_the_clips_made_from_that_text(tmp_path):
+    clips = synth_script(LINES, tmp_path, lambda text: _speech_wav(AUDIO), tag="t")
+    assert [c.path for c in clips] == clip_paths(LINES, tmp_path, "t")
+    assert clip_paths(LINES, tmp_path, "t") != clip_paths(LINES, tmp_path, "other voice")
+    assert clip_paths(LINES[:2] + [(3, "khác")], tmp_path, "t") != clip_paths(LINES, tmp_path, "t")
 
 
 def test_script_audio_is_cached(tmp_path):

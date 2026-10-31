@@ -8,7 +8,7 @@ from PIL import Image, ImageDraw
 from vshort import cli
 from vshort.cli import main
 from vshort.run import Run
-from vshort.tts import QuotaExceeded
+from vshort.tts import QuotaExceeded, clip_paths
 
 
 def test_fetch_auth_error_exit_4(tmp_path, monkeypatch, capsys):
@@ -58,17 +58,49 @@ def test_check_exit_2(tmp_path):
     assert main(["check", str(tmp_path)]) == 2
 
 
-def test_timeline_writes_back_to_back_narration(tmp_path):
-    for i in (1, 3):
-        write_silence(tmp_path / f"{i}.wav", 1.0)
+def _timeline_run(tmp_path, script, made_from=None):
+    """script.vi.json and the tts.json of clips made from `made_from` (default: the same script)."""
+    (tmp_path / "script.vi.json").write_text(json.dumps(script))
+    lines = [(r["id"], cli._speech(r["phrases"])) for r in (made_from or script) if r["phrases"].strip()]
+    paths = clip_paths(lines, tmp_path / "tts", cli._tts_tag(cli.config()))
+    (tmp_path / "tts").mkdir()
+    for p in paths:
+        write_silence(p, 1.0)
     (tmp_path / "tts.json").write_text(json.dumps(
-        [{"id": i, "path": str(tmp_path / f"{i}.wav"), "duration": 1.0} for i in (1, 3)]))
-    (tmp_path / "script.vi.json").write_text(json.dumps(
-        [{"id": 1, "phrases": "a"}, {"id": 2, "phrases": ""}, {"id": 3, "phrases": "b"}]))
+        [{"id": i, "path": str(p), "duration": 1.0} for (i, _), p in zip(lines, paths)]))
+
+
+SCRIPT = [{"id": 1, "phrases": "a"}, {"id": 2, "phrases": ""}, {"id": 3, "phrases": "b"}]
+
+
+def test_timeline_writes_back_to_back_narration(tmp_path):
+    _timeline_run(tmp_path, SCRIPT)
     assert main(["timeline", str(tmp_path)]) == 0
     t = json.loads((tmp_path / "timeline.json").read_text())
     assert [p["id"] for p in t["placements"]] == [1, 3] and abs(t["total"] - 3.0) < 1e-6  # 0.2+1+0.3+1+0.5
     assert (tmp_path / "narration.wav").exists() and Run(tmp_path).done("timeline")
+
+
+def test_timeline_refuses_clips_of_another_script(tmp_path, capsys):
+    changed = [  # (script now, script the clips were made from)
+        (SCRIPT + [{"id": 4, "phrases": "c"}], SCRIPT),  # a line was added
+        (SCRIPT[:2], SCRIPT),  # a line was dropped
+        ([SCRIPT[0], SCRIPT[1], {"id": 3, "phrases": "b khác"}], SCRIPT),  # same ids, other words
+    ]
+    for n, (script, made_from) in enumerate(changed):
+        run = tmp_path / str(n)
+        run.mkdir()
+        _timeline_run(run, script, made_from)
+        assert main(["timeline", str(run)]) == 2
+        assert capsys.readouterr().err == "giọng đọc cũ không khớp kịch bản — chạy lại `vshort tts`\n"
+        assert not (run / "timeline.json").exists() and not (run / "narration.wav").exists()
+        assert not Run(run).done("timeline")
+
+
+def test_timeline_ignores_the_markup_of_the_script(tmp_path):
+    script = [{"id": 1, "phrases": "a | *b*"}, {"id": 3, "phrases": "c"}]
+    _timeline_run(tmp_path, script, [{"id": 1, "phrases": "a b"}, {"id": 3, "phrases": "c"}])  # the voice says the same
+    assert main(["timeline", str(tmp_path)]) == 0
 
 
 def test_tts_quota_exit_75(tmp_path, monkeypatch, capsys):
@@ -135,9 +167,11 @@ def _png(path):
 def test_visuals_cmd_rejects_bad_items(tmp_path, capsys):
     _visuals_run(tmp_path, ids=(1, 3), scenes=(0, 0))
     (tmp_path / "visuals.json").write_text(json.dumps([
-        {"kind": "patch", "ids": [9], "box": [0, 0, 900, 50], "text": "x.example"},
-        {"kind": "svg", "id": 1, "file": "visuals/1.svg", "source": "https://a.example", "accessed": "2026-10-31"},
-        {"kind": "photo", "id": 3, "file": "visuals/3.jpg", "accessed": "2026-10-31", "credit": "Nguồn: A"},
+        {"kind": "patch", "ids": [9], "box": [0, 0, 900, 50], "text": "x.example", "note": "n"},
+        {"kind": "svg", "id": 1, "file": "visuals/1.svg", "source": "https://a.example", "accessed": "2026-10-31",
+         "note": "n"},
+        {"kind": "photo", "id": 3, "file": "visuals/3.jpg", "accessed": "2026-10-31", "credit": "Nguồn: A",
+         "note": "n"},
     ]))
     assert main(["visuals", str(tmp_path)]) == 2
     err = capsys.readouterr().err
@@ -149,7 +183,7 @@ def test_visuals_cmd_rejects_bad_items(tmp_path, capsys):
 def test_visuals_cmd_rejects_unknown_patch_ids(tmp_path, capsys):
     _visuals_run(tmp_path, ids=(1, 3), scenes=(0, 0))
     (tmp_path / "visuals.json").write_text(json.dumps(
-        [{"kind": "patch", "ids": [1, 7], "box": [96, 96, 404, 144], "text": "tin-tuc.example"}]))
+        [{"kind": "patch", "ids": [1, 7], "box": [96, 96, 404, 144], "text": "tin-tuc.example", "note": "n"}]))
     assert main(["visuals", str(tmp_path)]) == 2
     assert "[7]" in capsys.readouterr().err and not (tmp_path / "frames").exists()
 
@@ -160,10 +194,11 @@ def test_visuals_cmd_reports_unreadable_files_with_the_other_problems(tmp_path, 
     (tmp_path / "visuals" / "3.svg").write_text("<svg")
     (tmp_path / "visuals" / "4.jpg").write_bytes(b"not a jpeg")
     (tmp_path / "visuals.json").write_text(json.dumps([
-        {"kind": "patch", "ids": [7], "box": [96, 96, 404, 144], "text": "tin-tuc.example"},
-        {"kind": "svg", "id": 3, "file": "visuals/3.svg", "source": "https://a.example", "accessed": "2026-10-31"},
+        {"kind": "patch", "ids": [7], "box": [96, 96, 404, 144], "text": "tin-tuc.example", "note": "n"},
+        {"kind": "svg", "id": 3, "file": "visuals/3.svg", "source": "https://a.example", "accessed": "2026-10-31",
+         "note": "n"},
         {"kind": "photo", "id": 4, "file": "visuals/4.jpg", "source": "https://a.example", "accessed": "2026-10-31",
-         "credit": "Nguồn: A"},
+         "credit": "Nguồn: A", "note": "n"},
     ]))
     assert main(["visuals", str(tmp_path)]) == 2
     err = capsys.readouterr().err
@@ -188,9 +223,9 @@ def test_visuals_cmd_groups_and_replaces(tmp_path):
     Image.new("RGB", (500, 300), (30, 120, 60)).save(tmp_path / "visuals" / "4.jpg")
     box = [96, 96, 404, 144]
     (tmp_path / "visuals.json").write_text(json.dumps([
-        {"kind": "patch", "ids": [1, 3], "box": box, "text": "tin-tuc.example", "note": ""},
+        {"kind": "patch", "ids": [1, 3], "box": box, "text": "tin-tuc.example", "note": "địa chỉ sai"},
         {"kind": "photo", "id": 4, "file": "visuals/4.jpg", "source": "https://a.example/p", "accessed": "2026-10-31",
-         "credit": "Nguồn: A", "note": ""},
+         "credit": "Nguồn: A", "note": "ảnh báo cáo"},
     ]))
     assert main(["visuals", str(tmp_path)]) == 0
     rows = json.loads((tmp_path / "frames.json").read_text())
@@ -223,8 +258,9 @@ def test_visuals_cmd_reference_replaces_a_patched_line(tmp_path):
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 1280"><rect x="100" y="300" width="200" '
         'height="200" fill="#4a4a4a"/></svg>')
     (tmp_path / "visuals.json").write_text(json.dumps([
-        {"kind": "patch", "ids": [1, 2], "box": [96, 96, 404, 144], "text": "tin-tuc.example", "note": ""},
-        {"kind": "svg", "id": 2, "file": "visuals/2.svg", "source": "https://a.example", "accessed": "2026-10-31"},
+        {"kind": "patch", "ids": [1, 2], "box": [96, 96, 404, 144], "text": "tin-tuc.example", "note": "địa chỉ sai"},
+        {"kind": "svg", "id": 2, "file": "visuals/2.svg", "source": "https://a.example", "accessed": "2026-10-31",
+         "note": "n"},
     ]))
     assert main(["visuals", str(tmp_path)]) == 0
     assert [r["group"] for r in json.loads((tmp_path / "frames.json").read_text())] == ["s0", "v2"]
@@ -239,7 +275,7 @@ def test_visuals_cmd_hairline_in_the_box_is_not_text(tmp_path):
         ImageDraw.Draw(img).line((110, 120, 390, 120), fill=(40, 40, 40), width=1)
         img.save(tmp_path / "stills" / f"{i}.png")
     (tmp_path / "visuals.json").write_text(json.dumps(
-        [{"kind": "patch", "ids": [3], "box": [96, 96, 404, 144], "text": "Cập nhật"}]))
+        [{"kind": "patch", "ids": [3], "box": [96, 96, 404, 144], "text": "Cập nhật", "note": "n"}]))
     assert main(["visuals", str(tmp_path)]) == 0
     ink = _png(tmp_path / "frames" / "3.png")[96:144, 96:404].sum(2) < 400
     assert ink.any(1).sum() >= 12  # readable text, not a crash and not a hairline
@@ -251,7 +287,7 @@ def test_visuals_cmd_render_failure_keeps_the_previous_frames(tmp_path, monkeypa
     kept = {p.name: p.read_bytes() for p in (tmp_path / "frames").iterdir()}
     rows = (tmp_path / "frames.json").read_text()
     (tmp_path / "visuals.json").write_text(json.dumps(
-        [{"kind": "patch", "ids": [1, 3], "box": [96, 96, 404, 144], "text": "tin-tuc.example"}]))
+        [{"kind": "patch", "ids": [1, 3], "box": [96, 96, 404, 144], "text": "tin-tuc.example", "note": "n"}]))
 
     def boom(*args, **kw):
         raise RuntimeError("boom")
@@ -284,9 +320,21 @@ def test_render_cmd_uses_the_frames_of_the_placed_lines(tmp_path, capsys):
 
 def test_render_cmd_names_the_lines_without_a_frame(tmp_path, capsys):
     _render_run(tmp_path, (1,))
-    assert main(["render", str(tmp_path)]) == 2
+    (tmp_path / "stills.json").write_text(json.dumps([{"id": i, "t": 1.0, "scene": 0} for i in (1, 3)]))
+    assert main(["render", str(tmp_path)]) == 2  # the still exists, only the frame is missing
     assert capsys.readouterr().err == "frames.json thiếu các câu: 3 (chạy lại `vshort visuals`)\n"
     assert not (tmp_path / "final.mp4").exists()
+
+
+def test_render_cmd_sends_lines_without_a_still_back_to_stills(tmp_path, capsys):
+    _render_run(tmp_path, (1,))
+    for stills in ([{"id": 1, "t": 1.0, "scene": 0}], None):  # 3 is not in stills.json, or there is no stills.json
+        (tmp_path / "stills.json").unlink(missing_ok=True)
+        if stills:
+            (tmp_path / "stills.json").write_text(json.dumps(stills))
+        assert main(["render", str(tmp_path)]) == 2
+        assert capsys.readouterr().err == ("frames.json thiếu các câu: 3 "
+                                           "(chạy lại `vshort stills`, rồi vs-visuals và `vshort visuals`)\n")
 
 
 def test_render_cmd_names_missing_frame_files_and_keeps_the_old_video(tmp_path, capsys):

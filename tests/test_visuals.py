@@ -155,7 +155,7 @@ def test_svg_frame_resolves_patrick_hand(tmp_path):
 
 def _item(**kw):
     return {"kind": "photo", "id": 1, "file": "visuals/1.jpg", "source": "https://a.example/x",
-            "accessed": "2026-10-31", "credit": "Nguồn: A", **kw}
+            "accessed": "2026-10-31", "credit": "Nguồn: A", "note": "ảnh minh họa của báo cáo", **kw}
 
 
 @pytest.mark.parametrize("item, needle", [
@@ -185,6 +185,12 @@ def _item(**kw):
     (_item(credit="Nguồn:\nA"), "credit"),
     (_item(credit="Nguồn: " + "rất dài " * 20), "credit"),
     (_item(id=7), "7"),
+    ({**_item(), "note": ""}, "note"),
+    ({**_item(), "note": "  "}, "note"),
+    ({k: v for k, v in _item().items() if k != "note"}, "note"),
+    ({"kind": "svg", "id": 1, "file": "visuals/1.jpg", "source": "https://a.example/x", "accessed": "2026-10-31"}, "note"),
+    ({"kind": "patch", "ids": [1], "box": [0, 0, 300, 50], "text": "x", "note": ""}, "note"),
+    ({"kind": "patch", "ids": [1], "box": [0, 0, 300, 50], "text": "x", "note": 5}, "note"),
     ({"kind": "patch", "ids": [1], "box": [0, 0, 300, 50], "text": "Tải tại apple.com"}, ".example"),
     ({"kind": "patch", "ids": [1], "box": [0, 0, 300, 50], "text": "user@evil.com"}, ".example"),
     ({"kind": "patch", "ids": [1], "box": [0, 0, 300, 50], "text": "evil.com."}, ".example"),
@@ -208,7 +214,7 @@ def test_validate_reports(item, needle, tmp_path):
 def test_validate_accepts_good_items_and_flags_duplicate_references(tmp_path):
     (tmp_path / "visuals").mkdir()
     (tmp_path / "visuals" / "1.jpg").write_bytes(b"x")
-    patch = {"kind": "patch", "ids": [1, 2], "box": [96, 96, 404, 144], "text": "tin-tuc.example", "note": ""}
+    patch = {"kind": "patch", "ids": [1, 2], "box": [96, 96, 404, 144], "text": "tin-tuc.example", "note": "địa chỉ sai"}
     assert validate([patch, _item()], {1, 2}, tmp_path) == []  # a patch plus a reference on one line is fine
     for text in ("tin-tuc.test", "mạng.invalid", "tin-tuc.example.", "Tải tại tin-tuc.example", "iOS 26.3.1", "26.3.1+",
                  "OS Kernel", "payload.dylib", "WebKit.framework", "update.zip", "“tin-tuc.example”",

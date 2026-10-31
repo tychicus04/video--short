@@ -17,7 +17,7 @@ from vshort.render import build_ass, clean_video, render_video, segments
 from vshort.run import Run, config
 from vshort.script import Sentence, check_script, group_sentences, merge_text, merged
 from vshort.stills import contact_sheet, grid_image, pick_still, scene_of
-from vshort.tts import Clip, QuotaExceeded, gemini_speaker, load_api_key, synth_script
+from vshort.tts import Clip, QuotaExceeded, clip_paths, gemini_speaker, load_api_key, synth_script
 from vshort.visuals import patch_text, pencil, svg_frame, validate
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -151,16 +151,15 @@ def cmd_plates(a) -> int:
     return OK
 
 
-def _plates(run: Run) -> list[Plate]:
-    pj = run.file("plates/plates.json")
-    return [Plate(**p) for p in json.loads(pj.read_text())] if pj.exists() else []
-
-
 def cmd_stills(a) -> int:
     run = Run(a.run)
+    if not run.file("plates/plates.json").exists():  # an empty list is fine: no captions to remove
+        _err("thiếu plates/plates.json — chạy `vshort plates` trước")
+        return BAD_INPUT
+    plates = [Plate(**p) for p in run.read("plates/plates.json")]
     lines = merged(_sentences(run), run.read("script.vi.json"))
     clean = run.file("clean.mp4")
-    clean_video(run.file("source.mp4"), _plates(run), run.file("plates"), lines[-1].end, clean)
+    clean_video(run.file("source.mp4"), plates, run.file("plates"), lines[-1].end, clean)
     cuts = scene_cuts(clean)
     out = run.file("stills")
     (out / "grid").mkdir(parents=True, exist_ok=True)
@@ -237,13 +236,20 @@ def cmd_visuals(a) -> int:
     return OK
 
 
+def _tts_lines(run: Run) -> list[tuple[int, str]]:
+    return [(row["id"], _speech(row["phrases"])) for row in run.read("script.vi.json") if row["phrases"].strip()]
+
+
+def _tts_tag(cfg: dict) -> str:
+    return f"{cfg['tts_model']}|{cfg['voice']}"
+
+
 def cmd_tts(a) -> int:
     run = Run(a.run)
     cfg = config()
-    lines = [(row["id"], _speech(row["phrases"])) for row in run.read("script.vi.json") if row["phrases"].strip()]
     speak = gemini_speaker(load_api_key(Path(cfg["env_file"]).expanduser()), cfg["tts_model"], cfg["voice"])
     try:
-        clips = synth_script(lines, run.file("tts"), speak, tag=f"{cfg['tts_model']}|{cfg['voice']}")
+        clips = synth_script(_tts_lines(run), run.file("tts"), speak, tag=_tts_tag(cfg))
     except QuotaExceeded:
         _err("Hết hạn mức Gemini TTS trong ngày (gói miễn phí: 10 lần/ngày cho mỗi model). "
              "Đợi hạn mức hồi lại rồi chạy lại lệnh này.")
@@ -258,7 +264,12 @@ def cmd_tts(a) -> int:
 
 def cmd_timeline(a) -> int:
     run = Run(a.run)
-    clips = [Clip(c["id"], Path(c["path"]), c["duration"]) for c in run.read("tts.json")]
+    rows = run.read("tts.json")
+    made = [Path(c["path"]).name for c in rows]  # clip names carry the ids and a hash of the text they were made from
+    if made != [p.name for p in clip_paths(_tts_lines(run), run.file("tts"), _tts_tag(config()))]:
+        _err("giọng đọc cũ không khớp kịch bản — chạy lại `vshort tts`")
+        return BAD_INPUT
+    clips = [Clip(c["id"], Path(c["path"]), c["duration"]) for c in rows]
     placements = sequence(clips)
     end = total(placements)
     run.write("timeline.json", {"total": end, "placements": [asdict(p) for p in placements]})
@@ -274,7 +285,11 @@ def cmd_render(a) -> int:
     frames = run.read("frames.json")
     ids = {p.id for p in placements}
     if missing := sorted(ids - {f["id"] for f in frames}):
-        _err("frames.json thiếu các câu: " + ", ".join(map(str, missing)) + " (chạy lại `vshort visuals`)")
+        stills = {s["id"] for s in run.read("stills.json")} if run.file("stills.json").exists() else set()
+        redo = "`vshort visuals`"
+        if not stills.issuperset(missing):  # the line has no still yet, or the script changed after `vshort stills`
+            redo = "`vshort stills`, rồi vs-visuals và " + redo
+        _err("frames.json thiếu các câu: " + ", ".join(map(str, missing)) + f" (chạy lại {redo})")
         return BAD_INPUT
     if gone := [f["file"] for f in frames if f["id"] in ids and not run.file(f["file"]).exists()]:
         _err("thiếu file khung hình: " + ", ".join(gone) + " (chạy lại `vshort visuals`)")
