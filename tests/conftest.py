@@ -35,6 +35,10 @@ def _frame(kind: str, t: float, t0: float, t1: float) -> np.ndarray:
         f = np.full((H, W, 3), (243, 239, 230), np.uint8)
         f[860:1000, 500:560] = 0
         return f
+    if kind == "label":  # cream background, a dark UI label sitting in the upper caption band
+        f = np.full((H, W, 3), (243, 239, 230), np.uint8)
+        f[905:955, 200:520] = 40
+        return f
     if kind == "moving":
         f = np.full((H, W, 3), 160, np.uint8)
         x = 200 + round(200 * (t - t0) / (t1 - t0))

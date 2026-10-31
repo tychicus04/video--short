@@ -44,25 +44,33 @@ def find_bands(video: Path) -> list[tuple[int, int]]:
 
 
 def detect_fragments(video: Path) -> list[Fragment]:
+    """Track every band on its own: a dark UI label in one band must not hide a caption in another.
+
+    Non-caption ink (labels, buttons) becomes fragments too; the transcriber blanks them.
+    """
     bands = find_bands(video)
-    frags, cur, prev = [], None, None
+    frags: list[Fragment] = []
+    cur: list[Fragment | None] = [None] * len(bands)
+    prev: list[np.ndarray | None] = [None] * len(bands)
     t = 0.0
     for t, f in iter_frames(video):
-        regions = [f[a:b, X0:X1].astype(np.int16) for a, b in bands]
-        ink = [int((r < INK).sum()) for r in regions]
-        band = int(np.argmax(ink)) if ink and max(ink) > 150 else None
-        changed = prev is None or band != prev[0] or (
-            band is not None and np.abs(regions[band] - prev[1][band]).mean() > 6
-        )
-        if changed:
-            if cur:
-                cur.end = t
-                frags.append(cur)
-            cur = Fragment(len(frags), t, t, *bands[band]) if band is not None else None
-        prev = (band, regions)
-    if cur:
-        cur.end = t + 1 / probe(video).fps
-        frags.append(cur)
+        for k, (a, b) in enumerate(bands):
+            r = f[a:b, X0:X1].astype(np.int16)
+            on = int((r < INK).sum()) > 150
+            if prev[k] is None or on != (cur[k] is not None) or (on and np.abs(r - prev[k]).mean() > 6):
+                if cur[k]:
+                    cur[k].end = t
+                    frags.append(cur[k])
+                cur[k] = Fragment(0, t, t, a, b) if on else None
+            prev[k] = r
+    end = t + 1 / probe(video).fps
+    for c in cur:
+        if c:
+            c.end = end
+            frags.append(c)
+    frags.sort(key=lambda fr: (fr.start, fr.y0))
+    for i, fr in enumerate(frags):
+        fr.i = i
     return frags
 
 
