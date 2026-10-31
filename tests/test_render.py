@@ -1,7 +1,9 @@
 from conftest import write_silence
+from PIL import Image
 
 from vshort.captions import Fragment
 from vshort.media import frame_at, probe
+from vshort.plates import Plate
 from vshort.render import build_ass, compose, outro_cut
 
 
@@ -33,3 +35,16 @@ def test_compose_output(make_video, tmp_path):
 def test_outro_cut_takes_a_blank_frame_when_there_is_no_hard_cut():
     assert outro_cut([Fragment(0, 0, 85.13, 0, 0, "x")], [], 88.49, blank=85.4) == 85.4
     assert outro_cut([Fragment(0, 0, 57.13, 0, 0, "x")], [57.3], 60.35, blank=57.5) == 57.3
+
+
+def test_plate_applies_from_its_first_frame(make_video, tmp_path):
+    v = make_video(tmp_path, scenes=[(0, 1, "#000000")], captions=[])
+    Image.new("RGB", (50, 50), "white").save(tmp_path / "p00.png")
+    plates = [Plate("p00", 100, 100, 0.0667, 0.5, "clean", False)]  # as build_plates rounds frame 2 (2/30 s)
+    wav = tmp_path / "n.wav"
+    write_silence(wav, 1.0)
+    ass = tmp_path / "s.ass"
+    ass.write_text(build_ass([(0, 1.0, "x")], "K", "T", 1.0), encoding="utf-8")
+    out = tmp_path / "o.mp4"
+    compose(v, wav, ass, plates, tmp_path, cut=1.0, out=out)
+    assert frame_at(out, 2 / 30)[125, 125].min() > 200 and frame_at(out, 1 / 30)[125, 125].max() < 60

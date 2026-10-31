@@ -39,7 +39,9 @@ def place(sentences: list[Sentence], clips: list[Clip], cut: float, max_tempo: f
 
 
 def too_long(placements: list[Placement], tol: float = 0.25) -> list[int]:
-    return [p.id for p in placements if p.overflow > tol]
+    """Sentences spilling too far into the next one; the last one may not spill at all (the video ends)."""
+    last = len(placements) - 1
+    return [p.id for k, p in enumerate(placements) if p.overflow > (0.0 if k == last else tol)]
 
 
 def _load(clip: Clip, tempo: float) -> np.ndarray:

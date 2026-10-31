@@ -77,11 +77,14 @@ def cmd_fetch(a) -> int:
     meta["notebook_id"] = nb
     run.write("run.json", meta)
     prompt = [a.prompt] if a.prompt else []  # steers NotebookLM to follow the approved brief
-    cp, code = _notebooklm(["generate", "video", "--format", "short", "--language", "en", "-n", nb, "--no-wait", "--json",
-                            *prompt])
-    if code:
-        return code
-    task = _json(cp.stdout)["task_id"]
+    task = meta.get("artifact_id")  # a rerun continues the video already requested
+    if not task:
+        cp, code = _notebooklm(["generate", "video", "--format", "short", "--language", "en", "-n", nb, "--no-wait",
+                                "--json", *prompt])
+        if code:
+            return code
+        task = meta["artifact_id"] = _json(cp.stdout)["task_id"]
+        run.write("run.json", meta)
     cp, code = _notebooklm(["artifact", "wait", task, "-n", nb, "--timeout", "2400", "--json"])
     if code:
         return code
@@ -91,8 +94,6 @@ def cmd_fetch(a) -> int:
     cp, code = _notebooklm(["download", "video", "-n", nb, "-a", task, "--force", str(run.file("source.mp4"))])
     if code:
         return code
-    meta["artifact_id"] = task
-    run.write("run.json", meta)
     run.mark("fetch")
     return OK
 
@@ -111,6 +112,9 @@ def cmd_text(a) -> int:
     run = Run(a.run)
     frags = [Fragment(**f) for f in run.read("fragments.json")]
     texts = {int(k): v for k, v in run.read("fragments_text.json").items()}
+    if missing := [f.i for f in frags if f.i not in texts]:
+        _err("fragments_text.json thiếu các mảnh: " + ", ".join(map(str, missing)))
+        return BAD_INPUT
     captions = merge_text(frags, texts)
     run.write("captions.json", [asdict(f) for f in captions])
     sents = group_sentences(captions)

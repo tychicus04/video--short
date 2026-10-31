@@ -3,7 +3,7 @@ import subprocess
 from pathlib import Path
 
 from vshort.captions import Fragment
-from vshort.media import FF
+from vshort.media import FF, probe
 from vshort.plates import Plate
 from vshort.textfit import FONTS, MAX_TEXT_W, text_width
 
@@ -125,10 +125,12 @@ def outro_cut(frags: list[Fragment], cuts: list[float], duration: float, blank: 
 
 
 def compose(src: Path, narration: Path, ass: Path, plates: list[Plate], plates_dir: Path, cut: float, out: Path) -> None:
+    fps = probe(src).fps
     inputs, chain, last = [], [f"[0:v]{WATERMARK}[v0]"], "v0"
     for i, pl in enumerate(plates, 2):
         inputs += ["-i", str(plates_dir / f"{pl.name}.png")]
-        chain.append(f"[{last}][{i}:v]overlay={pl.x}:{pl.y}:enable='between(t,{pl.start},{pl.end})'[v{i}]")
+        n0, n1 = round(pl.start * fps), round(pl.end * fps)  # frame numbers: rounded seconds can miss a frame
+        chain.append(f"[{last}][{i}:v]overlay={pl.x}:{pl.y}:enable='between(n,{n0},{n1 - 1})'[v{i}]")
         last = f"v{i}"
     chain.append(f"[{last}]ass={ass.name}:fontsdir={FONTS}[out]")
     subprocess.run(

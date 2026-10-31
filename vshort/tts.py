@@ -161,8 +161,13 @@ def _sentence_spans(a: np.ndarray, rate: int, weights: list[int]) -> list[tuple[
             chosen.append(gaps[j])
             j = back[k][j]
         chosen.reverse()
-    pad = hop * 5 // 2  # 0.05 s
     edges = [s0] + [x for g in chosen for x in g] + [s1]
+    for k in range(n):  # a cut inside a sentence leaves pieces far off their syllable share
+        got = edges[2 * k + 1] - edges[2 * k]
+        if abs(got - expected[k]) > 0.45 * expected[k]:
+            raise ValueError(f"Không tách chắc chắn giọng đọc thành từng câu: câu thứ {k + 1} dài {got / 50:.1f}s, "
+                             f"dự kiến khoảng {expected[k] / 50:.1f}s")
+    pad = hop * 5 // 2  # 0.05 s
     return [(max(edges[2 * k] * hop - pad, 0), min(edges[2 * k + 1] * hop + pad, len(a))) for k in range(n)]
 
 

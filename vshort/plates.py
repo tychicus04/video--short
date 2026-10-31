@@ -1,6 +1,7 @@
 """Clean plates: per scene, a caption-free patch pasted over old captions the new sub box won't cover.
 
 `frags` are real captions (after merge_text): a blanked UI label counts as clean background.
+`cover` is the area the new subtitle box always hides (x0, y0, x1, y1); captions fully inside it need no plate.
 """
 import json
 from collections.abc import Callable
@@ -13,7 +14,7 @@ from PIL import Image
 from vshort.captions import INK, X0, X1, Fragment
 from vshort.media import frame_at, iter_frames, probe
 
-PAD_TOP, PAD_BOTTOM = 16, 11  # bands hold the text rows; the old caption box reaches this much further
+HALF_H = 47  # old caption boxes (with shadow) are ~90 px tall and centred on their text band, whatever the letters
 PAD_X = 26
 
 
@@ -46,13 +47,19 @@ def first_blank(video: Path, after: float) -> float | None:
     return None
 
 
-def _text_columns(video: Path, spans: list[tuple[float, float]], y0: int, y1: int) -> tuple[int, int]:
+def _text_columns(video: Path, spans: list[tuple[float, float]], y0: int, y1: int,
+                  window: tuple[float, float]) -> tuple[int, int]:
     """Columns where one caption's frame differs strongly from the next one's.
 
     Dark strokes on the light caption box change by ~200 grey levels from caption to caption;
     compression flicker on art edges by ~20. Full caption width when there is nothing to compare.
     """
-    fr = [frame_at(video, (a + b) / 2, gray=True)[y0:y1, X0:X1].astype(np.int16) for a, b in spans]
+    times = [(a + b) / 2 for a, b in spans]
+    if spans[0][0] - 0.05 > window[0]:  # just before the first caption appears
+        times.insert(0, spans[0][0] - 0.05)
+    if spans[-1][1] + 0.05 < window[1]:  # just after the last one goes
+        times.append(spans[-1][1] + 0.05)
+    fr = [frame_at(video, t, gray=True)[y0:y1, X0:X1].astype(np.int16) for t in times]
     hit = np.zeros(X1 - X0, bool)
     for p, q in zip(fr, fr[1:]):
         hit |= (np.abs(p - q) > 100).sum(0) > 3
@@ -101,7 +108,7 @@ def build_plates(
     frags: list[Fragment],
     out_dir: Path,
     lama_path: Path,
-    cover: tuple[int, int] = (1094, 1204),
+    cover: tuple[int, int, int, int] = (120, 1094, 600, 1204),
     inpaint: Callable[[np.ndarray, np.ndarray], np.ndarray] | None = None,
 ) -> list[Plate]:
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -110,8 +117,6 @@ def build_plates(
     # a caption left on screen across a cut needs a plate in every scene it touches
     groups: dict[tuple[int, int, int], list[tuple[float, float]]] = {}
     for f in frags:
-        if cover[0] <= f.y0 and f.y1 <= cover[1]:
-            continue
         for w in range(len(edges) - 1):
             a, b = max(f.start, edges[w]), min(f.end, edges[w + 1])
             if b - a > 1e-3:
@@ -121,9 +126,12 @@ def build_plates(
     for (w, by0, by1), spans in sorted(groups.items()):
         wa, wb = edges[w], edges[w + 1]
         a, b = min(s for s, _ in spans), max(e for _, e in spans)
-        y0, y1 = max(by0 - PAD_TOP, 0), min(by1 + PAD_BOTTOM, info.height)
-        c0, c1 = _text_columns(video, spans, by0, by1)
+        mid = (by0 + by1) // 2
+        y0, y1 = max(mid - HALF_H, 0), min(mid + HALF_H, info.height)
+        c0, c1 = _text_columns(video, sorted(spans), by0, by1, (wa, wb))
         x0, x1 = max(c0 - PAD_X, 0), min(c1 + PAD_X, info.width)
+        if cover[0] <= x0 and x1 <= cover[2] and cover[1] <= y0 and y1 <= cover[3]:
+            continue  # the new subtitle box (always ≥ this area) already hides it
         covered = [(f.start, f.end) for f in frags if (f.y0, f.y1) == (by0, by1) and f.end > wa and f.start < wb]
         clean_t = _clean_time(covered, wa, wb, (a + b) / 2)
         if clean_t is not None:

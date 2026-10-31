@@ -21,7 +21,8 @@ Thiết kế: `~/video-pipeline/DESIGN.md`. Mọi bước cố định là lện
    viết `$RUN/brief.vi.md`, `$RUN/brief.en.md`, `$RUN/sources.md`, và đề xuất dòng nhỏ (kicker, chữ HOA) + tiêu đề. Nó trả về notebook id.
 2. **ĐIỂM DỪNG DUY NHẤT** — đưa Tai brief tiếng Việt + kicker + tiêu đề (dán nội dung, không chỉ đường dẫn). Chờ Tai duyệt hoặc sửa;
    sửa thì cập nhật cả `brief.vi.md` lẫn `brief.en.md`. Sau khi Tai duyệt, chạy liền một mạch đến cuối, không hỏi thêm.
-3. **Tạo video tiếng Anh**
+3. **Tạo video tiếng Anh** — chạy tiếp một video dở (đã có `$RUN/run.json` với `artifact_id`) thì bỏ qua `new` và
+   `source add`, chỉ chạy lại `vshort fetch $RUN` (nó tiếp tục đúng video đã yêu cầu, không tạo video mới).
    - `vshort new <slug> --kicker "<KICKER>" --title "<Tiêu đề>" --notebook <id>`
    - `notebooklm source add -n <id> --type text --title "# BRIEF (EN) – <slug>" "$(cat $RUN/brief.en.md)"`
    - `vshort fetch $RUN --prompt "Vertical short. Follow the source '# BRIEF (EN) – <slug>' closely: open with its hook, cover its key points in order, end with its call to action. Explain at concept level only; do not assert claims the brief marks as disputed."`

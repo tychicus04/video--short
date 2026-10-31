@@ -62,3 +62,30 @@ def test_tts_quota_exit_75(tmp_path, monkeypatch, capsys):
     assert main(["tts", str(tmp_path)]) == 75
     assert seen == ["Xin chào."]  # the words the subtitles show, without | and *, closed with a full stop
     assert "chạy lại" in capsys.readouterr().err
+
+
+def test_fetch_rerun_continues_the_same_video(tmp_path, monkeypatch):
+    main(["new", "demo", "--kicker", "K", "--title", "T", "--runs-dir", str(tmp_path)])
+    calls, waits = [], iter([CompletedProcess([], 1, "", "Not logged in."),
+                             CompletedProcess([], 0, json.dumps({"status": "completed"}), "")])
+
+    def fake(args):
+        calls.append(args)
+        if args[0] == "generate":
+            return CompletedProcess(args, 0, json.dumps({"task_id": "art1"}), "")
+        if args[:2] == ["artifact", "wait"]:
+            return next(waits)
+        return CompletedProcess(args, 0, "saved", "")
+
+    monkeypatch.setattr(cli, "run_notebooklm", fake)
+    assert main(["fetch", str(tmp_path / "demo"), "--notebook", "abc"]) == 4
+    assert main(["fetch", str(tmp_path / "demo"), "--notebook", "abc"]) == 0
+    assert [c[0] for c in calls].count("generate") == 1
+
+
+def test_text_refuses_missing_transcriptions(tmp_path, capsys):
+    frag = {"start": 0, "end": 1, "y0": 900, "y1": 960, "text": None}
+    (tmp_path / "fragments.json").write_text(json.dumps([{"i": 0, **frag}, {"i": 1, **frag, "start": 1, "end": 2}]))
+    (tmp_path / "fragments_text.json").write_text('{"0": "Hi."}')
+    assert main(["text", str(tmp_path)]) == 2
+    assert "1" in capsys.readouterr().err

@@ -50,3 +50,8 @@ def test_build_narration_places_and_speeds_up(tmp_path):
     loud = np.abs(a) > 1000
     assert not loud[: int(0.45 * 24000)].any() and loud[int(0.6 * 24000)] and loud[int(2.5 * 24000)]
     assert not loud[int(3.1 * 24000):].any()  # 1.1 s at tempo 1.1 lasts 1.0 s: ends by 3.0
+
+
+def test_last_sentence_cannot_spill_past_the_cut():
+    p = place([Sentence(1, 0.0, 2.0, "a")], [Clip(1, Path("x"), 2.25)], cut=2.0)
+    assert too_long(p) == [1]

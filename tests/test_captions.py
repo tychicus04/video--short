@@ -40,3 +40,10 @@ def test_write_sheets_keeps_simultaneous_captions_in_two_bands(make_video, tmp_p
     fr = detect_fragments(v)
     sheets = write_sheets(v, fr, tmp_path / "sheets", per_sheet=22)
     assert len(fr) == 3 and len(sheets) == 1
+
+
+def test_band_used_by_one_short_scene_is_found(make_video, tmp_path):
+    caps = [(k * 0.5, k * 0.5 + 0.5, 930, f"Main caption {k}") for k in range(40) if not 10 <= k < 13]
+    caps += [(5.0, 5.5, 1147, "Rare one"), (5.5, 6.0, 1147, "Rare two"), (6.0, 6.5, 1147, "Rare three")]
+    v = make_video(tmp_path, scenes=[(0, 20, "#F3EFE6")], captions=caps, fps=10)
+    assert len(find_bands(v)) == 2

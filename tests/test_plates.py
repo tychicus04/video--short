@@ -1,8 +1,10 @@
 from pathlib import Path
 
+import numpy as np
 from PIL import Image
 
 from vshort.captions import Fragment, detect_fragments
+from vshort.media import frame_at
 from vshort.plates import build_plates, first_blank, scene_cuts
 
 
@@ -71,3 +73,20 @@ def test_first_blank_frame_after_a_time(make_video, tmp_path):
     v = make_video(tmp_path, scenes=[(0, 1, "moving"), (1, 2, "#F8F8F8")], captions=[])
     assert abs(first_blank(v, after=0.5) - 1.0) < 0.04
     assert first_blank(make_video(tmp_path, scenes=[(0, 1, "moving")], captions=[]), after=0.2) is None
+
+
+def test_wide_low_caption_beyond_the_sub_box_gets_a_plate(make_video, tmp_path):
+    caps = [(0, 1, 1150, "A very wide low caption that sticks out"), (1, 2, 1150, "Another wide low caption sticking out")]
+    v = make_video(tmp_path, scenes=[(0, 2, "#F3EFE6")], captions=caps)
+    plates = build_plates(v, detect_fragments(v), tmp_path / "p", Path("unused"), inpaint=lambda img, mask: img)
+    assert plates and plates[0].y > 1050
+
+
+def test_plate_rows_cover_the_whole_old_caption_box(make_video, tmp_path):
+    caps = [(0, 1, 930, "mmmm nnnn"), (1, 2, 930, "uuuu wwww")]  # no ascenders: short text band, full-height box
+    v = make_video(tmp_path, scenes=[(0, 2, "#F3EFE6")], captions=caps)
+    plates = build_plates(v, detect_fragments(v), tmp_path / "p", Path("unused"), inpaint=lambda img, mask: img)
+    f = frame_at(v, 0.5, gray=True)[:, 300:420]
+    box = np.where(((f > 220) & (f < 236)).sum(1) > 60)[0]  # rows of the light-grey caption box
+    height = Image.open(tmp_path / "p" / f"{plates[0].name}.png").height
+    assert plates[0].y <= box.min() and plates[0].y + height >= box.max() + 1
