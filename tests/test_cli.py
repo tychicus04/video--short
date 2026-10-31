@@ -254,3 +254,36 @@ def test_visuals_cmd_render_failure_keeps_the_previous_frames(tmp_path, monkeypa
     assert "boom" in capsys.readouterr().err
     assert {p.name: p.read_bytes() for p in (tmp_path / "frames").iterdir()} == kept
     assert (tmp_path / "frames.json").read_text() == rows
+
+
+def _render_run(tmp_path, frame_ids):
+    (tmp_path / "frames").mkdir()
+    for i, c in zip((1, 3), ((200, 30, 30), (30, 30, 200))):
+        Image.new("RGB", (720, 1280), c).save(tmp_path / "frames" / f"{i}.png")
+    (tmp_path / "timeline.json").write_text(json.dumps(
+        {"total": 3.0, "placements": [{"id": 1, "start": 0.2, "dur": 1.0}, {"id": 3, "start": 1.5, "dur": 1.0}]}))
+    (tmp_path / "frames.json").write_text(json.dumps(
+        [{"id": i, "file": f"frames/{i}.png", "group": f"s{i}"} for i in frame_ids]))
+    (tmp_path / "script.vi.json").write_text(json.dumps([{"id": 1, "phrases": "a"}, {"id": 3, "phrases": "b"}]))
+    write_silence(tmp_path / "narration.wav", 3.0)
+
+
+def test_render_cmd_uses_the_frames_of_the_placed_lines(tmp_path, capsys):
+    _render_run(tmp_path, (1, 2, 3))  # a frame without a voice is just not shown
+    assert main(["render", str(tmp_path)]) == 0
+    assert (tmp_path / "final.mp4").exists() and Run(tmp_path).done("render")
+    assert str(tmp_path / "final.mp4") in capsys.readouterr().out
+
+
+def test_render_cmd_names_the_lines_without_a_frame(tmp_path, capsys):
+    _render_run(tmp_path, (1,))
+    assert main(["render", str(tmp_path)]) == 2
+    assert "3" in capsys.readouterr().err and not (tmp_path / "final.mp4").exists()
+
+
+def test_status_lists_every_step_in_order(tmp_path, capsys):
+    Run(tmp_path).mark("tts")
+    assert main(["status", str(tmp_path)]) == 0
+    marks = [ln.split() for ln in capsys.readouterr().out.splitlines()]
+    assert marks == [[("✓" if s == "tts" else "·"), s]
+                     for s in "new fetch detect text plates tts stills visuals timeline render".split()]

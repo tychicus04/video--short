@@ -13,7 +13,7 @@ from vshort.captions import Fragment, detect_fragments, write_sheets
 from vshort.fit import Placement, build_narration, phrase_times, sequence, total
 from vshort.media import frame_at
 from vshort.plates import Plate, build_plates, scene_cuts
-from vshort.render import build_ass, clean_video, compose
+from vshort.render import build_ass, clean_video, render_video, segments
 from vshort.run import Run, config
 from vshort.script import Sentence, check_script, group_sentences, merge_text, merged
 from vshort.stills import contact_sheet, grid_image, pick_still, scene_of
@@ -270,12 +270,15 @@ def cmd_timeline(a) -> int:
 def cmd_render(a) -> int:
     run = Run(a.run)
     fitted = run.read("timeline.json")
-    cut = fitted["total"]
-    phrases = phrase_times([Placement(**p) for p in fitted["placements"]], run.read("script.vi.json"))
+    placements = [Placement(**p) for p in fitted["placements"]]
+    frames = run.read("frames.json")
+    if missing := sorted({p.id for p in placements} - {f["id"] for f in frames}):
+        _err("frames.json thiếu các câu: " + ", ".join(map(str, missing)) + " (chạy lại `vshort visuals`)")
+        return BAD_INPUT
     ass = run.file("subs.ass")
-    ass.write_text(build_ass(phrases), encoding="utf-8")
-    compose(run.file("source.mp4"), run.file("narration.wav"), ass, _plates(run), run.file("plates"), cut,
-            run.file("final.mp4"))
+    ass.write_text(build_ass(phrase_times(placements, run.read("script.vi.json"))), encoding="utf-8")
+    render_video(segments(placements, frames, run.path, fitted["total"]), ass, run.file("narration.wav"),
+                 fitted["total"], run.file("final.mp4"))
     run.mark("render")
     print(run.file("final.mp4"))
     return OK
@@ -283,7 +286,7 @@ def cmd_render(a) -> int:
 
 def cmd_status(a) -> int:
     run = Run(a.run)
-    steps = ["new", "fetch", "detect", "text", "plates", "tts", "timeline", "render"]
+    steps = ["new", "fetch", "detect", "text", "plates", "tts", "stills", "visuals", "timeline", "render"]
     for s in steps:
         print(f"{'✓' if run.done(s) else '·'} {s}")
     return OK

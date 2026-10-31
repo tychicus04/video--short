@@ -1,12 +1,20 @@
 """Final video: fixed low subtitles in NotebookLM's caption style, clean plates, no watermark, no outro, new voice."""
+import math
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 
+from PIL import Image
+
+from vshort.fit import Placement
 from vshort.media import FF, probe
 from vshort.plates import Plate
 from vshort.textfit import FONTS, MAX_TEXT_W, text_width
 
 W, H = 720, 1280
+FPS = 30
+XF = 0.4  # crossfade between two images
+ZOOM = 1.08  # deepest camera zoom; the pans run at this zoom
 EM = 1000 / 1354  # libass sizes fonts by win ascent+descent; Patrick Hand's em is 0.739 of that
 LINE_H, CAP_EM, PAD_X, PAD_Y = 62, 50, 22, 12
 SUB_Y = 1150  # every caption box is centred here, on NotebookLM's own low caption band
@@ -86,25 +94,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     return head + "".join(ev)
 
 
-def compose(src: Path, narration: Path, ass: Path, plates: list[Plate], plates_dir: Path, cut: float, out: Path) -> None:
-    fps = probe(src).fps
-    inputs, chain, last = [], [f"[0:v]{WATERMARK}[v0]"], "v0"
-    for i, pl in enumerate(plates, 2):
-        inputs += ["-i", str(plates_dir / f"{pl.name}.png")]
-        n0, n1 = round(pl.start * fps), round(pl.end * fps)  # frame numbers: rounded seconds can miss a frame
-        chain.append(f"[{last}][{i}:v]overlay={pl.x}:{pl.y}:enable='between(n,{n0},{n1 - 1})'[v{i}]")
-        last = f"v{i}"
-    chain.append(f"[{last}]ass={ass.name}:fontsdir={FONTS}[out]")
-    subprocess.run(
-        [FF, "-loglevel", "error", "-y", "-i", str(src), "-i", str(narration), *inputs, "-t", str(cut),
-         "-filter_complex", ";".join(chain), "-map", "[out]", "-map", "1:a",
-         "-af", f"afade=t=out:st={max(cut - 0.25, 0)}:d=0.25",
-         "-c:v", "libx264", "-crf", "18", "-preset", "medium", "-pix_fmt", "yuv420p",
-         "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(out.resolve())],
-        cwd=ass.parent, check=True,
-    )
-
-
 def clean_video(src: Path, plates: list[Plate], plates_dir: Path, end: float, out: Path) -> None:
     """The source without watermark or old captions, picture only."""
     fps = probe(src).fps
@@ -120,3 +109,95 @@ def clean_video(src: Path, plates: list[Plate], plates_dir: Path, end: float, ou
          "-c:v", "libx264", "-crf", "12", "-preset", "medium", "-pix_fmt", "yuv420p", str(out.resolve())],
         check=True,
     )
+
+
+@dataclass(frozen=True)
+class Segment:
+    id: int
+    start: float
+    end: float
+    file: Path
+    group: str  # consecutive segments with the same group are one camera shot
+
+
+def segments(placements: list[Placement], frames: list[dict], run_dir: Path, total: float) -> list[Segment]:
+    """One segment per voice; a cut sits in the middle of the gap between two voices."""
+    by_id = {f["id"]: f for f in frames}
+    cuts = [0.0] + [(a.start + a.dur + b.start) / 2 for a, b in zip(placements, placements[1:])] + [total]
+    return [Segment(p.id, s, e, run_dir / by_id[p.id]["file"], by_id[p.id]["group"])
+            for p, s, e in zip(placements, cuts, cuts[1:])]
+
+
+def _camera(segs: list[Segment], k: int, t: float) -> tuple[float, float, float]:
+    """(scale, cx, cy) of the shot segment k belongs to: window centre in frame pixels, linear in time over the shot."""
+    lo = hi = k
+    while lo and segs[lo - 1].group == segs[k].group:
+        lo -= 1
+    while hi + 1 < len(segs) and segs[hi + 1].group == segs[k].group:
+        hi += 1
+    kind = sum(a.group != b.group for a, b in zip(segs, segs[1:lo + 1])) % 4  # shots before this one
+    t0, t1 = segs[lo].start - XF / 2, segs[hi].end + XF / 2
+    p = min(max((t - t0) / (t1 - t0), 0), 1)
+    half = W / ZOOM / 2  # half the window width at full zoom
+    if kind < 2:
+        return 1 + (ZOOM - 1) * (p if kind == 0 else 1 - p), W / 2, H / 2
+    return ZOOM, half + (W - 2 * half) * (p if kind == 2 else 1 - p), H / 2
+
+
+def _half_fade(segs: list[Segment], k: int) -> float:
+    """Half the crossfade at the cut before segment k, at most a third of the shorter neighbour."""
+    return min(XF, *((s.end - s.start) / 3 for s in segs[k - 1:k + 1])) / 2
+
+
+def view(segs: list[Segment], t: float) -> list[tuple[Path, float, tuple[float, float, float]]]:
+    """The 1-2 images visible at t: (file, blend weight, camera)."""
+    k = next((i for i, s in enumerate(segs) if t < s.end), len(segs) - 1)
+    s = segs[k]
+    h0 = _half_fade(segs, k) if k else 0
+    h1 = _half_fade(segs, k + 1) if k + 1 < len(segs) else 0
+    if t < s.start + h0:
+        w = (t - s.start + h0) / (2 * h0)
+        parts = [(k - 1, 1 - w), (k, w)]
+    elif t >= s.end - h1:
+        w = (t - s.end + h1) / (2 * h1)
+        parts = [(k, 1 - w), (k + 1, w)]
+    else:
+        parts = [(k, 1.0)]
+    return [(segs[i].file, w, _camera(segs, i, t)) for i, w in parts]
+
+
+def draw(img: Image.Image, scale: float, cx: float, cy: float) -> Image.Image:
+    """The window of img around (cx, cy), 1/scale of its size, resampled to full size at sub-pixel precision."""
+    w, h = img.size
+    ww, wh = w / scale, h / scale
+    x0 = min(max(cx - ww / 2, 0), w - ww)  # never past the image edge
+    y0 = min(max(cy - wh / 2, 0), h - wh)
+    # float box = sub-pixel window; same result as an affine transform but ~4x faster (26 vs 100 ms per frame)
+    return img.resize(img.size, Image.BICUBIC, box=(x0, y0, min(x0 + ww, w), min(y0 + wh, h)))
+
+
+def render_video(segs: list[Segment], ass: Path, narration: Path, total: float, out: Path) -> None:
+    cache: dict[Path, Image.Image] = {}
+
+    def load(f: Path) -> Image.Image:
+        if f not in cache:
+            cache[f] = Image.open(f).convert("RGB")
+        return cache[f]
+
+    def frame(t: float) -> Image.Image:
+        parts = [(draw(load(f), *cam), w) for f, w, cam in view(segs, t)]
+        return parts[0][0] if len(parts) == 1 else Image.blend(parts[0][0], parts[1][0], parts[1][1])
+
+    cmd = [FF, "-loglevel", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", str(FPS),
+           "-i", "-", "-i", str(narration.resolve()), "-vf", f"ass={ass.name}:fontsdir={FONTS}", "-map", "0:v",
+           "-map", "1:a", "-t", str(total), "-c:v", "libx264", "-crf", "18", "-preset", "medium", "-pix_fmt", "yuv420p",
+           "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(out.resolve())]
+    with subprocess.Popen(cmd, stdin=subprocess.PIPE, cwd=ass.parent) as p:
+        try:
+            for n in range(math.ceil(total * FPS)):
+                p.stdin.write(frame(n / FPS).tobytes())
+            p.stdin.close()
+        except BrokenPipeError:
+            pass  # ffmpeg died; its exit code below says why
+    if p.returncode:
+        raise subprocess.CalledProcessError(p.returncode, cmd)
