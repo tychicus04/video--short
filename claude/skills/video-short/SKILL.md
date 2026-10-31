@@ -32,8 +32,9 @@ Thiết kế: `~/video-pipeline/DESIGN.md`. Mọi bước cố định là lện
 5. **Dịch sát + canh thời lượng** — giao `vs-translator` đường dẫn `$RUN` và nguyên văn đầu ra của `vshort text`.
    Nó ghi `$RUN/script.vi.json` và tự chạy `vshort check $RUN` tới khi mã 0.
    Song song (chạy nền): `vshort plates $RUN` (cần `captions.json` từ bước 4).
-6. **Giọng đọc** — `vshort tts $RUN`. Mã 75 → báo Tai: hết hạn mức Gemini, các câu đã đọc được giữ, đợi hạn mức hồi rồi gọi lại
-   `/video-short` để chạy tiếp; dừng.
+6. **Giọng đọc** — `vshort tts $RUN` (một lần gọi Gemini cho cả kịch bản, tự cắt thành từng câu). Mã 75 → báo Tai: hết hạn mức
+   Gemini trong ngày (gói miễn phí 10 lần/ngày mỗi model), đợi hạn mức hồi rồi gọi lại `/video-short` để chạy tiếp; dừng.
+   Mã 1 với "Không tách được giọng đọc…" → báo Tai nguyên văn; dừng.
    `vshort fit $RUN`. Mã 3 → giao lại `vs-translator` chỉ các id bị báo, kèm khung giây; rồi `vshort check`, `vshort tts`, `vshort fit`.
    Tối đa 2 vòng; sau đó vẫn đi tiếp và ghi các id còn dài vào báo cáo.
 7. **Ghép & soát** — `vshort render $RUN` → giao `vs-reviewer` đường dẫn `$RUN`; nó ghi `$RUN/review.md`.

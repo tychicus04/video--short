@@ -60,5 +60,5 @@ def test_tts_quota_exit_75(tmp_path, monkeypatch, capsys):
 
     monkeypatch.setattr(cli, "gemini_speaker", speaker)
     assert main(["tts", str(tmp_path)]) == 75
-    assert seen == ["Xin chào"]  # the words the subtitles show, without | and *
+    assert seen == ["Xin chào."]  # the words the subtitles show, without | and *, closed with a full stop
     assert "chạy lại" in capsys.readouterr().err

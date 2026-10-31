@@ -13,7 +13,7 @@ from vshort.plates import Plate, build_plates, scene_cuts
 from vshort.render import build_ass, compose, outro_cut
 from vshort.run import Run, config, set_config
 from vshort.script import Sentence, budget, check_script, group_sentences, merge_text
-from vshort.tts import Clip, QuotaExceeded, gemini_speaker, load_api_key, measured_rate, synth_all
+from vshort.tts import Clip, QuotaExceeded, gemini_speaker, load_api_key, measured_rate, synth_script
 
 ROOT = Path(__file__).resolve().parent.parent
 OK, FAILED, BAD_INPUT, TOO_LONG, AUTH, QUOTA = 0, 1, 2, 3, 4, 75
@@ -149,11 +149,14 @@ def cmd_tts(a) -> int:
     lines = [(row["id"], _speech(row["phrases"])) for row in run.read("script.vi.json")]
     speak = gemini_speaker(load_api_key(Path(cfg["env_file"]).expanduser()), cfg["tts_model"], cfg["voice"])
     try:
-        clips = synth_all(lines, run.file("tts"), speak, tag=f"{cfg['tts_model']}|{cfg['voice']}")
+        clips = synth_script(lines, run.file("tts"), speak, tag=f"{cfg['tts_model']}|{cfg['voice']}")
     except QuotaExceeded:
-        _err("Hết hạn mức Gemini TTS. Các câu đã đọc vẫn được giữ; đợi hạn mức hồi lại rồi chạy lại lệnh này "
-             "(chỉ đọc các câu còn thiếu).")
+        _err("Hết hạn mức Gemini TTS trong ngày (gói miễn phí: 10 lần/ngày cho mỗi model). "
+             "Đợi hạn mức hồi lại rồi chạy lại lệnh này.")
         return QUOTA
+    except ValueError as e:
+        _err(str(e))
+        return FAILED
     run.write("tts.json", [{"id": c.id, "path": str(c.path), "duration": c.duration} for c in clips])
     if len(clips) >= 5:
         rate = round(measured_rate(clips, lines), 2)

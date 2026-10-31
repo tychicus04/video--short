@@ -100,11 +100,12 @@ thời gian, file giọng đọc, báo cáo soát.
   với tiếng Anh được ghi vào báo cáo soát. Báo cáo cũng ghi các chỗ hình minh họa không còn
   khớp với lời đã sửa. Đường dẫn menu trong lời kêu gọi dùng đúng nhãn tiếng Việt của iOS.
 - Video vẫn tạo từ brief (bản tiếng Anh) cộng với tất cả nguồn đã nạp, như video Coruna.
-- **Hạn mức Gemini chưa rõ** (gói miễn phí hay trả phí). Thiết kế theo hướng tiết kiệm, chạy
-  được với cả hai gói:
-  - ước lượng độ dài câu tiếng Việt trước khi gọi TTS;
-  - mỗi câu gọi TTS một lần, chỉ gọi lại khi lệch quá nhiều;
-  - nếu gặp lỗi hết hạn mức thì dừng có trạng thái để chạy tiếp được, không làm lại từ đầu.
+- **Hạn mức Gemini: gói miễn phí, 10 lần gọi TTS/ngày cho mỗi model** (đo được khi chạy thử 31/10).
+  Tai chọn **đọc cả kịch bản trong một lần gọi** rồi tự cắt thành từng câu theo khoảng lặng
+  (thay cho mỗi câu một lần gọi):
+  - ước lượng độ dài câu tiếng Việt trước khi gọi TTS (tốc độ đọc đo được lưu trong config.toml);
+  - mỗi vòng đọc (kể cả vòng rút gọn câu) chỉ tốn một lần gọi; âm thanh lưu theo nội dung nên chạy lại không tốn thêm;
+  - giới hạn theo phút thì tự đợi rồi gọi lại; hết hạn mức theo ngày thì dừng (mã 75) và chạy lại sau.
 - Môi trường chạy (imageio-ffmpeg, numpy, pillow, opencv, torch CPU, font Be Vietnam Pro,
   `big-lama.pt`) được cài lại dưới `~/video-pipeline/`, không dùng thư mục tạm.
 

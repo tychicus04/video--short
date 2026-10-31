@@ -2,30 +2,59 @@ import io
 import wave
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
-from conftest import wav_bytes
 from google.genai import errors
 
-from vshort.tts import QuotaExceeded, _speaker_from_client, load_api_key, measured_rate, synth_all
+from vshort.tts import QuotaExceeded, _speaker_from_client, load_api_key, measured_rate, synth_script
 
 
-def test_cache_skips_existing(tmp_path):
+def _speech_wav(parts: list[tuple[str, float]]) -> bytes:
+    """parts: ("tone" | "gap", seconds) at 24 kHz mono 16-bit."""
+    a = np.concatenate([np.full(round(s * 24000), 3000 if kind == "tone" else 0, np.int16) for kind, s in parts])
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(24000)
+        w.writeframes(a.tobytes())
+    return buf.getvalue()
+
+
+LINES = [(1, "một hai ba bốn"), (2, "năm sáu, bảy tám chín mười"), (3, "mười một mười hai")]
+AUDIO = [("gap", 0.3), ("tone", 1.2), ("gap", 0.6), ("tone", 0.8), ("gap", 0.25), ("tone", 1.0), ("gap", 0.6),
+         ("tone", 1.2), ("gap", 0.4)]
+
+
+def test_one_call_split_at_sentence_gaps_not_commas(tmp_path):
     calls = []
-    speak = lambda text: calls.append(text) or wav_bytes(1.0)  # noqa: E731
-    synth_all([(1, "Xin chào bạn")], tmp_path, speak, tag="v1")
-    clips = synth_all([(1, "Xin chào bạn")], tmp_path, speak, tag="v1")
-    assert len(calls) == 1 and abs(clips[0].duration - 1.0) < 0.01
+    clips = synth_script(LINES, tmp_path, lambda text: calls.append(text) or _speech_wav(AUDIO), tag="t")
+    assert len(calls) == 1 and calls[0] == "một hai ba bốn.\n\nnăm sáu, bảy tám chín mười.\n\nmười một mười hai."
+    assert [c.id for c in clips] == [1, 2, 3]
+    for c, speech in zip(clips, [1.2, 2.05, 1.2]):
+        assert abs(c.duration - (speech + 0.1)) < 0.06  # speech + 0.05 s pad each side
 
 
-def test_quota_stops_and_keeps_finished(tmp_path):
+def test_script_audio_is_cached(tmp_path):
+    calls = []
+    speak = lambda text: calls.append(text) or _speech_wav(AUDIO)  # noqa: E731
+    synth_script(LINES, tmp_path, speak, tag="t")
+    synth_script(LINES, tmp_path, speak, tag="t")
+    assert len(calls) == 1
+
+
+def test_quota_leaves_nothing_half_written(tmp_path):
     def speak(text):
-        if text == "hai":
-            raise QuotaExceeded()
-        return wav_bytes(0.5)
+        raise QuotaExceeded()
 
     with pytest.raises(QuotaExceeded):
-        synth_all([(1, "một"), (2, "hai"), (3, "ba")], tmp_path, speak, tag="t")
-    assert len(list(tmp_path.glob("1-*.wav"))) == 1 and not list(tmp_path.glob("2-*.wav"))
+        synth_script(LINES, tmp_path, speak, tag="t")
+    assert not list(tmp_path.glob("*.wav"))
+
+
+def test_unsplittable_audio_is_reported(tmp_path):
+    with pytest.raises(ValueError, match="tách"):
+        synth_script(LINES, tmp_path, lambda text: _speech_wav([("tone", 4.0)]), tag="t")
 
 
 def test_load_api_key_never_leaks(tmp_path, monkeypatch):
@@ -105,3 +134,8 @@ def test_per_day_limit_stops_at_once():
     with pytest.raises(QuotaExceeded):
         _speaker_from_client(SimpleNamespace(models=models), "m", "v", sleep=waits.append)("x")
     assert waits == []
+
+
+def test_silent_audio_is_reported(tmp_path):
+    with pytest.raises(ValueError, match="khoảng lặng"):
+        synth_script(LINES, tmp_path, lambda text: _speech_wav([("gap", 2.0)]), tag="t")
