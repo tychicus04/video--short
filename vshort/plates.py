@@ -14,7 +14,8 @@ from PIL import Image
 from vshort.captions import INK, X0, X1, Fragment
 from vshort.media import frame_at, iter_frames, probe
 
-HALF_H = 47  # old caption boxes (with shadow) are ~90 px tall and centred on their text band, whatever the letters
+BOX_HALF_H = 46  # old caption boxes (with shadow) are ~92 px tall and centred on their text band, whatever the letters
+PLATE_HALF_H = 50  # plates reach a little past that box
 PAD_X = 26
 
 
@@ -127,11 +128,12 @@ def build_plates(
         wa, wb = edges[w], edges[w + 1]
         a, b = min(s for s, _ in spans), max(e for _, e in spans)
         mid = (by0 + by1) // 2
-        y0, y1 = max(mid - HALF_H, 0), min(mid + HALF_H, info.height)
         c0, c1 = _text_columns(video, sorted(spans), by0, by1, (wa, wb))
-        x0, x1 = max(c0 - PAD_X, 0), min(c1 + PAD_X, info.width)
-        if cover[0] <= x0 and x1 <= cover[2] and cover[1] <= y0 and y1 <= cover[3]:
+        if cover[0] <= c0 - PAD_X and c1 + PAD_X <= cover[2] and cover[1] <= mid - BOX_HALF_H and mid + BOX_HALF_H <= cover[3]:
             continue  # the new subtitle box (always ≥ this area) already hides it
+        # even edges: yuv420 overlay rounds odd positions down, which would leave a 1 px sliver of the old box
+        y0, y1 = max(mid - PLATE_HALF_H, 0) // 2 * 2, min(-(-(mid + PLATE_HALF_H) // 2) * 2, info.height)
+        x0, x1 = max(c0 - PAD_X, 0) // 2 * 2, min(-(-(c1 + PAD_X) // 2) * 2, info.width)
         covered = [(f.start, f.end) for f in frags if (f.y0, f.y1) == (by0, by1) and f.end > wa and f.start < wb]
         clean_t = _clean_time(covered, wa, wb, (a + b) / 2)
         if clean_t is not None:

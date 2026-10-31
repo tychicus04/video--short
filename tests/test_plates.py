@@ -90,3 +90,12 @@ def test_plate_rows_cover_the_whole_old_caption_box(make_video, tmp_path):
     box = np.where(((f > 220) & (f < 236)).sum(1) > 60)[0]  # rows of the light-grey caption box
     height = Image.open(tmp_path / "p" / f"{plates[0].name}.png").height
     assert plates[0].y <= box.min() and plates[0].y + height >= box.max() + 1
+
+
+def test_plates_sit_on_even_pixels(make_video, tmp_path):
+    # yuv420 overlay rounds odd x/y down to even, shifting a patch by 1 px and leaving a sliver of the old box
+    caps = [(0, 0.7, 931, "mmmm nnnn"), (0.7, 1.4, 931, "uuuu wwww xx"), (1.4, 2, 931, "ab")]
+    v = make_video(tmp_path, scenes=[(0, 2, "#F3EFE6")], captions=caps)
+    plates = build_plates(v, detect_fragments(v), tmp_path / "p", Path("unused"), inpaint=lambda img, mask: img)
+    w, h = Image.open(tmp_path / "p" / f"{plates[0].name}.png").size
+    assert plates[0].x % 2 == plates[0].y % 2 == w % 2 == h % 2 == 0
