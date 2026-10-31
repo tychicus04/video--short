@@ -1,4 +1,4 @@
-tts_model = "gemini-3.8-flash-tts"
+tts_model = "gemini-2.5-flash-preview-tts"
 voice = "Charon"
 syllables_per_sec = 3.54
 max_tempo = 1.10
