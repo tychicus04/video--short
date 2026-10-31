@@ -58,7 +58,7 @@ phiên bản nào bị ảnh hưởng, đã có bản vá. Ghi mọi thứ đã 
 - Giữ chữ trong x 40–680, y 60–1050: hình tham chiếu phóng 1,08 lần quanh tâm nên mép trên/dưới bị cắt khoảng 47 px, và dải phụ đề nằm ở y 1094–1206.
 - `<image>` chỉ vẽ được khi `href` là `data:` URI; file liên kết ra trống trơn. Nhúng ảnh bằng `data:` hoặc đừng dùng ảnh trong SVG.
 - Chỉ dùng hình cơ bản (`rect`, `path`, `line`, `circle`, `text`); tránh `filter`, `foreignObject`, CSS phức tạp.
-- Tự vẽ một dòng nguồn nhỏ trong chính SVG, trong vùng an toàn trên, dưới y 1050 (ví dụ "Nguồn: Google Threat Intelligence").
+- Tự vẽ một dòng nguồn nhỏ trong chính SVG, nằm phía trên y 1050 (y ≤ 1050), trong x 40–680 (ví dụ "Nguồn: Google Threat Intelligence").
 
 **Ảnh thật → `photo`**: tải về từ trang chính thức hoặc báo chí bằng `curl -L -o RUN/visuals/<tên>.jpg <url>`
 (đổi đuôi theo định dạng; kiểm bằng Read rằng ảnh mở được và đủ nét). Code tự chuyển thành nét chì, đặt trên giấy trong khung mảnh
@@ -75,7 +75,7 @@ và vẽ dòng `credit` ngay dưới ảnh; đừng tự vẽ thêm gì lên ả
   {"kind": "svg", "id": 9, "file": "visuals/cai-dat.svg", "source": "https://…", "accessed": "2026-11-01",
    "note": "màn hình Cập nhật phần mềm, nhãn tiếng Việt"},
   {"kind": "photo", "id": 12, "file": "visuals/bao-cao.jpg", "source": "https://…", "accessed": "2026-11-01",
-   "credit": "Ảnh: Google Threat Intelligence", "note": "ảnh minh họa của báo cáo gốc"}
+   "credit": "Ảnh: Google Threat Intelligence", "note": "ảnh minh họa của báo cáo gốc; ảnh: https://…/fig1.jpg"}
 ]
 ```
 
