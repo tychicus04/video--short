@@ -3,6 +3,7 @@ import math
 import os
 import subprocess
 from dataclasses import dataclass
+from itertools import groupby
 from pathlib import Path
 
 from PIL import Image
@@ -16,6 +17,8 @@ W, H = 720, 1280
 FPS = 30
 XF = 0.4  # crossfade between two images
 ZOOM = 1.08  # deepest camera zoom; the pans run at this zoom
+MIN_ZOOM = 1.01  # NotebookLM frames carry ~2 px of black at the left and right edges: the camera never shows them
+EDGE = W * (1 - 1 / MIN_ZOOM) / 2  # px each side that MIN_ZOOM crops away; a pan stays this far from the image edges
 EM = 1000 / 1354  # libass sizes fonts by win ascent+descent; Patrick Hand's em is 0.739 of that
 LINE_H, CAP_EM, PAD_X, PAD_Y = 62, 50, 22, 12
 SUB_Y = 1150  # every caption box is centred here, on NotebookLM's own low caption band
@@ -129,26 +132,46 @@ def segments(placements: list[Placement], frames: list[dict], run_dir: Path, tot
             for p, s, e in zip(placements, cuts, cuts[1:])]
 
 
+def _kinds(groups: list[str]) -> list[int]:
+    """Camera move of each shot (0 zoom in, 1 zoom out, 2 pan right, 3 pan left); no two neighbours move alike.
+
+    Stills rotate through the four, skipping the move the shot before them made. References only zoom (a pan at ZOOM
+    shows 667 of 720 px and would cut their credit line): opposite to the shot before, or to the last reference
+    when that shot panned.
+    """
+    kinds, turn, last_ref = [], 0, 1
+    for g in groups:
+        prev = kinds[-1] if kinds else None
+        if g.startswith("v"):
+            k = last_ref = 1 - (prev if prev in (0, 1) else last_ref)
+        else:
+            k = turn % 4
+            turn += 1
+            if k == prev:
+                k = turn % 4
+                turn += 1
+        kinds.append(k)
+    return kinds
+
+
 def _camera(segs: list[Segment], k: int, t: float) -> tuple[float, float, float]:
     """(scale, cx, cy) of the shot segment k belongs to: window centre in frame pixels, linear in time over the shot.
 
-    Stills rotate zoom in, zoom out, pan right, pan left. Reference images (group "v…") only zoom: a pan at ZOOM
-    shows 667 of 720 px and would cut their credit line. A shot under 3 s moves proportionally less, so it never rushes.
+    A shot under 3 s moves proportionally less, so it never rushes.
     """
     lo = hi = k
     while lo and segs[lo - 1].group == segs[k].group:
         lo -= 1
     while hi + 1 < len(segs) and segs[hi + 1].group == segs[k].group:
         hi += 1
-    ref = segs[k].group.startswith("v")
-    before = sum(a.group != b.group and a.group.startswith("v") == ref for a, b in zip(segs, segs[1:lo + 1]))
-    kind = before % 2 if ref else before % 4  # rotation counts only shots of the same sort
+    shot = sum(a.group != b.group for a, b in zip(segs, segs[1:k + 1]))  # which shot segment k belongs to
+    kind = _kinds([g for g, _ in groupby(s.group for s in segs)])[shot]
     amp = min(1, (segs[hi].end - segs[lo].start) / 3)
     t0, t1 = segs[lo].start - XF / 2, segs[hi].end + XF / 2
     p = min(max((t - t0) / (t1 - t0), 0), 1)
     if kind < 2:
-        return 1 + (ZOOM - 1) * amp * (p if kind == 0 else 1 - p), W / 2, H / 2
-    travel = (W - W / ZOOM) * amp
+        return MIN_ZOOM + (ZOOM - MIN_ZOOM) * amp * (p if kind == 0 else 1 - p), W / 2, H / 2
+    travel = (W - W / ZOOM - 2 * EDGE) * amp
     return ZOOM, W / 2 + travel * ((p if kind == 2 else 1 - p) - 0.5), H / 2
 
 

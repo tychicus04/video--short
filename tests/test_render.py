@@ -1,3 +1,4 @@
+import itertools
 import subprocess
 from pathlib import Path
 
@@ -139,11 +140,35 @@ def test_reference_shots_only_zoom_and_keep_the_credit_line_in_view():
     assert ins == [True, False, True, False, True]  # alternate zoom in / zoom out
 
 
-def test_stills_rotation_ignores_reference_shots():
+def _kind(segs, k):
+    """What the camera of shot k does between 1 s after its start and 1 s before its end."""
+    (_, _, a), (_, _, b) = (view(segs, t)[0] for t in (segs[k].start + 1, segs[k].end - 1))
+    return "in" if b[0] > a[0] else "out" if b[0] < a[0] else "right" if b[1] > a[1] else "left"
+
+
+def test_stills_rotate_among_stills_and_skip_what_the_previous_shot_did():
     segs = _segs((0, 4, "s0"), (4, 8, "v1"), (8, 12, "s2"), (12, 16, "v3"), (16, 20, "s4"))
-    cam = [(view(segs, i * 4 + 0.5)[0][2], view(segs, i * 4 + 3.5)[0][2]) for i in (0, 2, 4)]
-    assert cam[0][1][0] > cam[0][0][0] and cam[1][1][0] < cam[1][0][0]  # zoom in, then zoom out
-    assert cam[2][0][0] == cam[2][1][0] == 1.08 and cam[2][1][1] > cam[2][0][1]  # third still pans right
+    # s0 zooms in, v1 zooms out, so s2 skips its turn (zoom out) and pans right; v3 follows a pan and alternates
+    # from v1 (in); s4 takes the next turn in the rotation (pan left)
+    assert [_kind(segs, k) for k in range(5)] == ["in", "out", "right", "in", "left"]
+
+
+def test_reference_zooms_the_other_way_from_the_shot_before_it():
+    segs = _segs((0, 4, "s0"), (4, 8, "v4"), (8, 12, "v5"), (12, 16, "s1"), (16, 20, "s2"), (20, 24, "v6"))
+    assert [_kind(segs, k) for k in range(6)] == ["in", "out", "in", "out", "right", "out"]
+
+
+def test_no_two_adjacent_shots_move_alike():
+    for sorts in itertools.product("sv", repeat=7):
+        segs = _segs(*[(i * 4, i * 4 + 4, f"{c}{i}") for i, c in enumerate(sorts)])
+        kinds = [_kind(segs, k) for k in range(len(sorts))]
+        assert all(a != b for a, b in zip(kinds, kinds[1:])), (sorts, kinds)
+        assert all(k in ("in", "out") for k, c in zip(kinds, sorts) if c == "v"), (sorts, kinds)
+
+
+def test_shots_of_several_lines_count_once():
+    segs = _segs((0, 3, "s0"), (3, 6, "s0"), (6, 10, "v2"), (10, 13, "s3"), (13, 16, "s3"), (16, 20, "v5"))
+    assert [_kind(segs, k) for k in (0, 2, 3, 5)] == ["in", "out", "right", "in"]
 
 
 def test_short_shot_moves_gently():
@@ -178,3 +203,17 @@ def test_failed_render_keeps_the_previous_video(tmp_path):
     with pytest.raises(subprocess.CalledProcessError):  # ffmpeg itself fails: no narration to read
         render_video(segments(ps, frames, tmp_path, 3.0), ass, tmp_path / "nope.wav", 3.0, out)
     assert out.read_bytes() == b"previous good video" and not (tmp_path / "final.tmp.mp4").exists()
+
+
+def test_the_black_edge_columns_of_a_frame_never_show():
+    # NotebookLM frames carry a few px of black at the left and right edges
+    img = Image.new("RGB", (720, 1280), "white")
+    for x0 in (0, 717):
+        img.paste((0, 0, 0), (x0, 0, x0 + 3, 1280))
+    # zoom in, zoom out, pan right, pan left, then a short shot of each sort and reference shots
+    segs = _segs((0, 4, "s0"), (4, 8, "s1"), (8, 12, "s2"), (12, 16, "s3"), (16, 16.8, "s4"), (16.8, 20, "v5"),
+                 (20, 20.6, "v6"), (20.6, 25, "s7"))
+    for n in range(0, 25 * FPS, 4):
+        for _, _, cam in view(segs, n / FPS):
+            edges = np.asarray(draw(img, *cam))
+            assert edges[:, :4].min() > 200 and edges[:, -4:].min() > 200, (n / FPS, cam)
