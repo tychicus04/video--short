@@ -39,11 +39,15 @@ Mỗi chữ sai là một mục `patch`.
 
 Chọn 3–5 câu mà một hình thật giúp người xem tin hơn hoặc hiểu hơn: màn hình Cài đặt iOS tiếng Việt khi lời kêu gọi cập nhật,
 tiêu đề báo cáo của bên phát hiện, mốc thời gian, ảnh trong bài báo gốc. Tìm trong `sources.md` trước, rồi WebSearch nguồn chính thức.
+Ít hơn 3, kể cả 0, nếu không có tư liệu thật phù hợp; không bịa để đủ số.
 Mỗi câu tối đa một hình; hình thay hẳn ảnh tĩnh của câu đó (kể cả chỗ vá nếu có).
 
 **Đọc nguồn thật**: WebSearch chỉ để tìm trang. Đọc chính trang đó bằng `curl -sL <url>`, bỏ thẻ HTML (ví dụ `python3` với
 `html.parser`, hoặc `re.sub(r"<[^>]+>", " ", html)`), rồi chép chữ và con số từ văn bản đã tải, không chép từ đoạn trích của WebSearch hay từ trí nhớ.
 Chép đúng từng chữ và con số từ nguồn; không bịa giao diện, tiêu đề báo hay ngày mà nguồn không có.
+**Mọi chữ và con số vẽ trong hình `svg`/`photo` (trừ dòng nguồn/credit) phải có trong trang `source`.** Ý chỉ có trong brief
+mà trang nguồn không nói thì để lời đọc và phụ đề nói, không bao giờ vẽ vào một hình có ghi nguồn: người xem mở nguồn ra phải
+thấy đúng những gì hình vẽ. Soát lại từng chữ và con số của hình với văn bản đã tải trước khi chạy `vshort visuals`.
 `source` là URL của trang mà người xem có thể mở ra kiểm (không phải URL file ảnh); với `photo`, ghi thêm URL file ảnh trong `note`.
 
 **Không hướng dẫn tấn công** (luật này thắng luật "chép đúng từng chữ"): không vẽ hay chép mã khai thác, lệnh, payload, offset,
@@ -54,7 +58,8 @@ phiên bản nào bị ảnh hưởng, đã có bản vá. Ghi mọi thứ đã 
 **Giao diện, trang chữ → `svg`** (viết tay file `RUN/visuals/<tên>.svg`):
 - `viewBox="0 0 720 1280"`, nền trong suốt (code đặt giấy kem phía sau). Nét xám như bút chì `#4a4a4a`, khung mảnh,
   điểm nhấn xanh lơ nhạt. Chữ viết tay dùng font `Patrick Hand`, chữ giao diện dùng `Be Vietnam Pro`; chỉ hai font này có sẵn.
-- Giao diện iOS dùng nhãn tiếng Việt thật ("Cài đặt › Cài đặt chung › Cập nhật phần mềm").
+- Giao diện iOS dùng nhãn tiếng Việt thật có trong chính trang `source` ("Cài đặt › Cài đặt chung › Cập nhật phần mềm");
+  trang nguồn không có thì đừng vẽ giao diện đó.
 - Giữ chữ trong x 40–680, y 60–1050: hình tham chiếu phóng 1,08 lần quanh tâm nên mép trên/dưới bị cắt khoảng 47 px, và dải phụ đề nằm ở y 1094–1206.
 - `<image>` chỉ vẽ được khi `href` là `data:` URI; file liên kết ra trống trơn. Nhúng ảnh bằng `data:` hoặc đừng dùng ảnh trong SVG.
 - Chỉ dùng hình cơ bản (`rect`, `path`, `line`, `circle`, `text`); tránh `filter`, `foreignObject`, CSS phức tạp.
@@ -82,7 +87,7 @@ và vẽ dòng `credit` ngay dưới ảnh; đừng tự vẽ thêm gì lên ả
 - `patch`: `ids` (số nguyên có trong `stills.json`), `box`, `text`, tùy chọn `bold` (true/false), `note`.
 - `svg`: `id`, `file` (nằm trong `visuals/`, phải tồn tại), `source` (URL http/https), `accessed` (YYYY-MM-DD, hôm nay: `date +%F`), `note`.
 - `photo`: như `svg` cộng `credit` — một dòng ngắn, vừa 680 px (ví dụ "Ảnh: <tên nguồn>").
-- `note` luôn ghi: lý do vá, hoặc hình vẽ lại gì và đã bỏ gì.
+- `note` bắt buộc ở mọi mục, không rỗng (thiếu thì `vshort visuals` từ chối): lý do vá, hoặc hình vẽ lại gì và đã bỏ gì.
 
 Chạy `cd ~/video-pipeline && uv run vshort visuals RUN`. Mã 2 in mỗi lỗi một dòng → sửa `visuals.json` hoặc file hình đúng các lỗi đó
 rồi chạy lại, tới khi mã 0. File `svg`/`photo` không mở hay vẽ được cũng là mã 2 ("không đọc/vẽ được <file>"): sửa hoặc thay file đó.
