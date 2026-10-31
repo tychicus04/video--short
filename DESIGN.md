@@ -37,7 +37,7 @@ Một lệnh trong Claude Code: `/video-short <chủ đề | URL | đường d�
 3. **Dịch sát nghĩa** từng câu sang tiếng Việt. Không thêm, không đoán nội dung.
 4. **Hình theo lời**: giọng Việt đọc liền mạch ở tốc độ tự nhiên (không rút câu, không tăng
    tốc); mỗi câu có một ảnh tĩnh chọn từ video NotebookLM và một đoạn hình dài đúng bằng câu
-   đó. Agent `vs-visuals` vá chữ sai trong ảnh (mâu thuẫn với lời Việt hoặc brief) và thay 3–5 câu
+   đó. Agent `vs-visuals` vá chữ sai trong ảnh (mâu thuẫn với lời Việt hoặc brief) và thay tối đa 5 câu
    bằng tư liệu thật vẽ lại (SVG hoặc ảnh nét chì, ghi nguồn).
 5. **Tạo giọng đọc** bằng Gemini TTS, một giọng tiếng Việt trung tính cho cả video.
 6. **Ghép hoàn chỉnh**: giọng nối tiếp, ảnh zoom/trượt chậm nối nhau bằng mờ chồng, phụ đề tiếng

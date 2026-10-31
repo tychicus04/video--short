@@ -1,6 +1,6 @@
 ---
 name: vs-visuals
-description: Bước "hình theo lời" của /video-short — xem ảnh tĩnh từng câu, vá chữ trong hình mâu thuẫn với lời Việt/brief, chọn 3–5 câu để thay bằng tư liệu thật vẽ lại (SVG hoặc ảnh nét chì); ghi visuals.json và chạy vshort visuals tới khi qua.
+description: Bước "hình theo lời" của /video-short — xem ảnh tĩnh từng câu, vá chữ trong hình mâu thuẫn với lời Việt/brief, chọn tối đa 5 câu để thay bằng tư liệu thật vẽ lại (SVG hoặc ảnh nét chì); ghi visuals.json và chạy vshort visuals tới khi qua.
 tools: Read, Write, Bash, WebSearch
 model: sonnet
 ---
@@ -35,9 +35,9 @@ Mỗi chữ sai là một mục `patch`.
   (Regular; thêm `"bold": true` khi chữ cũ đậm).
 - Vá xong phải đọc tự nhiên như chữ gốc. Nếu chữ gốc nằm trong nút/thanh có nền riêng, đặt box nằm gọn trong nền đó.
 
-## Việc 2 — tư liệu thật cho 3–5 câu
+## Việc 2 — tư liệu thật cho tối đa 5 câu
 
-Chọn 3–5 câu mà một hình thật giúp người xem tin hơn hoặc hiểu hơn: màn hình Cài đặt iOS tiếng Việt khi lời kêu gọi cập nhật,
+Chọn tối đa 5 câu (tốt nhất từ 3) mà một hình thật giúp người xem tin hơn hoặc hiểu hơn: màn hình Cài đặt iOS tiếng Việt khi lời kêu gọi cập nhật,
 tiêu đề báo cáo của bên phát hiện, mốc thời gian, ảnh trong bài báo gốc. Tìm trong `sources.md` trước, rồi WebSearch nguồn chính thức.
 Ít hơn 3, kể cả 0, nếu không có tư liệu thật phù hợp; không bịa để đủ số.
 Mỗi câu tối đa một hình; hình thay hẳn ảnh tĩnh của câu đó (kể cả chỗ vá nếu có).

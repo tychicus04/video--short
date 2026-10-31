@@ -49,7 +49,7 @@ Thiết kế: `~/video-pipeline/DESIGN.md` và `~/video-pipeline/docs/superpower
    tư liệu thật phù hợp) thay bằng tư liệu thật vẽ lại, ghi `$RUN/visuals.json` và tự chạy `vshort visuals $RUN` tới khi mã 0 (ra `$RUN/frames/<id>.png`, `frames.json`).
    Giữ nguyên đầu ra của nó (mỗi mục một dòng) cho câu trả lời cuối. Đừng tin lời nó: tự chạy `vshort visuals $RUN` một lần và
    lấy mã thoát đó. Mã khác 0 → giữ bản của nó (`mv $RUN/visuals.json $RUN/visuals.loi.json`), ghi `[]` vào `$RUN/visuals.json`,
-   chạy lại `vshort visuals $RUN` để có khung hình gốc, và báo lý do cho Tai. Nếu lần chạy với `[]` cũng ra mã 1 (ảnh tĩnh hỏng):
+   chạy lại `vshort visuals $RUN` để có khung hình gốc, và báo lý do cho Tai. Nếu lần chạy với `[]` cũng khác 0 (ảnh tĩnh hỏng hoặc thiếu):
    chạy lại `vshort stills $RUN`, đặt bản của nó về chỗ cũ (`mv $RUN/visuals.loi.json $RUN/visuals.json`) rồi chạy lại
    `vshort visuals $RUN` đúng một lần. Chỉ khi lần đó vẫn khác 0 mới quay về `[]` (giữ bản của nó thành `visuals.loi.json`, ghi `[]`,
    chạy `vshort visuals $RUN`).
