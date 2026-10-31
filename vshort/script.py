@@ -52,13 +52,28 @@ def budget(s: Sentence, rate: float) -> int:
     return math.floor((s.end - s.start) * rate * 0.95)
 
 
+def merged(sentences: list[Sentence], script: list[dict]) -> list[Sentence]:
+    """Sentences that get a Vietnamese line; a line left empty hands its time to the line before it."""
+    said = {row["id"] for row in script if row["phrases"].strip()}
+    out: list[Sentence] = []
+    for s in sentences:
+        if s.id in said or not out:
+            out.append(s)
+        else:
+            out[-1] = replace(out[-1], end=s.end)
+    return out
+
+
 def check_script(sentences: list[Sentence], script: list[dict], rate: float) -> list[str]:
     probs = []
     by_id = {row["id"]: row for row in script}
     want = {s.id for s in sentences}
     probs += [f"Thiếu câu {i}" for i in sorted(want - by_id.keys())]
     probs += [f"Thừa câu {i} (không có trong bản tiếng Anh)" for i in sorted(by_id.keys() - want)]
-    for n, s in enumerate(sentences):
+    first = by_id.get(sentences[0].id) if sentences else None
+    if first and not first["phrases"].strip():
+        probs.append(f"Câu đầu (câu {sentences[0].id}) là tiêu đề, không được để trống")
+    for n, s in enumerate(merged(sentences, script)):
         row = by_id.get(s.id)
         if not row:
             continue
@@ -71,6 +86,4 @@ def check_script(sentences: list[Sentence], script: list[dict], rate: float) -> 
                     probs.append(f"Câu {s.id}: cụm '{ph}' rộng {text_width(ph):.0f}px, vượt {MAX_TEXT_W}px")
         if syllables(text) > budget(s, rate):
             probs.append(f"Câu {s.id}: quá dài ({syllables(text)} âm tiết, tối đa {budget(s, rate)})")
-        if text.count("*") % 2:
-            probs.append(f"Câu {s.id}: dấu * tô màu không đóng mở đủ cặp")
     return probs

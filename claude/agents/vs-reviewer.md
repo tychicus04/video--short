@@ -17,7 +17,8 @@ Ghép nhiều khung thành một ảnh (hstack bằng numpy/PIL) để xem một
 Kiểm:
 1. **Phụ đề cũ tiếng Anh không lộ**: khung mỗi 0,5 giây, và dày hơn (mỗi 0,1 giây) quanh mỗi mốc `start`/`end` trong `plates.json`
    và mỗi chỗ chuyển câu. Bất kỳ chữ tiếng Anh nào thuộc phụ đề cũ còn thấy = lỗi nặng (ghi thời điểm).
-2. **Phụ đề mới**: luôn ở cùng chỗ sát đáy, đọc được, không tràn mép; câu đầu hiện trọn; chữ khớp `script.vi.json`.
+2. **Phụ đề mới**: hộp xám chữ viết tay, luôn ở cùng một chỗ (tâm y≈1150), đọc được, không tràn mép; câu đầu là tiêu đề
+   trong brief và hiện trọn; chữ khớp `script.vi.json`.
 3. **Hình và lời**: chi tiết trong hình mâu thuẫn với lời Việt/brief (phiên bản, con số, ngày, tên) — ghi thời điểm và đề xuất.
 4. Miếng vá có `moving: true` trong `plates.json`: xem kỹ khoảng đó, ghi có vệt/sai lệch hay không.
 5. Không còn watermark góc dưới phải; video kết thúc trước đoạn logo Gemini.

@@ -13,11 +13,11 @@ def test_scene_cuts(make_video, tmp_path):
     assert [round(t, 2) for t in scene_cuts(v)] == [1.0]
 
 
-def test_clean_frame_preferred_and_cover_band_skipped(make_video, tmp_path):
-    caps = [(0.0, 1.5, 930, "Top caption"), (1.5, 2.0, 1150, "Low caption")]  # 1.5-2.0: band 930 clean
+def test_clean_frame_preferred_and_every_band_plated(make_video, tmp_path):
+    caps = [(0.0, 1.5, 930, "Top caption"), (1.5, 2.0, 1150, "Low caption")]  # each band is clean while the other shows
     v = make_video(tmp_path, scenes=[(0, 2, "#F3EFE6")], captions=caps)
     plates = build_plates(v, detect_fragments(v), tmp_path / "p", Path("unused"), inpaint=lambda *a: 1 / 0)
-    assert len(plates) == 1 and plates[0].method == "clean" and plates[0].start == 0.0
+    assert [p.method for p in plates] == ["clean", "clean"] and plates[0].start == 0.0
 
 
 def test_lama_used_and_moving_flagged(make_video, tmp_path):

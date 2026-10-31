@@ -12,7 +12,7 @@ from vshort.media import probe
 from vshort.plates import Plate, build_plates, first_blank, scene_cuts
 from vshort.render import build_ass, compose, outro_cut
 from vshort.run import Run, config, set_config
-from vshort.script import Sentence, budget, check_script, group_sentences, merge_text
+from vshort.script import Sentence, budget, check_script, group_sentences, merge_text, merged
 from vshort.tts import Clip, QuotaExceeded, gemini_speaker, load_api_key, measured_rate, synth_script
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -61,7 +61,7 @@ def _sentences(run: Run) -> list[Sentence]:
 def cmd_new(a) -> int:
     run = Run(Path(a.runs_dir or config()["runs_dir"]).expanduser() / a.slug)
     run.path.mkdir(parents=True, exist_ok=True)
-    run.write("run.json", {"slug": a.slug, "notebook_id": a.notebook or "", "kicker": a.kicker, "title": a.title})
+    run.write("run.json", {"slug": a.slug, "notebook_id": a.notebook or ""})
     run.mark("new")
     print(run.path)
     return OK
@@ -150,7 +150,7 @@ def cmd_plates(a) -> int:
 def cmd_tts(a) -> int:
     run = Run(a.run)
     cfg = config()
-    lines = [(row["id"], _speech(row["phrases"])) for row in run.read("script.vi.json")]
+    lines = [(row["id"], _speech(row["phrases"])) for row in run.read("script.vi.json") if row["phrases"].strip()]
     speak = gemini_speaker(load_api_key(Path(cfg["env_file"]).expanduser()), cfg["tts_model"], cfg["voice"])
     try:
         clips = synth_script(lines, run.file("tts"), speak, tag=f"{cfg['tts_model']}|{cfg['voice']}")
@@ -177,7 +177,7 @@ def cmd_fit(a) -> int:
     blank = first_blank(src, max(f.end for f in captions))
     cut = outro_cut(captions, scene_cuts(src), probe(src).duration, blank)
     clips = [Clip(c["id"], Path(c["path"]), c["duration"]) for c in run.read("tts.json")]
-    placements = place(_sentences(run), clips, cut, config()["max_tempo"])
+    placements = place(merged(_sentences(run), run.read("script.vi.json")), clips, cut, config()["max_tempo"])
     run.write("placements.json", {"cut": cut, "placements": [asdict(p) for p in placements]})
     build_narration(placements, clips, cut, run.file("narration.wav"))
     run.mark("fit")
@@ -189,13 +189,11 @@ def cmd_fit(a) -> int:
 
 def cmd_render(a) -> int:
     run = Run(a.run)
-    meta, fitted = run.read("run.json"), run.read("placements.json")
+    fitted = run.read("placements.json")
     cut = fitted["cut"]
     phrases = phrase_times([Placement(**p) for p in fitted["placements"]], run.read("script.vi.json"))
-    s, e, t = phrases[-1]
-    phrases[-1] = (s, max(e, cut), t)  # keep the box up to the end: it hides the old low captions
     ass = run.file("subs.ass")
-    ass.write_text(build_ass(phrases, meta["kicker"], meta["title"], cut), encoding="utf-8")
+    ass.write_text(build_ass(phrases), encoding="utf-8")
     pj = run.file("plates/plates.json")
     plates = [Plate(**p) for p in json.loads(pj.read_text())] if pj.exists() else []
     compose(run.file("source.mp4"), run.file("narration.wav"), ass, plates, run.file("plates"), cut,
@@ -218,8 +216,6 @@ def main(argv: list[str] | None = None) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("new")
     p.add_argument("slug")
-    p.add_argument("--kicker", required=True)
-    p.add_argument("--title", required=True)
     p.add_argument("--notebook")
     p.add_argument("--runs-dir")
     p.set_defaults(fn=cmd_new)

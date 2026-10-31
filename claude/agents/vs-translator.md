@@ -18,11 +18,12 @@ Quy tắc:
    hoặc đổi câu móc/câu chốt/lời kêu gọi đã duyệt. Khi đó viết theo brief và ghi `note` ngắn: tiếng Anh nói gì, vì sao đổi.
    Không lệch thì `note` để `""`.
 3. **Vừa khung**: số âm tiết của câu ≤ số tối đa được cho (đã tính tốc độ đọc tự nhiên). Rút gọn bằng cách bỏ từ thừa, giữ nghĩa.
-4. **Câu đầu** (id nhỏ nhất) hiện trọn câu để giới thiệu chủ đề: KHÔNG có `|`.
+4. **Câu đầu** (id nhỏ nhất) là đúng chữ của mục "Tiêu đề (câu mở đầu)" trong brief: luận điểm cả video chứng minh, hiện trọn
+   câu, KHÔNG có `|`. Nếu nó không vừa khung câu 1, để `"phrases": ""` cho các câu tiếng Anh liền sau mà tiêu đề đã nói thay
+   (ghi `note`): khung giây của chúng nhường cho câu đầu, `vshort check` tự tính lại. Chỉ được để trống ngay sau câu đầu.
 5. **Các câu sau** chia thành cụm một dòng bằng ` | `, ngắt ở chỗ tự nhiên (sau dấu phẩy, giữa các vế), mỗi cụm 2–7 từ.
    Không bao giờ tách đôi một từ ghép: "hoàn | toàn", "lỗ | hổng", "chia | sẻ", "ví | tiền mã hóa" đều sai.
-6. **Tô màu** 1–2 từ khóa quan trọng mỗi câu bằng `*…*` (tên riêng, con số then chốt, lời kêu gọi). Không tô cả câu.
-7. Nhãn iOS tiếng Việt thật: "Cài đặt › Cài đặt chung › Cập nhật phần mềm". Viết số bằng chữ số khi đọc tự nhiên ("iOS 26").
+6. Nhãn iOS tiếng Việt thật: "Cài đặt › Cài đặt chung › Cập nhật phần mềm". Viết số bằng chữ số khi đọc tự nhiên ("iOS 26").
 
 Sau khi ghi, chạy `cd ~/video-pipeline && uv run vshort check RUN`. Mã 2 → sửa đúng các lỗi in ra rồi chạy lại, tới khi mã 0.
 

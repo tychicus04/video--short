@@ -1,7 +1,6 @@
-"""Clean plates: per scene, a caption-free patch pasted over old captions the new sub box won't cover.
+"""Clean plates: per scene, a caption-free patch pasted over every old caption.
 
 `frags` are real captions (after merge_text): a blanked UI label counts as clean background.
-`cover` is the area the new subtitle box always hides (x0, y0, x1, y1); captions fully inside it need no plate.
 """
 import json
 from collections.abc import Callable
@@ -14,8 +13,7 @@ from PIL import Image
 from vshort.captions import INK, X0, X1, Fragment
 from vshort.media import frame_at, iter_frames, probe
 
-BOX_HALF_H = 46  # old caption boxes (with shadow) are ~92 px tall and centred on their text band, whatever the letters
-PLATE_HALF_H = 50  # plates reach a little past that box
+PLATE_HALF_H = 50  # old caption boxes (with shadow) are ~92 px tall, centred on their text band; plates reach a little past
 PAD_X = 26
 
 
@@ -109,7 +107,6 @@ def build_plates(
     frags: list[Fragment],
     out_dir: Path,
     lama_path: Path,
-    cover: tuple[int, int, int, int] = (120, 1094, 600, 1204),
     inpaint: Callable[[np.ndarray, np.ndarray], np.ndarray] | None = None,
 ) -> list[Plate]:
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -129,8 +126,6 @@ def build_plates(
         a, b = min(s for s, _ in spans), max(e for _, e in spans)
         mid = (by0 + by1) // 2
         c0, c1 = _text_columns(video, sorted(spans), by0, by1, (wa, wb))
-        if cover[0] <= c0 - PAD_X and c1 + PAD_X <= cover[2] and cover[1] <= mid - BOX_HALF_H and mid + BOX_HALF_H <= cover[3]:
-            continue  # the new subtitle box (always ≥ this area) already hides it
         # even edges: yuv420 overlay rounds odd positions down, which would leave a 1 px sliver of the old box
         y0, y1 = max(mid - PLATE_HALF_H, 0) // 2 * 2, min(-(-(mid + PLATE_HALF_H) // 2) * 2, info.height)
         x0, x1 = max(c0 - PAD_X, 0) // 2 * 2, min(-(-(c1 + PAD_X) // 2) * 2, info.width)

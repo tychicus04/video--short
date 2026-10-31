@@ -8,14 +8,14 @@ from vshort.tts import QuotaExceeded
 
 
 def test_fetch_auth_error_exit_4(tmp_path, monkeypatch, capsys):
-    main(["new", "demo", "--kicker", "K", "--title", "T", "--runs-dir", str(tmp_path)])
+    main(["new", "demo", "--runs-dir", str(tmp_path)])
     monkeypatch.setattr(cli, "run_notebooklm", lambda a: CompletedProcess(a, 1, "", "Not logged in."))
     assert main(["fetch", str(tmp_path / "demo"), "--notebook", "abc"]) == 4
     assert "scp storage_state.json" in capsys.readouterr().err
 
 
 def test_fetch_generates_waits_and_downloads_that_video(tmp_path, monkeypatch):
-    main(["new", "demo", "--kicker", "K", "--title", "T", "--runs-dir", str(tmp_path)])
+    main(["new", "demo", "--runs-dir", str(tmp_path)])
     calls = []
 
     def fake(args):
@@ -65,7 +65,7 @@ def test_tts_quota_exit_75(tmp_path, monkeypatch, capsys):
 
 
 def test_fetch_rerun_continues_the_same_video(tmp_path, monkeypatch):
-    main(["new", "demo", "--kicker", "K", "--title", "T", "--runs-dir", str(tmp_path)])
+    main(["new", "demo", "--runs-dir", str(tmp_path)])
     calls, waits = [], iter([CompletedProcess([], 1, "", "Not logged in."),
                              CompletedProcess([], 0, json.dumps({"status": "completed"}), "")])
 

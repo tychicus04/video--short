@@ -17,12 +17,13 @@ người dùng điện thoại và sinh viên 18–30 tuổi ở Việt Nam, qua
    Kiểm tra mỗi nguồn chính có toàn văn thật: `uv run notebooklm source fulltext -n <id> <source_id> -o /tmp/x.txt` (đừng in toàn văn ra).
 3. **Đối chiếu dữ kiện** trong brief với toàn văn nguồn gốc (con số, phiên bản, ngày, tên). Điểm các nguồn còn tranh cãi thì ghi là tranh cãi.
 4. **Viết `RUN/brief.vi.md`** theo đúng mẫu của Tai (xem `~/video-pipeline/prototype/brief_c01.md`), các mục:
-   Thông điệp duy nhất · Người xem · Câu móc câu gợi ý · Ví dụ mô phỏng (Trước/Sau) · Ý chính (3–4 ý, mỗi ý có ngày/nguồn) ·
+   Thông điệp duy nhất · Người xem · Tiêu đề (câu mở đầu) · Ví dụ mô phỏng (Trước/Sau) · Ý chính (3–4 ý, mỗi ý có ngày/nguồn) ·
    Lưu ý độ chính xác · Câu chốt · Lời kêu gọi. Chỉ ở mức khái niệm; không hướng dẫn cách tấn công hay làm điều có hại.
+   **Tiêu đề (câu mở đầu)** thay cho câu móc câu: một câu ≤ 40 ký tự, cuốn hút, đúng sự thật, nêu luận điểm cả video chứng minh
+   (ví dụ "iPhone bị hack chỉ vì mở 1 trang web"). Video mở đầu bằng đúng câu này và nó hiện trọn trên màn hình như tiêu đề.
    Đường dẫn menu iOS dùng nhãn tiếng Việt thật: "Cài đặt › Cài đặt chung › Cập nhật phần mềm".
 5. **Viết `RUN/brief.en.md`**: bản tiếng Anh sát nghĩa của brief.vi.md (cùng mục, cùng dữ kiện) — NotebookLM sẽ tạo video tiếng Anh từ bản này.
 6. **Viết `RUN/sources.md`**: danh sách nguồn đã nạp (tiêu đề, URL, ngày) và các dữ kiện đã đối chiếu.
 
-Trả về (ngắn): notebook id; kicker đề xuất (chữ HOA, ≤ 24 ký tự, ví dụ "CORUNA & DARKSWORD"); tiêu đề đề xuất
-(≤ 40 ký tự, cuốn hút, đúng sự thật, ví dụ "iPhone bị hack chỉ vì mở 1 trang web"); và các điểm Tai nên để ý khi duyệt.
+Trả về (ngắn): notebook id; tiêu đề (câu mở đầu) đã viết trong brief; và các điểm Tai nên để ý khi duyệt.
 Không tạo video — việc đó chỉ làm sau khi Tai duyệt.

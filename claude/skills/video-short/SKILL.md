@@ -18,16 +18,16 @@ Thiết kế: `~/video-pipeline/DESIGN.md`. Mọi bước cố định là lện
 ## Các bước
 
 1. **Tìm hiểu & kịch bản** — giao `vs-researcher` (chủ đề, slug, `$RUN`). Nó tạo notebook `"<Chủ đề> – Video Short"`, nạp nguồn,
-   viết `$RUN/brief.vi.md`, `$RUN/brief.en.md`, `$RUN/sources.md`, và đề xuất dòng nhỏ (kicker, chữ HOA) + tiêu đề. Nó trả về notebook id.
-2. **ĐIỂM DỪNG DUY NHẤT** — đưa Tai brief tiếng Việt + kicker + tiêu đề (dán nội dung, không chỉ đường dẫn). Chờ Tai duyệt hoặc sửa;
+   viết `$RUN/brief.vi.md` (có mục "Tiêu đề (câu mở đầu)"), `$RUN/brief.en.md`, `$RUN/sources.md`. Nó trả về notebook id.
+2. **ĐIỂM DỪNG DUY NHẤT** — đưa Tai brief tiếng Việt, tiêu đề lên đầu (dán nội dung, không chỉ đường dẫn). Chờ Tai duyệt hoặc sửa;
    sửa thì cập nhật cả `brief.vi.md` lẫn `brief.en.md`. Sau khi Tai duyệt, chạy liền một mạch đến cuối, không hỏi thêm.
    **Chế độ tự động** (Tai nói "chạy tự động" / "không cần duyệt"): không dừng ở đây. Tự soát brief với `sources.md`
-   (dữ kiện, ngày, điểm tranh cãi), sửa nếu lệch, rồi đi tiếp; đưa brief + kicker + tiêu đề vào câu trả lời cuối.
+   (dữ kiện, ngày, điểm tranh cãi), sửa nếu lệch, rồi đi tiếp; đưa brief (có tiêu đề) vào câu trả lời cuối.
 3. **Tạo video tiếng Anh** — chạy tiếp một video dở (đã có `$RUN/run.json` với `artifact_id`) thì bỏ qua `new` và
    `source add`, chỉ chạy lại `vshort fetch $RUN` (nó tiếp tục đúng video đã yêu cầu, không tạo video mới).
-   - `vshort new <slug> --kicker "<KICKER>" --title "<Tiêu đề>" --notebook <id>`
+   - `vshort new <slug> --notebook <id>`
    - `notebooklm source add -n <id> --type text --title "# BRIEF (EN) – <slug>" "$(cat $RUN/brief.en.md)"`
-   - `vshort fetch $RUN --prompt "Vertical short. Follow the source '# BRIEF (EN) – <slug>' closely: open with its hook, cover its key points in order, end with its call to action. Explain at concept level only; do not assert claims the brief marks as disputed."`
+   - `vshort fetch $RUN --prompt "Vertical short. Follow the source '# BRIEF (EN) – <slug>' closely: open with its title line, word for word, cover its key points in order, end with its call to action. Explain at concept level only; do not assert claims the brief marks as disputed."`
      Chạy nền (mất 5–40 phút) và chờ thông báo, đừng hỏi dồn. Mã 4 → đưa Tai đúng thông báo đăng nhập lại mà lệnh in ra rồi dừng.
 4. **Phụ đề thật**
    - `vshort detect $RUN` → giao `vs-transcriber` các ảnh `$RUN/sheets/*.png`, nó ghi `$RUN/fragments_text.json`.

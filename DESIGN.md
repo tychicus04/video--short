@@ -23,7 +23,7 @@ Một lệnh trong Claude Code: `/video-short <chủ đề | URL | đường d�
 0. **Tìm hiểu & kịch bản**: tìm nguồn đáng tin (ưu tiên báo cáo gốc), tạo notebook
    NotebookLM, nạp nguồn, viết brief tiếng Việt theo mẫu của Tai (Thông điệp duy nhất /
    Người xem / Câu móc câu / Ví dụ mô phỏng / Ý chính / Lưu ý độ chính xác / Câu chốt /
-   Lời kêu gọi) kèm tiêu đề video (dòng nhỏ + dòng lớn).
+   Lời kêu gọi) với mục **Tiêu đề (câu mở đầu)**: luận điểm cả video chứng minh, video mở đầu bằng đúng câu này.
    **ĐIỂM DỪNG DUY NHẤT: Tai duyệt brief và tiêu đề.** Sau đó chạy tự động đến file cuối.
 1. **Tạo video**: nạp brief (bản tiếng Anh) làm nguồn, `generate video --format short
    --language en`, chờ xong, tải về.
@@ -35,8 +35,8 @@ Một lệnh trong Claude Code: `/video-short <chủ đề | URL | đường d�
    Anh tương ứng, ở tốc độ tự nhiên. Quá dài thì agent rút gọn câu (giữ nghĩa), không ép
    giọng đọc nhanh bất thường; ngắn hơn thì chèn lặng.
 5. **Tạo giọng đọc** bằng Gemini TTS, một giọng tiếng Việt trung tính cho cả video.
-6. **Ghép hoàn chỉnh**: thay tiếng gốc bằng giọng mới, thêm thanh tiêu đề, phụ đề tiếng
-   Việt cố định sát đáy, xóa watermark, cắt đoạn logo cuối, xuất `.mp4`.
+6. **Ghép hoàn chỉnh**: thay tiếng gốc bằng giọng mới, phụ đề tiếng
+   Việt cố định một chỗ, xóa watermark, cắt đoạn logo cuối, xuất `.mp4`.
    Cuối cùng một agent soát lại: chữ phụ đề khớp lời đọc, không lộ phụ đề cũ, và liệt kê
    chi tiết trong hình mâu thuẫn với brief để Tai tự quyết.
 
@@ -83,14 +83,16 @@ thời gian, file giọng đọc, báo cáo soát.
   dịch & canh thời lượng, soát cuối. Các bước cố định (tạo/tải video, dò phụ đề, xóa chữ,
   TTS, ghép) là script được skill gọi.
 - **Model của subagent** theo quy ước của Tai: viết/sửa file → Sonnet; soát cuối → Opus.
-- **Kiểu chữ** giống bản v4 hôm nay: font Be Vietnam Pro; thanh tiêu đề đen ở trên (dòng
-  nhỏ vàng + dòng lớn trắng); hộp phụ đề đen, chữ trắng, từ khóa vàng; đáy hộp ở y=1204;
-  câu đầu hiện trọn câu (giới thiệu chủ đề), các câu sau thành cụm một dòng ngắt ở chỗ tự
-  nhiên.
+- **Kiểu chữ** (Tai đổi sau lần chạy thử 31/10): giữ kiểu phụ đề của NotebookLM — hộp xám nhạt
+  vuông góc, chữ xám đậm kiểu viết tay (font Patrick Hand, đủ dấu tiếng Việt); không thanh tiêu đề,
+  không tô màu từ khóa; mọi hộp đặt cố định, tâm ở y=1150 (dải phụ đề thấp của NotebookLM).
+  Câu đầu là tiêu đề trong brief, hiện trọn câu; khi không vừa khung câu tiếng Anh đầu, các câu
+  tiếng Anh liền sau mà nó nói thay để trống và nhường thời gian cho nó. Các câu sau thành cụm
+  một dòng ngắt ở chỗ tự nhiên.
 - **Mốc phụ đề tiếng Việt** lấy theo giọng đọc mới (không theo giọng gốc).
 - **Xóa phụ đề cũ**: mỗi cảnh một ảnh nền sạch. Ưu tiên khung sạch có sẵn, nếu không có
-  thì dùng LaMa (big-lama.pt, ~200MB, CPU), như `prototype/plates.py`. Phụ đề cũ nằm ở
-  dải mà hộp phụ đề mới đã che thì không cần xóa.
+  thì dùng LaMa (big-lama.pt, ~200MB, CPU), như `prototype/plates.py`. Xóa ở mọi dải, vì hộp
+  phụ đề mới nhỏ hơn hộp cũ nên không che được.
 
 ## Quyết định sau khi soát
 

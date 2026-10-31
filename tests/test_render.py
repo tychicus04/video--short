@@ -8,11 +8,12 @@ from vshort.render import build_ass, compose, outro_cut
 
 
 def test_build_ass_layout():
-    a = build_ass([(0, 2, "Câu mở đầu dài dài dài dài dài dài dài dài dài dài dài dài dài dài"), (2, 3, "*Zero-click.*")],
-                  "CORUNA & DARKSWORD", "iPhone bị hack chỉ vì mở 1 trang web", cut=3.0)
-    assert "Style: Cap,Be Vietnam Pro ExtraBold,61," in a  # fs(40)
-    assert "{\\1c&H00D4FF&}Zero-click." in a
+    a = build_ass([(0, 2, "Câu mở đầu dài dài dài dài dài dài dài dài dài dài dài dài dài dài dài dài dài"),
+                   (2, 3, "*Zero-click.*")])
+    assert "Style: Cap,Patrick Hand,68," in a  # fs(50)
+    assert a.endswith("}Zero-click.\n")  # old * highlights are dropped, not drawn
     assert a.count("Dialogue: 2,0:00:00.00,0:00:02.00,Cap") >= 2  # first sentence wraps to ≥2 lines
+    assert "Title" not in a and "Kicker" not in a
 
 
 def test_outro_cut():
@@ -21,15 +22,16 @@ def test_outro_cut():
 
 
 def test_compose_output(make_video, tmp_path):
-    v = make_video(tmp_path, scenes=[(0, 3, "#F3EFE6")], captions=[])
+    v = make_video(tmp_path, scenes=[(0, 3, "#000000")], captions=[])
     wav = tmp_path / "n.wav"
     write_silence(wav, 3.0)
     ass = tmp_path / "s.ass"
-    ass.write_text(build_ass([(0, 2.5, "Xin chào")], "K", "Tiêu đề", 2.5), encoding="utf-8")
+    ass.write_text(build_ass([(0, 2.5, "Xin chào")]), encoding="utf-8")
     out = tmp_path / "o.mp4"
     compose(v, wav, ass, [], tmp_path, cut=2.5, out=out)
-    p = probe(out)
-    assert abs(p.duration - 2.5) < 0.1 and frame_at(out, 1.0)[1150, 150].max() < 40  # dark sub box (x 120-600), clear of the text
+    f = frame_at(out, 1.0)
+    assert abs(probe(out).duration - 2.5) < 0.1
+    assert f[1112, 360].min() > 200 and f[1112, 100].max() < 40  # light box around y 1150, above the text; page outside
 
 
 def test_outro_cut_takes_a_blank_frame_when_there_is_no_hard_cut():
@@ -44,7 +46,7 @@ def test_plate_applies_from_its_first_frame(make_video, tmp_path):
     wav = tmp_path / "n.wav"
     write_silence(wav, 1.0)
     ass = tmp_path / "s.ass"
-    ass.write_text(build_ass([(0, 1.0, "x")], "K", "T", 1.0), encoding="utf-8")
+    ass.write_text(build_ass([(0, 1.0, "x")]), encoding="utf-8")
     out = tmp_path / "o.mp4"
     compose(v, wav, ass, plates, tmp_path, cut=1.0, out=out)
     assert frame_at(out, 2 / 30)[125, 125].min() > 200 and frame_at(out, 1 / 30)[125, 125].max() < 60
