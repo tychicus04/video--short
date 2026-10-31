@@ -278,7 +278,17 @@ def test_render_cmd_uses_the_frames_of_the_placed_lines(tmp_path, capsys):
 def test_render_cmd_names_the_lines_without_a_frame(tmp_path, capsys):
     _render_run(tmp_path, (1,))
     assert main(["render", str(tmp_path)]) == 2
-    assert "3" in capsys.readouterr().err and not (tmp_path / "final.mp4").exists()
+    assert capsys.readouterr().err == "frames.json thiếu các câu: 3 (chạy lại `vshort visuals`)\n"
+    assert not (tmp_path / "final.mp4").exists()
+
+
+def test_render_cmd_names_missing_frame_files_and_keeps_the_old_video(tmp_path, capsys):
+    _render_run(tmp_path, (1, 3))
+    (tmp_path / "frames" / "3.png").unlink()
+    (tmp_path / "final.mp4").write_bytes(b"good")
+    assert main(["render", str(tmp_path)]) == 2
+    assert capsys.readouterr().err == "thiếu file khung hình: frames/3.png (chạy lại `vshort visuals`)\n"
+    assert (tmp_path / "final.mp4").read_bytes() == b"good" and not Run(tmp_path).done("render")
 
 
 def test_status_lists_every_step_in_order(tmp_path, capsys):

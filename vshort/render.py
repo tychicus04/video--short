@@ -1,5 +1,6 @@
 """Final video: fixed low subtitles in NotebookLM's caption style, clean plates, no watermark, no outro, new voice."""
 import math
+import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -129,19 +130,26 @@ def segments(placements: list[Placement], frames: list[dict], run_dir: Path, tot
 
 
 def _camera(segs: list[Segment], k: int, t: float) -> tuple[float, float, float]:
-    """(scale, cx, cy) of the shot segment k belongs to: window centre in frame pixels, linear in time over the shot."""
+    """(scale, cx, cy) of the shot segment k belongs to: window centre in frame pixels, linear in time over the shot.
+
+    Stills rotate zoom in, zoom out, pan right, pan left. Reference images (group "v…") only zoom: a pan at ZOOM
+    shows 667 of 720 px and would cut their credit line. A shot under 3 s moves proportionally less, so it never rushes.
+    """
     lo = hi = k
     while lo and segs[lo - 1].group == segs[k].group:
         lo -= 1
     while hi + 1 < len(segs) and segs[hi + 1].group == segs[k].group:
         hi += 1
-    kind = sum(a.group != b.group for a, b in zip(segs, segs[1:lo + 1])) % 4  # shots before this one
+    ref = segs[k].group.startswith("v")
+    before = sum(a.group != b.group and a.group.startswith("v") == ref for a, b in zip(segs, segs[1:lo + 1]))
+    kind = before % 2 if ref else before % 4  # rotation counts only shots of the same sort
+    amp = min(1, (segs[hi].end - segs[lo].start) / 3)
     t0, t1 = segs[lo].start - XF / 2, segs[hi].end + XF / 2
     p = min(max((t - t0) / (t1 - t0), 0), 1)
-    half = W / ZOOM / 2  # half the window width at full zoom
     if kind < 2:
-        return 1 + (ZOOM - 1) * (p if kind == 0 else 1 - p), W / 2, H / 2
-    return ZOOM, half + (W - 2 * half) * (p if kind == 2 else 1 - p), H / 2
+        return 1 + (ZOOM - 1) * amp * (p if kind == 0 else 1 - p), W / 2, H / 2
+    travel = (W - W / ZOOM) * amp
+    return ZOOM, W / 2 + travel * ((p if kind == 2 else 1 - p) - 0.5), H / 2
 
 
 def _half_fade(segs: list[Segment], k: int) -> float:
@@ -167,13 +175,14 @@ def view(segs: list[Segment], t: float) -> list[tuple[Path, float, tuple[float, 
 
 
 def draw(img: Image.Image, scale: float, cx: float, cy: float) -> Image.Image:
-    """The window of img around (cx, cy), 1/scale of its size, resampled to full size at sub-pixel precision."""
-    w, h = img.size
-    ww, wh = w / scale, h / scale
-    x0 = min(max(cx - ww / 2, 0), w - ww)  # never past the image edge
-    y0 = min(max(cy - wh / 2, 0), h - wh)
+    """The window around (cx, cy) in frame pixels, 1/scale of the frame, resampled to W x H at sub-pixel precision."""
+    ww, wh = W / scale, H / scale
+    x0 = min(max(cx - ww / 2, 0), W - ww)  # never past the image edge
+    y0 = min(max(cy - wh / 2, 0), H - wh)
+    sx, sy = img.width / W, img.height / H  # a still of another size is stretched to the frame, not left misaligned
     # float box = sub-pixel window; same result as an affine transform but ~4x faster (26 vs 100 ms per frame)
-    return img.resize(img.size, Image.BICUBIC, box=(x0, y0, min(x0 + ww, w), min(y0 + wh, h)))
+    box = (x0 * sx, y0 * sy, min((x0 + ww) * sx, img.width), min((y0 + wh) * sy, img.height))
+    return img.resize((W, H), Image.BICUBIC, box=box)
 
 
 def render_video(segs: list[Segment], ass: Path, narration: Path, total: float, out: Path) -> None:
@@ -188,16 +197,25 @@ def render_video(segs: list[Segment], ass: Path, narration: Path, total: float, 
         parts = [(draw(load(f), *cam), w) for f, w, cam in view(segs, t)]
         return parts[0][0] if len(parts) == 1 else Image.blend(parts[0][0], parts[1][0], parts[1][1])
 
+    tmp = out.resolve().with_name(f"{out.stem}.tmp{out.suffix}")  # a failed render must not replace a good `out`
     cmd = [FF, "-loglevel", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", str(FPS),
            "-i", "-", "-i", str(narration.resolve()), "-vf", f"ass={ass.name}:fontsdir={FONTS}", "-map", "0:v",
            "-map", "1:a", "-t", str(total), "-c:v", "libx264", "-crf", "18", "-preset", "medium", "-pix_fmt", "yuv420p",
-           "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(out.resolve())]
-    with subprocess.Popen(cmd, stdin=subprocess.PIPE, cwd=ass.parent) as p:
-        try:
-            for n in range(math.ceil(total * FPS)):
-                p.stdin.write(frame(n / FPS).tobytes())
-            p.stdin.close()
-        except BrokenPipeError:
-            pass  # ffmpeg died; its exit code below says why
-    if p.returncode:
-        raise subprocess.CalledProcessError(p.returncode, cmd)
+           "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(tmp)]
+    try:
+        with subprocess.Popen(cmd, stdin=subprocess.PIPE, cwd=ass.parent) as p:
+            try:
+                for n in range(math.ceil(total * FPS)):
+                    p.stdin.write(frame(n / FPS).tobytes())
+                p.stdin.close()
+            except BrokenPipeError:
+                pass  # ffmpeg died; its exit code below says why
+            except BaseException:
+                p.kill()  # closing stdin would let ffmpeg finish a short video with exit 0
+                raise
+        if p.returncode:
+            raise subprocess.CalledProcessError(p.returncode, cmd)
+        os.replace(tmp, out)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise

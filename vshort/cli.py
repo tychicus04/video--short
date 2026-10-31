@@ -272,8 +272,12 @@ def cmd_render(a) -> int:
     fitted = run.read("timeline.json")
     placements = [Placement(**p) for p in fitted["placements"]]
     frames = run.read("frames.json")
-    if missing := sorted({p.id for p in placements} - {f["id"] for f in frames}):
+    ids = {p.id for p in placements}
+    if missing := sorted(ids - {f["id"] for f in frames}):
         _err("frames.json thiếu các câu: " + ", ".join(map(str, missing)) + " (chạy lại `vshort visuals`)")
+        return BAD_INPUT
+    if gone := [f["file"] for f in frames if f["id"] in ids and not run.file(f["file"]).exists()]:
+        _err("thiếu file khung hình: " + ", ".join(gone) + " (chạy lại `vshort visuals`)")
         return BAD_INPUT
     ass = run.file("subs.ass")
     ass.write_text(build_ass(phrase_times(placements, run.read("script.vi.json"))), encoding="utf-8")

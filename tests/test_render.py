@@ -2,12 +2,13 @@ import subprocess
 from pathlib import Path
 
 import numpy as np
+import pytest
 from conftest import write_silence
 from PIL import Image
 
 from vshort.fit import Placement
 from vshort.media import FF, frame_at, probe
-from vshort.render import FPS, Segment, build_ass, draw, render_video, segments, view
+from vshort.render import FPS, H, W, Segment, build_ass, draw, render_video, segments, view
 
 
 def test_build_ass_layout():
@@ -30,17 +31,28 @@ def _win(cam):
     return cx - 360 / s, cx + 360 / s, cy - 640 / s, cy + 640 / s
 
 
-def test_motion_is_subpixel_smooth():
+def _line_steps(segs, ts, x):
+    """Frame-to-frame steps of the centroid of a 2 px black vertical line at x, drawn through the camera at each t."""
     img = Image.new("RGB", (720, 1280), "white")
-    img.paste((0, 0, 0), (200, 0, 202, 1280))  # 2 px line; x=360 would sit on the first shot's zoom centre and never move
-    segs = _segs((0, 4, "s0"))
+    img.paste((0, 0, 0), (x, 0, x + 2, 1280))
     xs = []
-    for n in range(4 * FPS):
-        row = np.asarray(draw(img, *view(segs, n / FPS)[0][2]))[640, :, 0].astype(float)
-        ink = 255 - row
+    for t in ts:
+        (_, _, cam), = view(segs, t)  # outside a crossfade: one image
+        ink = 255 - np.asarray(draw(img, *cam))[640, :, 0].astype(float)
         xs.append((np.arange(720) * ink).sum() / ink.sum())
-    d = np.diff(xs)
+    return np.diff(xs)
+
+
+def test_motion_is_subpixel_smooth():
+    # x=360 would sit on the first shot's zoom centre and never move
+    d = _line_steps(_segs((0, 4, "s0")), [n / FPS for n in range(4 * FPS)], 200)
     assert np.abs(d).max() < 1.5 and np.abs(d[5:-5]).min() > 0.05  # moves every frame, never jumps a pixel step
+
+
+def test_pan_is_subpixel_smooth():
+    segs = _segs((0, 4, "s0"), (4, 8, "s1"), (8, 12, "s2"))  # third shot pans right: the line drifts left
+    d = _line_steps(segs, [8.25 + n / FPS for n in range(3 * FPS)], 360)
+    assert np.abs(d).max() < 1.5 and np.abs(d[5:-5]).min() > 0.05 and (d < 0).all()
 
 
 def test_every_shot_kind_keeps_the_window_inside_the_image():
@@ -110,4 +122,59 @@ def test_render_video_duration_audio_and_subs(tmp_path):
         return np.abs(frame_at(out, t)[300, 360].astype(int) - c).max() < 12
 
     assert is_(0.9, A) and is_(3.2, B)
-    assert frame_at(out, 3.2)[1112, 360].min() > 200  # the light subtitle box, above the text
+    f = frame_at(out, 3.2)
+    assert f[1112, 360].min() > 200  # the light subtitle box, above the text
+    assert np.abs(f[1112, 100].astype(int) - B).max() < 12  # outside the box the frame shows
+
+
+def test_reference_shots_only_zoom_and_keep_the_credit_line_in_view():
+    # credit lines run to x 30..690; a pan at ZOOM shows only 667 px
+    segs = _segs(*[(i * 4, i * 4 + 4, f"v{i}") for i in range(5)])
+    scales = []
+    for n in range(20 * FPS):
+        for f, _, (s, cx, _) in view(segs, n / FPS):
+            assert cx - 360 / s <= 30 and cx + 360 / s >= 690 and cx == 360
+        scales.append(view(segs, n / FPS)[-1][2][0])
+    ins = [view(segs, i * 4 + 3.5)[0][2][0] > view(segs, i * 4 + 0.5)[0][2][0] for i in range(5)]
+    assert ins == [True, False, True, False, True]  # alternate zoom in / zoom out
+
+
+def test_stills_rotation_ignores_reference_shots():
+    segs = _segs((0, 4, "s0"), (4, 8, "v1"), (8, 12, "s2"), (12, 16, "v3"), (16, 20, "s4"))
+    cam = [(view(segs, i * 4 + 0.5)[0][2], view(segs, i * 4 + 3.5)[0][2]) for i in (0, 2, 4)]
+    assert cam[0][1][0] > cam[0][0][0] and cam[1][1][0] < cam[1][0][0]  # zoom in, then zoom out
+    assert cam[2][0][0] == cam[2][1][0] == 1.08 and cam[2][1][1] > cam[2][0][1]  # third still pans right
+
+
+def test_short_shot_moves_gently():
+    for group in ("s", "v"):
+        segs = _segs((0, 4, group + "0"), (4, 4.6, group + "1"), (4.6, 9, group + "2"))
+        d = _line_steps(segs, [4.2 + n / FPS for n in range(8)], 100)
+        assert np.abs(d).max() < 1.0
+    # the pan kind too: third shot of stills, 0.6 s long
+    segs = _segs((0, 4, "s0"), (4, 8, "s1"), (8, 8.6, "s2"), (8.6, 12, "s3"))
+    assert np.abs(_line_steps(segs, [8.2 + n / FPS for n in range(6)], 360)).max() < 1.0
+
+
+def test_draw_always_returns_a_full_frame():
+    for size in ((360, 640), (720, 1280), (1080, 1920)):
+        out = draw(Image.new("RGB", size, "white"), 1.05, 400, 600)
+        assert out.size == (W, H) and np.asarray(out).min() > 250
+
+
+def test_failed_render_keeps_the_previous_video(tmp_path):
+    Image.new("RGB", (720, 1280), "white").save(tmp_path / "1.png")  # 2.png is missing: fails when its crossfade starts
+    ps = [Placement(1, 0.2, 1.0), Placement(2, 1.5, 1.0)]
+    frames = [{"id": 1, "file": "1.png", "group": "a"}, {"id": 2, "file": "2.png", "group": "b"}]
+    wav = tmp_path / "n.wav"
+    write_silence(wav, 3.0)
+    ass = tmp_path / "s.ass"
+    ass.write_text(build_ass([(0, 3.0, "Xin chào")]), encoding="utf-8")
+    out = tmp_path / "final.mp4"
+    out.write_bytes(b"previous good video")
+    with pytest.raises(FileNotFoundError):
+        render_video(segments(ps, frames, tmp_path, 3.0), ass, wav, 3.0, out)
+    assert out.read_bytes() == b"previous good video" and not (tmp_path / "final.tmp.mp4").exists()
+    with pytest.raises(subprocess.CalledProcessError):  # ffmpeg itself fails: no narration to read
+        render_video(segments(ps, frames, tmp_path, 3.0), ass, tmp_path / "nope.wav", 3.0, out)
+    assert out.read_bytes() == b"previous good video" and not (tmp_path / "final.tmp.mp4").exists()
