@@ -1,5 +1,6 @@
 """Turn stills into frames: patch wrong on-screen text, redraw references as SVG or pencil-filtered photos."""
 import io
+import re
 from datetime import date
 from functools import lru_cache
 from pathlib import Path
@@ -15,8 +16,10 @@ W, H = 720, 1280
 SUBTITLE = (0, 1094, W, 1206)  # patched text must stay readable: out of the subtitle band and the watermark corner
 WATERMARK = (524, 1232, 704, 1264)
 MIN_PATCH_EM = 14
-SLOT = (640, 920)  # photos fit inside this, centred at (360, 520)
-CREDIT_Y, CREDIT_EM, CREDIT_W = 996, 26, 680  # below the slot (ends y 980), above the subtitle band
+MIN_CONTRAST = 40  # colour distance from the fill that counts as old ink
+SLOT = (640, 920)  # photos fit inside this, centred at (360, 520); the credit goes 14 px under the photo (<= y 1030)
+CREDIT_EM, MIN_CREDIT_EM, CREDIT_W = 26, 14, 680
+SAFE_TLDS = (".example", ".test", ".invalid")  # reserved, never a real site
 LUMA = np.array([0.299, 0.587, 0.114])
 
 
@@ -25,31 +28,42 @@ def _font(name: str, em: int) -> ImageFont.FreeTypeFont:
     return ImageFont.truetype(str(FONTS / name), em)
 
 
-def _fit_em(text: str, w: int, h: int) -> int:
-    """Largest Be Vietnam Pro Bold size with ink <= 60 % of the box high and 8 px narrower than it; 0 if none."""
-    for em in range(h, 0, -1):
-        l, t, r, b = _font("BeVietnamPro-Bold.ttf", em).getbbox(text)
-        if r - l <= w - 8 and b - t <= 0.6 * h:
-            return em
-    return 0
+def _sans(bold: bool, em: int) -> ImageFont.FreeTypeFont:
+    return _font("BeVietnamPro-Bold.ttf" if bold else "BeVietnamPro-Regular.ttf", em)
 
 
-def patch_text(img: Image.Image, box: tuple[int, int, int, int], text: str) -> Image.Image:
-    """Cover the box with the colour of its edge and write `text` in the ink colour of what was there."""
+def _fit_em(text: str, bold: bool, w: int, h: float) -> int:
+    """Largest size whose ink is at most `h` high and 8 px narrower than `w`; 0 if none."""
+    l, t, r, b = _sans(bold, 100).getbbox(text)
+    em = int(min((w - 8) / max(r - l, 1), h / max(b - t, 1)) * 100) + 1
+    while em > 0:
+        l, t, r, b = _sans(bold, em).getbbox(text)
+        if r - l <= w - 8 and b - t <= h:
+            break
+        em -= 1
+    return em
+
+
+def patch_text(img: Image.Image, box: tuple[int, int, int, int], text: str, bold: bool = False) -> Image.Image:
+    """Cover the box with the colour of its edge and write `text` as tall and as dark as the old text was."""
     x0, y0, x1, y1 = box
+    w, h = x1 - x0, y1 - y0
     crop = np.asarray(img.convert("RGB").crop(box)).astype(float)
     ring = np.ones(crop.shape[:2], bool)
     ring[2:-2, 2:-2] = False
     fill = np.median(crop[ring], axis=0)
-    pix = crop.reshape(-1, 3)[np.argsort(crop.reshape(-1, 3) @ LUMA)]
-    k = max(1, len(pix) // 20)  # darkest 5 %; the lightest 5 % when the old text was light on a dark fill
-    dark, light = np.median(pix[:k], axis=0), np.median(pix[-k:], axis=0)
-    ink = max((dark, light), key=lambda c: abs(c @ LUMA - fill @ LUMA))
-    w, h = x1 - x0, y1 - y0
-    patch = Image.new("RGB", (w, h), tuple(int(c) for c in fill))
-    font = _font("BeVietnamPro-Bold.ttf", _fit_em(text, w, h))
+    dist = np.linalg.norm(crop - fill, axis=2)
+    top = dist.max()
+    if top < MIN_CONTRAST:  # nothing to copy from: plain text at 60 % of the box height
+        ink, height, mid = (60,) * 3 if fill @ LUMA > 128 else (235,) * 3, 0.6 * h, h / 2
+    else:
+        rows = np.flatnonzero((dist > max(MIN_CONTRAST, 0.45 * top)).any(1))
+        ink = np.median(crop[dist >= 0.8 * top], axis=0)  # the strongest strokes, anti-aliasing left out
+        height, mid = rows[-1] - rows[0] + 1, (rows[0] + rows[-1] + 1) / 2
+    font = _sans(bold, _fit_em(text, bold, w, height))
     l, t, r, b = font.getbbox(text)
-    ImageDraw.Draw(patch).text(((w - l - r) / 2, (h - t - b) / 2), text, fill=tuple(int(c) for c in ink), font=font)
+    patch = Image.new("RGB", (w, h), tuple(int(c) for c in fill))
+    ImageDraw.Draw(patch).text(((w - l - r) / 2, mid - (t + b) / 2), text, fill=tuple(int(c) for c in ink), font=font)
     out = img.convert("RGB")
     out.paste(patch, (x0, y0))
     return out
@@ -69,9 +83,10 @@ def pencil(photo: Image.Image, credit: str) -> Image.Image:
     d = ImageDraw.Draw(canvas)
     d.rectangle((x - 3, y - 3, x + flat.width + 2, y + flat.height + 2), outline=(140, 140, 140), width=2)
     em = CREDIT_EM
-    while em > 8 and _font("PatrickHand-Regular.ttf", em).getlength(credit) > CREDIT_W:
+    while em > MIN_CREDIT_EM and _font("PatrickHand-Regular.ttf", em).getlength(credit) > CREDIT_W:
         em -= 1
-    d.text((W / 2, CREDIT_Y), credit, fill=(74, 74, 74), font=_font("PatrickHand-Regular.ttf", em), anchor="mt")
+    d.text((W / 2, y + flat.height + 14), credit, fill=(74, 74, 74), font=_font("PatrickHand-Regular.ttf", em),
+           anchor="mt")
     return canvas
 
 
@@ -89,23 +104,39 @@ def _hits(box, area) -> bool:
     return box[0] < area[2] and box[2] > area[0] and box[1] < area[3] and box[3] > area[1]
 
 
+def _real_domain(text: str) -> bool:
+    """Text that reads as a web address but is not on a reserved TLD."""
+    host = re.split(r"[/:?#]", re.sub(r"^[a-z][a-z0-9+.-]*://", "", text, flags=re.I))[0]
+    return bool(re.fullmatch(r"[\w-]+(\.[\w-]+)*\.[A-Za-z]{2,}", host)) and not host.lower().endswith(SAFE_TLDS)
+
+
 def _patch_problems(it: dict, ids: set[int]) -> list[str]:
     probs, pids, box, text = [], it.get("ids"), it.get("box"), it.get("text")
+    bold = it.get("bold", False)
     if not isinstance(pids, list) or not pids or not all(_int(i) for i in pids):
         probs.append("ids phải là danh sách số nguyên, không rỗng")
     elif missing := [i for i in pids if i not in ids]:
         probs.append(f"id {missing} không có trong stills.json")
-    if not isinstance(text, str) or not text.strip() or "\n" in text:
-        return probs + ["text phải là một dòng chữ, không rỗng"]
-    if not isinstance(box, list) or len(box) != 4 or not all(_int(v) for v in box):
-        return probs + [f"box {box} phải là [x0, y0, x1, y1] số nguyên"]
-    if not (0 <= box[0] < box[2] <= W and 0 <= box[1] < box[3] <= H):
-        return probs + [f"box {box} vượt khung {W}x{H} hoặc ngược chiều (cần 0 ≤ x0 < x1 ≤ {W}, 0 ≤ y0 < y1 ≤ {H})"]
-    if _hits(box, SUBTITLE):
-        probs.append(f"box {box} chạm vùng phụ đề (y {SUBTITLE[1]}–{SUBTITLE[3]})")
-    if _hits(box, WATERMARK):
-        probs.append(f"box {box} chạm góc watermark (x {WATERMARK[0]}–{WATERMARK[2]}, y {WATERMARK[1]}–{WATERMARK[3]})")
-    if _fit_em(text, box[2] - box[0], box[3] - box[1]) < MIN_PATCH_EM:
+    if not isinstance(bold, bool):
+        probs.append(f"bold phải là true hoặc false: {bold!r}")
+    text_ok = isinstance(text, str) and bool(text.strip()) and "\n" not in text
+    if not text_ok:
+        probs.append("text phải là một dòng chữ, không rỗng")
+    elif _real_domain(text):
+        probs.append(f"text {text!r} giống địa chỉ web thật; dùng tên chung kết thúc bằng {', '.join(SAFE_TLDS)}")
+    box_ok = isinstance(box, list) and len(box) == 4 and all(_int(v) for v in box)
+    if not box_ok:
+        probs.append(f"box {box} phải là [x0, y0, x1, y1] số nguyên")
+    elif not (0 <= box[0] < box[2] <= W and 0 <= box[1] < box[3] <= H):
+        box_ok = False
+        probs.append(f"box {box} vượt khung {W}x{H} hoặc ngược chiều (cần 0 ≤ x0 < x1 ≤ {W}, 0 ≤ y0 < y1 ≤ {H})")
+    else:
+        if _hits(box, SUBTITLE):
+            probs.append(f"box {box} chạm vùng phụ đề (y {SUBTITLE[1]}–{SUBTITLE[3]})")
+        if _hits(box, WATERMARK):
+            probs.append(f"box {box} chạm góc watermark (x {WATERMARK[0]}–{WATERMARK[2]}, "
+                         f"y {WATERMARK[1]}–{WATERMARK[3]})")
+    if text_ok and box_ok and _fit_em(text, bold is True, box[2] - box[0], box[3] - box[1]) < MIN_PATCH_EM:
         probs.append(f"text {text!r} không vừa box {box} (cần chữ cao ít nhất {MIN_PATCH_EM} px)")
     return probs
 
@@ -132,8 +163,12 @@ def _reference_problems(it: dict, ids: set[int], run_dir: Path) -> list[str]:
         date.fromisoformat(it.get("accessed"))
     except (TypeError, ValueError):
         probs.append(f"accessed phải là ngày YYYY-MM-DD: {it.get('accessed')!r}")
-    if it["kind"] == "photo" and not (isinstance(it.get("credit"), str) and it["credit"].strip()):
-        probs.append("photo thiếu credit (dòng nguồn vẽ dưới ảnh)")
+    if it["kind"] == "photo":
+        credit = it.get("credit")
+        if not isinstance(credit, str) or not credit.strip() or "\n" in credit:
+            probs.append("photo thiếu credit: một dòng nguồn, vẽ dưới ảnh")
+        elif _font("PatrickHand-Regular.ttf", MIN_CREDIT_EM).getlength(credit) > CREDIT_W:
+            probs.append(f"credit {credit!r} quá dài: không vừa {CREDIT_W} px ở cỡ chữ nhỏ nhất")
     return probs
 
 

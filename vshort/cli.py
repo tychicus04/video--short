@@ -191,19 +191,19 @@ def cmd_visuals(a) -> int:
     if not isinstance(items, list):
         _err("visuals.json phải là một danh sách các mục")
         return BAD_INPUT
-    probs = validate(items, {s["id"] for s in stills}, run.path)
+    ids = {s["id"] for s in stills}
+    probs = validate(items, ids, run.path)
     probs += [f"thiếu stills/{s['id']}.png (chạy lại `vshort stills`)" for s in stills
               if not run.file(f"stills/{s['id']}.png").exists()]
     refs = {}
-    if not probs:  # render every reference now: a corrupt file must fail before frames/ is touched
-        for n, it in enumerate(items, 1):
-            if it["kind"] == "patch":
-                continue
-            try:
-                refs[it["id"]] = svg_frame(run.file(it["file"])) if it["kind"] == "svg" else pencil(
-                    ImageOps.exif_transpose(Image.open(run.file(it["file"]))), it["credit"])
-            except Exception as e:  # agent-made file: any decoder error is a bad item
-                probs.append(f"visuals.json mục {n} ({it['kind']}): không đọc/vẽ được {it['file']}: {e}")
+    for n, it in enumerate(items, 1):  # render every reference whose own item is fine, so a corrupt file shows up too
+        if validate([it], ids, run.path) or it["kind"] == "patch":
+            continue
+        try:
+            refs[it["id"]] = svg_frame(run.file(it["file"])) if it["kind"] == "svg" else pencil(
+                ImageOps.exif_transpose(Image.open(run.file(it["file"]))), it["credit"])
+        except Exception as e:  # agent-made file: any decoder error is a bad item
+            probs.append(f"visuals.json mục {n} ({it['kind']}): không đọc/vẽ được {it['file']}: {e}")
     for p in probs:
         _err(p)
     if probs:
@@ -221,7 +221,7 @@ def cmd_visuals(a) -> int:
             img, group = Image.open(run.file(f"stills/{i}.png")).convert("RGB"), f"s{s['scene']}"
             for p in patches:
                 if i in p["ids"]:
-                    img = patch_text(img, tuple(p["box"]), p["text"])
+                    img = patch_text(img, tuple(p["box"]), p["text"], p.get("bold", False))
         img.save(out / f"{i}.png")
         rows.append({"id": i, "file": f"frames/{i}.png", "group": group})
     run.write("frames.json", rows)

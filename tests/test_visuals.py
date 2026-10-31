@@ -15,19 +15,47 @@ def _label_image() -> Image.Image:
     return img
 
 
+def _ink(img, box):
+    x0, y0, x1, y1 = box
+    return np.asarray(img).astype(int)[y0:y1, x0:x1].sum(2) < 400
+
+
+def _height(mask) -> int:
+    rows = mask.any(1).nonzero()[0]
+    return rows[-1] - rows[0] + 1
+
+
 def test_patch_text_replaces_the_label():
     img, box = _label_image(), (96, 96, 404, 144)
     out = patch_text(img, box, "tin-tuc.example")
     before, after = np.asarray(img).astype(int), np.asarray(out).astype(int)
     x0, y0, x1, y1 = box
-    old, new = (before[y0:y1, x0:x1].sum(2) < 400), (after[y0:y1, x0:x1].sum(2) < 400)
+    old, new = _ink(img, box), _ink(out, box)
     assert old.any() and new.any()
     assert (old ^ new).sum() > old.sum() // 2  # the old strokes are gone, others drawn
     mid = np.median(after[y0:y1, x0:x1].reshape(-1, 3), axis=0)
     assert np.abs(mid - PAGE).max() <= 6
     before[y0:y1, x0:x1] = after[y0:y1, x0:x1] = 0
     assert np.array_equal(before, after)  # nothing outside the box moved
-    assert np.asarray(img).astype(int)[y0:y1, x0:x1].sum(2).min() < 400  # the caller's image is untouched
+    assert _ink(img, box).any()  # the caller's image is untouched
+
+
+def test_patch_text_matches_the_old_text_size_in_a_loose_or_tight_box():
+    img = _label_image()
+    old_h = _height(_ink(img, (0, 0, 720, 300)))
+    heights = []
+    for box in [(96, 96, 404, 144), (20, 60, 700, 200)]:  # tight, loose
+        out = patch_text(img, box, "tin-tuc.test")  # no descender, like the old label
+        heights.append(_height(_ink(out, box)))
+        ink = np.asarray(out).astype(int)[box[1]:box[3], box[0]:box[2]][_ink(out, box)]
+        assert ink.sum(1).min() < 150  # the old dark ink colour, not a lightened mix with paper
+    assert abs(heights[0] - heights[1]) <= 1 and abs(heights[0] - old_h) <= 0.2 * old_h
+
+
+def test_patch_text_bold_flag_changes_the_weight():
+    img, box = _label_image(), (96, 96, 404, 144)
+    regular, bold = (_ink(patch_text(img, box, "tin-tuc.test", bold=b), box).sum() for b in (False, True))
+    assert bold > regular * 1.1
 
 
 def test_patch_text_ink_matches_the_old_ink_on_a_dark_button():
@@ -39,11 +67,12 @@ def test_patch_text_ink_matches_the_old_ink_on_a_dark_button():
 
 
 def test_pencil_fits_any_photo():
-    for size in [(1600, 900), (200, 300)]:
+    for size, bottom in [((1600, 900), 700), ((200, 300), 980)]:  # y where the fitted photo ends
         f = np.asarray(pencil(Image.new("RGB", size, "gray"), "Nguồn: Google")).astype(int)
         bare = np.asarray(pencil(Image.new("RGB", size, "gray"), "")).astype(int)
         assert f.shape == (1280, 720, 3)
-        assert np.abs(f[988:1080] - bare[988:1080]).max() > 40  # credit ink, below the 640x920 slot and its frame
+        assert np.abs(f[bottom + 6:bottom + 60] - bare[bottom + 6:bottom + 60]).max() > 40  # credit just under it
+        assert np.array_equal(f[bottom + 60:], bare[bottom + 60:])  # and nowhere else
         assert np.abs(f[1094:] - PAPER).max() <= 6  # subtitle band and below stay clear
 
 
@@ -56,9 +85,8 @@ def test_pencil_keeps_the_edges_of_a_photo():
 
 
 def test_pencil_shrinks_a_long_credit_to_the_frame():
-    f = np.asarray(pencil(Image.new("RGB", (400, 400), "gray"), "Nguồn: " + "rất dài " * 20)).astype(int)
-    ink = np.abs(f[988:1080] - PAPER).max(2) > 40
-    cols = ink.any(0).nonzero()[0]
+    f = np.asarray(pencil(Image.new("RGB", (400, 400), "gray"), "Nguồn: " + "rất dài " * 12)).astype(int)
+    cols = (np.abs(f[846:900] - PAPER).max(2) > 40).any(0).nonzero()[0]
     assert len(cols) and cols.min() >= 16 and cols.max() <= 704
 
 
@@ -91,13 +119,18 @@ def _item(**kw):
     ({"kind": "gif"}, "gif"),
     ({"kind": "patch", "ids": [], "box": [0, 0, 10, 10], "text": "x"}, "ids"),
     ({"kind": "patch", "ids": [True], "box": [0, 0, 10, 10], "text": "x"}, "ids"),
+    ({"kind": "patch", "ids": [7], "box": [0, 0, 300, 50], "text": "x"}, "[7]"),
     ({"kind": "patch", "ids": [1], "box": [0, 0, 10], "text": "x"}, "box"),
     ({"kind": "patch", "ids": [1], "box": [50, 0, 40, 10], "text": "x"}, "box"),
     ({"kind": "patch", "ids": [1], "box": [0, 0, 10, 1281], "text": "x"}, "1281"),
     ({"kind": "patch", "ids": [1], "box": [10, 1100, 400, 1150], "text": "x"}, "phụ đề"),
     ({"kind": "patch", "ids": [1], "box": [530, 1235, 700, 1262], "text": "x"}, "watermark"),
     ({"kind": "patch", "ids": [1], "box": [0, 0, 300, 50], "text": " "}, "text"),
+    ({"kind": "patch", "ids": [1], "box": [0, 0, 300, 50], "text": "a\nb"}, "text"),
     ({"kind": "patch", "ids": [1], "box": [0, 0, 40, 20], "text": "một dòng chữ rất dài không vừa"}, "vừa"),
+    ({"kind": "patch", "ids": [1], "box": [0, 0, 300, 50], "text": "x", "bold": "yes"}, "bold"),
+    ({"kind": "patch", "ids": [1], "box": [0, 0, 300, 50], "text": "tin-tuc.com"}, ".example"),
+    ({"kind": "patch", "ids": [1], "box": [0, 0, 300, 50], "text": "https://cai-dat.vn/tin"}, ".example"),
     (_item(file="../x.jpg"), "visuals/"),
     (_item(file="visuals/missing.jpg"), "visuals/missing.jpg"),
     (_item(file="/etc/passwd"), "visuals/"),
@@ -105,6 +138,8 @@ def _item(**kw):
     (_item(source="file:///etc/passwd"), "source"),
     (_item(accessed="yesterday"), "accessed"),
     (_item(credit=" "), "credit"),
+    (_item(credit="Nguồn:\nA"), "credit"),
+    (_item(credit="Nguồn: " + "rất dài " * 20), "credit"),
     (_item(id=7), "7"),
 ])
 def test_validate_reports(item, needle, tmp_path):
@@ -120,4 +155,11 @@ def test_validate_accepts_good_items_and_flags_duplicate_references(tmp_path):
     (tmp_path / "visuals" / "1.jpg").write_bytes(b"x")
     patch = {"kind": "patch", "ids": [1, 2], "box": [96, 96, 404, 144], "text": "tin-tuc.example", "note": ""}
     assert validate([patch, _item()], {1, 2}, tmp_path) == []  # a patch plus a reference on one line is fine
+    for text in ("tin-tuc.test", "mạng.invalid", "iOS 26.3.1", "26.3.1+", "Cài đặt.app mới", "OS Kernel"):
+        assert validate([{**patch, "text": text, "bold": True}], {1, 2}, tmp_path) == []
     assert any("1" in p for p in validate([_item(), _item()], {1}, tmp_path))
+
+
+def test_validate_prints_the_box_and_the_text_problem_together(tmp_path):
+    probs = validate([{"kind": "patch", "ids": [1], "box": [0, 0, 900, 50], "text": "tin-tuc.com"}], {1}, tmp_path)
+    assert any("900" in p for p in probs) and any(".example" in p for p in probs)

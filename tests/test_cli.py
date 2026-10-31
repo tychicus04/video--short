@@ -139,14 +139,29 @@ def test_visuals_cmd_rejects_bad_items(tmp_path, capsys):
     assert not Run(tmp_path).done("visuals")
 
 
-def test_visuals_cmd_rejects_unreadable_files_before_writing(tmp_path, capsys):
+def test_visuals_cmd_rejects_unknown_patch_ids(tmp_path, capsys):
     _visuals_run(tmp_path, ids=(1, 3), scenes=(0, 0))
+    (tmp_path / "visuals.json").write_text(json.dumps(
+        [{"kind": "patch", "ids": [1, 7], "box": [96, 96, 404, 144], "text": "tin-tuc.example"}]))
+    assert main(["visuals", str(tmp_path)]) == 2
+    assert "[7]" in capsys.readouterr().err and not (tmp_path / "frames").exists()
+
+
+def test_visuals_cmd_reports_unreadable_files_with_the_other_problems(tmp_path, capsys):
+    _visuals_run(tmp_path, ids=(1, 3, 4), scenes=(0, 0, 1))
     (tmp_path / "visuals").mkdir()
     (tmp_path / "visuals" / "3.svg").write_text("<svg")
-    (tmp_path / "visuals.json").write_text(json.dumps(
-        [{"kind": "svg", "id": 3, "file": "visuals/3.svg", "source": "https://a.example", "accessed": "2026-10-31"}]))
+    (tmp_path / "visuals" / "4.jpg").write_bytes(b"not a jpeg")
+    (tmp_path / "visuals.json").write_text(json.dumps([
+        {"kind": "patch", "ids": [7], "box": [96, 96, 404, 144], "text": "tin-tuc.example"},
+        {"kind": "svg", "id": 3, "file": "visuals/3.svg", "source": "https://a.example", "accessed": "2026-10-31"},
+        {"kind": "photo", "id": 4, "file": "visuals/4.jpg", "source": "https://a.example", "accessed": "2026-10-31",
+         "credit": "Nguồn: A"},
+    ]))
     assert main(["visuals", str(tmp_path)]) == 2
-    assert "visuals/3.svg" in capsys.readouterr().err and not (tmp_path / "frames").exists()
+    err = capsys.readouterr().err
+    assert "[7]" in err and "visuals/3.svg" in err and "visuals/4.jpg" in err  # one run shows all three
+    assert not (tmp_path / "frames").exists() and not (tmp_path / "frames.json").exists()
 
 
 def test_visuals_cmd_rejects_bad_json(tmp_path, capsys):
