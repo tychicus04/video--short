@@ -14,6 +14,8 @@ Bạn chọn và sửa hình cho một video ngắn đã có giọng đọc ti�
   (đọc `box` trên ảnh này). Chỉ có ảnh cho câu có lời Việt; câu để trống đã nhường thời gian cho câu trước.
 - `RUN/stills.json` (`id`, `t`, `scene`: các câu cùng `scene` dùng chung một cảnh NotebookLM), `RUN/script.vi.json`
   (lời Việt), `RUN/sentences.en.json`, `RUN/brief.vi.md` (chuẩn nội dung), `RUN/sources.md`.
+- `RUN/motion.json` nếu có: `lines` là các câu **đã có hình động** (vẽ tay, thay ảnh tĩnh khi ghép). Không chọn các câu đó cho
+  `svg`/`photo` (`vshort visuals` từ chối), nhưng **vẫn vá chữ sai** trên ảnh tĩnh của chúng: đó là ảnh dự phòng khi hình động bị bỏ.
 
 Bạn chỉ được ghi `RUN/visuals.json` và các file trong `RUN/visuals/`.
 

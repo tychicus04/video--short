@@ -12,7 +12,7 @@ Chạy tự động từ đầu đến cuối, không dừng hỏi tôi duyệt 
   hết phiên NotebookLM (mã 4), hết hạn mức Gemini trong ngày (mã 75), hoặc không tách được giọng đọc.
   Khi dừng: nói rõ tôi cần làm gì và gõ lại câu nào để chạy tiếp.
 - Cuối cùng trả lời bằng tiếng Việt: brief + tiêu đề đã dùng, đường dẫn final.mp4, lệnh scp về Mac,
-  danh sách chỗ vá chữ và hình tư liệu kèm nguồn, và tóm tắt review.md
+  danh sách chỗ vá chữ và hình tư liệu kèm nguồn, đoạn hình động (câu, cảnh), và tóm tắt review.md
   (chỗ lời Việt khác lời Anh, chỗ hình không khớp lời, đoạn cần xem kỹ).
 ```
 
