@@ -19,6 +19,7 @@ COMMON = frozenset("điện thoại máy tính chủ dữ liệu hệ thống ha
 MAX_SCENES, MAX_SEEN = 4, 4
 SYL = 0.2  # s per syllable: the voice before the timeline exists
 MIN_ACT = 0.3  # shortest action, even at the very end of a line
+LEAD_IN = 0.35  # what opens a scene starts drawing in the crossfade into it (half the gap + half the fade): no blank page
 ACTS = ("move", "bounce", "red", "pulse", "hide")
 DUR = {"draw": kit.DRAW, "red": kit.TURN, "hide": kit.HIDE, "move": kit.MOVE, "bounce": kit.MOVE}
 KINDS = kit.BOXED | kit.POINTED | {"path"}
@@ -303,10 +304,16 @@ def timed(doc: dict, placements: list[Placement], script: list[dict]) -> list[Sc
         t0, end = when(cue)
         return t0, math.inf if do == "pulse" else min(t0 + dur, max(end, t0 + MIN_ACT))
 
+    def draw(th: dict, first: int) -> kit.Act:
+        cue = th.get("when", {"line": first})
+        t0, t1 = act("draw", cue, kit.DRAW)
+        if cue["line"] == first and cue.get("phrase", 1) == 1 and not cue.get("at", 0):
+            t0 -= LEAD_IN
+        return kit.Act("draw", th["id"], t0, t1)
+
     out = []
     for sc in doc["scenes"]:
-        acts = [kit.Act("draw", th["id"], *act("draw", th.get("when", {"line": sc["lines"][0]}), kit.DRAW))
-                for th in sc["things"]]
+        acts = [draw(th, sc["lines"][0]) for th in sc["things"]]
         paths = {th["id"]: [tuple(p) for p in th["points"]] for th in sc["things"] if th["kind"] == "path"}
         for a in sc.get("acts", []):
             acts.append(kit.Act(a["do"], a["thing"], *act(a["do"], a["when"], a.get("dur", DUR.get(a["do"], 0))),

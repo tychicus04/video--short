@@ -20,9 +20,9 @@
     {"id": "crack2", "kind": "crack", "xy": [500, 700], "when": {"line": 12, "phrase": 2}}
    ],
    "acts": [
-    {"do": "bounce", "thing": "bug", "to": [500, 350], "when": {"line": 10, "phrase": 3}},
+    {"do": "bounce", "thing": "bug", "to": [500, 360], "when": {"line": 10, "phrase": 3}},
     {"do": "move", "thing": "bug", "to": [500, 525], "when": {"line": 11, "phrase": 3}},
-    {"do": "red", "thing": "system", "when": {"line": 11, "phrase": 3, "at": 0.6}},
+    {"do": "red", "thing": "system", "when": {"line": 12, "phrase": 2}},
     {"do": "move", "thing": "bug", "to": [500, 795], "when": {"line": 12, "phrase": 3}},
     {"do": "red", "thing": "kernel", "say": "đã bị chiếm", "when": {"line": 12, "phrase": 4}}
    ]},
@@ -36,8 +36,8 @@
    ],
    "acts": [
     {"do": "red", "thing": "phone", "when": {"line": 13, "phrase": 2}},
-    {"do": "move", "thing": "key", "to": [550, 590], "vanish": true, "dur": 0.9, "when": {"line": 13, "phrase": 4}},
-    {"do": "move", "thing": "msg", "to": [550, 590], "vanish": true, "when": {"line": 13, "phrase": 5, "at": 0.3}},
-    {"do": "move", "thing": "wallet", "to": [550, 590], "vanish": true, "when": {"line": 13, "phrase": 5, "at": 0.75}}
+    {"do": "move", "thing": "key", "to": [440, 590], "vanish": true, "dur": 0.9, "when": {"line": 13, "phrase": 4}},
+    {"do": "move", "thing": "msg", "to": [440, 590], "vanish": true, "when": {"line": 13, "phrase": 5, "at": 0.3}},
+    {"do": "move", "thing": "wallet", "to": [440, 590], "vanish": true, "when": {"line": 13, "phrase": 5, "at": 0.75}}
    ]}
  ]}

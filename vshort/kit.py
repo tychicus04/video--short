@@ -204,7 +204,7 @@ def _icon(name: str, x: float, y: float) -> list[list]:
     if name == "key":
         return [_rrect(x - 40, y - 40, x, y, 18), [(x - 6, y - 10), (x + 40, y + 36), (x + 26, y + 48), (x + 14, y + 36)]]
     if name == "message":
-        return [_rrect(x - 48, y - 40, x + 48, y + 22, 14) + [(x - 18, y + 22), (x - 34, y + 48), (x - 4, y + 22)]]
+        return [_rrect(x - 48, y - 40, x + 48, y + 22, 14), [(x - 18, y + 22), (x - 34, y + 48), (x - 4, y + 22)]]
     if name == "wallet":
         return [_rrect(x - 48, y - 34, x + 48, y + 36, 10),
                 [(x + 10, y - 8), (x + 48, y - 8), (x + 48, y + 14), (x + 10, y + 14), (x + 10, y - 8)]]

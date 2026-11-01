@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from vshort.fit import Placement, phrase_fracs
-from vshort.motion import clashes, load, sheet, timed, validate
+from vshort.motion import LEAD_IN, clashes, load, sheet, timed, validate
 
 EX = Path(__file__).resolve().parent.parent / "examples" / "motion"
 
@@ -15,7 +15,7 @@ def _ex(name):
 
 def _line_end(pl, a, sc):
     """End of the voice of the scene line whose span holds the act's start."""
-    p = next(p for p in pl if p.id in sc.lines and p.start - 1e-9 <= a.t0 <= p.start + p.dur + 1e-9)
+    p = next(p for p in pl if p.id in sc.lines and a.t0 <= p.start + p.dur + 1e-9)  # a scene's opening starts early
     return p.start + p.dur
 
 
@@ -29,8 +29,8 @@ def test_timed_follows_the_voice():
     doc, script = _ex("goi-tin")
     slow = [Placement(i, s, d) for i, s, d in [(1, 0.2, 3), (2, 3.5, 4), (3, 7.8, 4), (4, 12.1, 5), (5, 17.4, 3)]]
     fast = [Placement(p.id, p.start / 2, p.dur / 2) for p in slow]
-    t_slow = [a.t0 for sc in timed(doc, slow, script) for a in sc.acts]
-    t_fast = [a.t0 for sc in timed(doc, fast, script) for a in sc.acts]
+    t_slow = [a.t0 for sc in timed(doc, slow, script) for a in sc.acts if a.do != "draw"]
+    t_fast = [a.t0 for sc in timed(doc, fast, script) for a in sc.acts if a.do != "draw"]
     assert t_fast == pytest.approx([t / 2 for t in t_slow])
     pkt = next(a for a in timed(doc, slow, script)[0].acts if a.do == "move")  # {2, phrase 3, at 0.2}
     f0, f1 = phrase_fracs(script[1]["phrases"])[2]
@@ -89,3 +89,14 @@ def test_sheet_has_a_row_per_scene():
     doc, script = _ex("coruna")
     img = sheet(doc, script)
     assert img.width >= 4 * 240 and img.height >= 3 * 420
+
+
+def test_a_scene_starts_drawing_in_the_crossfade_into_it():
+    doc, script = _ex("goi-tin")
+    pl = [Placement(i, s, d) for i, s, d in [(1, 0.2, 3), (2, 3.5, 4), (3, 7.8, 4), (4, 12.1, 5), (5, 17.4, 3)]]
+    first, second = timed(doc, pl, script)
+    draws = {a.thing: a.t0 for a in first.acts if a.do == "draw"}
+    assert draws["a"] == pytest.approx(3.5 - LEAD_IN)  # {line 2}: the very start of the scene
+    assert draws["b"] > 3.5  # {line 2, phrase 2}: on its word
+    opening = [a.t0 for a in second.acts if a.do == "draw" and a.thing in ("a", "b")]
+    assert len(opening) == 2 and all(t == pytest.approx(7.8 - LEAD_IN) for t in opening)

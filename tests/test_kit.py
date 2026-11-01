@@ -65,3 +65,8 @@ def test_a_short_vanishing_move_is_whole_when_it_starts():
     keep = [Act("draw", "d", 0, 0.8), Act("move", "d", 1.0, 1.3, to=(200, 300))]
     gone = [keep[0], Act("move", "d", 1.0, 1.3, to=(200, 300), vanish=True)]
     assert np.array_equal(np.asarray(draw([DOT], gone, 1.0)), np.asarray(draw([DOT], keep, 1.0)))
+
+
+def test_the_message_icon_has_no_stroke_across_the_bubble():
+    msg = {"id": "m", "kind": "icon", "icon": "message", "xy": [360, 500]}  # bubble 312..408 x 445..507
+    assert _ink(draw([msg], [Act("draw", "m", 0, 0.8)], 1.0), (330, 455, 390, 495)) == 0
