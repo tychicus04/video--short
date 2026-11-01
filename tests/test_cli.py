@@ -1,4 +1,6 @@
 import json
+import shutil
+from pathlib import Path
 from subprocess import CompletedProcess
 
 import numpy as np
@@ -351,4 +353,64 @@ def test_status_lists_every_step_in_order(tmp_path, capsys):
     assert main(["status", str(tmp_path)]) == 0
     marks = [ln.split() for ln in capsys.readouterr().out.splitlines()]
     assert marks == [[("✓" if s == "tts" else "·"), s]
-                     for s in "new fetch detect text plates tts stills visuals timeline render".split()]
+                     for s in "new fetch detect text plates tts stills motion visuals timeline render".split()]
+
+
+EX = Path(__file__).resolve().parent.parent / "examples" / "motion"
+
+
+def _motion_run(tmp_path):
+    shutil.copy(EX / "coruna.json", tmp_path / "motion.json")
+    shutil.copy(EX / "coruna.script.json", tmp_path / "script.vi.json")
+
+
+def test_motion_cmd_without_a_file_means_no_animation(tmp_path, capsys):
+    (tmp_path / "script.vi.json").write_text(json.dumps([{"id": 1, "phrases": "a"}]))
+    (tmp_path / "motion").mkdir()
+    assert main(["motion", str(tmp_path)]) == 0
+    assert "Không có hình động." in capsys.readouterr().out
+    assert Run(tmp_path).done("motion") and not (tmp_path / "motion").exists()
+
+
+def test_motion_cmd_lists_every_problem(tmp_path, capsys):
+    _motion_run(tmp_path)
+    doc = json.loads((tmp_path / "motion.json").read_text())
+    doc["scenes"][0]["things"][1]["label"] = "WebKit"
+    doc["scenes"][0]["things"][0]["url"] = "apple.com"
+    (tmp_path / "motion.json").write_text(json.dumps(doc))
+    assert main(["motion", str(tmp_path)]) == 2
+    err = capsys.readouterr().err.lower()
+    assert "webkit" in err and "apple.com" in err and not Run(tmp_path).done("motion")
+
+
+def test_motion_cmd_writes_the_sheet(tmp_path, capsys):
+    _motion_run(tmp_path)
+    assert main(["motion", str(tmp_path)]) == 0
+    assert (tmp_path / "motion" / "sheet.png").exists() and "3 cảnh, câu 7–13" in capsys.readouterr().out
+
+
+def test_visuals_cmd_rejects_a_reference_on_an_animated_line(tmp_path, capsys):
+    _visuals_run(tmp_path, ids=(1, 3), scenes=(0, 0))
+    (tmp_path / "motion.json").write_text(json.dumps({"lines": [3], "note": "n", "scenes": []}))
+    (tmp_path / "visuals").mkdir()
+    Image.new("RGB", (500, 300)).save(tmp_path / "visuals" / "3.jpg")
+    (tmp_path / "visuals.json").write_text(json.dumps([{"kind": "photo", "id": 3, "file": "visuals/3.jpg",
+        "source": "https://a.example/p", "accessed": "2026-11-01", "credit": "Nguồn: A", "note": "n"}]))
+    assert main(["visuals", str(tmp_path)]) == 2
+    assert "hình động" in capsys.readouterr().err
+
+
+def test_visuals_cmd_still_patches_an_animated_line(tmp_path):
+    _visuals_run(tmp_path, ids=(1, 3), scenes=(0, 0))
+    (tmp_path / "motion.json").write_text(json.dumps({"lines": [3], "note": "n", "scenes": []}))
+    (tmp_path / "visuals.json").write_text(json.dumps(
+        [{"kind": "patch", "ids": [3], "box": [96, 96, 404, 144], "text": "tin-tuc.example", "note": "n"}]))
+    assert main(["visuals", str(tmp_path)]) == 0
+
+
+def test_render_cmd_rejects_a_stale_motion_file(tmp_path, capsys):
+    _render_run(tmp_path, (1, 3))
+    (tmp_path / "final.mp4").write_bytes(b"good")
+    (tmp_path / "motion.json").write_text(json.dumps({"lines": [3, 5], "note": "n", "scenes": []}))
+    assert main(["render", str(tmp_path)]) == 2
+    assert "vshort motion" in capsys.readouterr().err and (tmp_path / "final.mp4").read_bytes() == b"good"

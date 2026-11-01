@@ -9,6 +9,7 @@ from pathlib import Path
 
 from PIL import Image, ImageOps
 
+from vshort import motion
 from vshort.captions import Fragment, detect_fragments, write_sheets
 from vshort.fit import Placement, build_narration, phrase_times, sequence, total
 from vshort.media import frame_at
@@ -178,6 +179,47 @@ def cmd_stills(a) -> int:
     return OK
 
 
+BAD_JSON = object()
+
+
+def _motion(run: Run):
+    """motion.json, or None when the video has no animation; prints why and returns BAD_JSON on bad JSON."""
+    try:
+        return motion.load(run.file("motion.json"))
+    except ValueError as e:
+        _err(f"motion.json không phải JSON hợp lệ: {e}")
+        return BAD_JSON
+
+
+def cmd_motion(a) -> int:
+    run = Run(a.run)
+    out = run.file("motion")
+    doc = _motion(run)
+    if doc is BAD_JSON:
+        return BAD_INPUT
+    if doc is None:
+        shutil.rmtree(out, ignore_errors=True)  # a sheet of an animation that is gone must not be looked at
+        print("Không có hình động.")
+        run.mark("motion")
+        return OK
+    src = run.file("visuals.json")
+    try:
+        refs = json.loads(src.read_text(encoding="utf-8")) if src.exists() else None
+    except ValueError:
+        refs = None  # `vshort visuals` reports a broken visuals.json itself
+    script = run.read("script.vi.json")
+    probs = motion.validate(doc, script, refs if isinstance(refs, list) else None)
+    for p in probs:
+        _err(p)
+    if probs:
+        return BAD_INPUT
+    out.mkdir(exist_ok=True)
+    motion.sheet(doc, script).save(out / "sheet.png")
+    print(f"{len(doc['scenes'])} cảnh, câu {doc['lines'][0]}–{doc['lines'][-1]}; ảnh để xem: {out / 'sheet.png'}")
+    run.mark("motion")
+    return OK
+
+
 def cmd_visuals(a) -> int:
     run = Run(a.run)
     stills = run.read("stills.json")
@@ -192,6 +234,10 @@ def cmd_visuals(a) -> int:
         return BAD_INPUT
     ids = {s["id"] for s in stills}
     probs = validate(items, ids, run.path)
+    doc = _motion(run)
+    if doc is BAD_JSON:
+        return BAD_INPUT
+    probs += motion.clashes(items, motion.lines(doc))
     probs += [f"thiếu stills/{s['id']}.png (chạy lại `vshort stills`)" for s in stills
               if not run.file(f"stills/{s['id']}.png").exists()]
     refs = {}
@@ -294,10 +340,23 @@ def cmd_render(a) -> int:
     if gone := [f["file"] for f in frames if f["id"] in ids and not run.file(f["file"]).exists()]:
         _err("thiếu file khung hình: " + ", ".join(gone) + " (chạy lại `vshort visuals`)")
         return BAD_INPUT
+    script = run.read("script.vi.json")
+    doc = _motion(run)
+    if doc is BAD_JSON:
+        return BAD_INPUT
+    scenes = []
+    if doc is not None:
+        if probs := motion.validate(doc, script):
+            for p in probs:
+                _err(p)
+            _err("motion.json không còn khớp kịch bản (chạy lại `vshort motion`)")
+            return BAD_INPUT
+        scenes = motion.timed(doc, placements, script)
+    animated = {i: k for k, sc in enumerate(scenes) for i in sc.lines}
     ass = run.file("subs.ass")
-    ass.write_text(build_ass(phrase_times(placements, run.read("script.vi.json"))), encoding="utf-8")
-    render_video(segments(placements, frames, run.path, fitted["total"]), ass, run.file("narration.wav"),
-                 fitted["total"], run.file("final.mp4"))
+    ass.write_text(build_ass(phrase_times(placements, script)), encoding="utf-8")
+    render_video(segments(placements, frames, run.path, fitted["total"], animated), ass, run.file("narration.wav"),
+                 fitted["total"], run.file("final.mp4"), scenes)
     run.mark("render")
     print(run.file("final.mp4"))
     return OK
@@ -305,7 +364,7 @@ def cmd_render(a) -> int:
 
 def cmd_status(a) -> int:
     run = Run(a.run)
-    steps = ["new", "fetch", "detect", "text", "plates", "tts", "stills", "visuals", "timeline", "render"]
+    steps = ["new", "fetch", "detect", "text", "plates", "tts", "stills", "motion", "visuals", "timeline", "render"]
     for s in steps:
         print(f"{'✓' if run.done(s) else '·'} {s}")
     return OK
@@ -325,7 +384,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--prompt", help="video description passed to NotebookLM")
     p.set_defaults(fn=cmd_fetch)
     for name, fn in [("detect", cmd_detect), ("text", cmd_text), ("check", cmd_check), ("plates", cmd_plates),
-                     ("tts", cmd_tts), ("stills", cmd_stills), ("visuals", cmd_visuals), ("timeline", cmd_timeline),
+                     ("tts", cmd_tts), ("stills", cmd_stills), ("motion", cmd_motion), ("visuals", cmd_visuals), ("timeline", cmd_timeline),
                      ("render", cmd_render), ("status", cmd_status)]:
         p = sub.add_parser(name)
         p.add_argument("run")
