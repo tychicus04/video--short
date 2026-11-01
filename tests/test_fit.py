@@ -3,7 +3,7 @@ from pathlib import Path
 
 import numpy as np
 
-from vshort.fit import Placement, build_narration, phrase_times, sequence, total
+from vshort.fit import Placement, build_narration, phrase_fracs, phrase_times, sequence, total
 from vshort.tts import Clip
 
 
@@ -19,6 +19,11 @@ def test_phrase_times_contiguous():
     out = phrase_times(p, [{"id": 1, "phrases": "Câu đầu trọn vẹn"}, {"id": 2, "phrases": "một hai | ba bốn"}])
     assert out[0][0] == 0.0 and out[0][2] == "Câu đầu trọn vẹn"
     assert [round(x[0], 2) for x in out[1:]] == [3.0, 3.5] and out[0][1] == out[1][0]
+
+
+def test_phrase_fracs_split_by_syllables():
+    assert phrase_fracs("một hai | ba") == [(0.0, 2 / 3), (2 / 3, 1.0)]
+    assert phrase_fracs("một") == [(0.0, 1.0)]
 
 
 def _tone(path: Path, seconds: float) -> Path:

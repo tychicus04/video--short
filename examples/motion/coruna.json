@@ -1,0 +1,43 @@
+{"lines": [7, 8, 9, 10, 11, 12, 13],
+ "note": "Câu 7–13 nói mã độc đi từ trang web, qua sandbox, tới lõi rồi lấy dữ liệu.",
+ "scenes": [
+  {"lines": [7, 8, 9], "idea": "trang web hợp pháp mang mã độc",
+   "things": [
+    {"id": "phone", "kind": "phone", "box": [180, 170, 540, 1010], "label": "trang web hợp pháp", "color": "green", "url": "tin-tuc.example", "when": {"line": 7}},
+    {"id": "bug", "kind": "dot", "xy": [400, 550], "label": "mã độc", "when": {"line": 8, "phrase": 2}}
+   ],
+   "acts": [
+    {"do": "pulse", "thing": "bug", "when": {"line": 9}}
+   ]},
+  {"lines": [10, 11, 12], "idea": "mã độc thoát sandbox, leo xuống lõi",
+   "things": [
+    {"id": "safari", "kind": "box", "box": [120, 160, 600, 350], "label": "Safari", "when": {"line": 10}},
+    {"id": "system", "kind": "box", "box": [120, 430, 600, 620], "label": "Hệ thống", "when": {"line": 10, "at": 0.4}},
+    {"id": "kernel", "kind": "box", "box": [120, 700, 600, 890], "label": "Lõi (kernel)", "when": {"line": 10, "at": 0.8}},
+    {"id": "sandbox", "kind": "wall", "box": [95, 135, 625, 375], "label": "sandbox", "color": "blue", "when": {"line": 10, "phrase": 2}},
+    {"id": "bug", "kind": "dot", "xy": [500, 255], "when": {"line": 10, "phrase": 2, "at": 0.5}},
+    {"id": "crack1", "kind": "crack", "xy": [500, 375], "when": {"line": 11, "phrase": 2, "at": 0.5}},
+    {"id": "crack2", "kind": "crack", "xy": [500, 700], "when": {"line": 12, "phrase": 2}}
+   ],
+   "acts": [
+    {"do": "bounce", "thing": "bug", "to": [500, 350], "when": {"line": 10, "phrase": 3}},
+    {"do": "move", "thing": "bug", "to": [500, 525], "when": {"line": 11, "phrase": 3}},
+    {"do": "red", "thing": "system", "when": {"line": 11, "phrase": 3, "at": 0.6}},
+    {"do": "move", "thing": "bug", "to": [500, 795], "when": {"line": 12, "phrase": 3}},
+    {"do": "red", "thing": "kernel", "say": "đã bị chiếm", "when": {"line": 12, "phrase": 4}}
+   ]},
+  {"lines": [13], "idea": "dữ liệu bay sang hacker",
+   "things": [
+    {"id": "phone", "kind": "phone", "box": [60, 260, 300, 960], "label": "điện thoại", "when": {"line": 13}},
+    {"id": "hacker", "kind": "box", "box": [440, 500, 660, 680], "label": "hacker", "when": {"line": 13, "at": 0.1}},
+    {"id": "key", "kind": "icon", "xy": [180, 400], "label": "mật khẩu", "icon": "key", "when": {"line": 13, "phrase": 3}},
+    {"id": "msg", "kind": "icon", "xy": [180, 600], "label": "tin nhắn", "icon": "message", "when": {"line": 13, "phrase": 4, "at": 0.5}},
+    {"id": "wallet", "kind": "icon", "xy": [180, 800], "label": "ví tiền", "icon": "wallet", "when": {"line": 13, "phrase": 5, "at": 0.15}}
+   ],
+   "acts": [
+    {"do": "red", "thing": "phone", "when": {"line": 13, "phrase": 2}},
+    {"do": "move", "thing": "key", "to": [550, 590], "vanish": true, "dur": 0.9, "when": {"line": 13, "phrase": 4}},
+    {"do": "move", "thing": "msg", "to": [550, 590], "vanish": true, "when": {"line": 13, "phrase": 5, "at": 0.3}},
+    {"do": "move", "thing": "wallet", "to": [550, 590], "vanish": true, "when": {"line": 13, "phrase": 5, "at": 0.75}}
+   ]}
+ ]}

@@ -1,0 +1,107 @@
+[
+ {
+  "id": 1,
+  "phrases": "iPhone bị hack chỉ vì mở 1 trang web",
+  "note": "Câu đầu = tiêu đề trong brief (thay 'No link tapped.'); không có '|'."
+ },
+ {
+  "id": 2,
+  "phrases": "",
+  "note": "EN: 'No app installed.' Tiêu đề (chỉ mở 1 trang web, không làm gì khác) đã nói ý này; để trống, khung giây nhường cho câu đầu."
+ },
+ {
+  "id": 3,
+  "phrases": "Chuỗi khai thác zero-click | nghĩa là iPhone của bạn | bị chiếm quyền ngay lập tức.",
+  "note": ""
+ },
+ {
+  "id": 4,
+  "phrases": "Hai vũ khí mạng cấp nhà nước, | Coruna và DarkSword, | vừa bị lộ trên mạng.",
+  "note": ""
+ },
+ {
+  "id": 5,
+  "phrases": "Chúng không cần | bạn mắc sai lầm.",
+  "note": ""
+ },
+ {
+  "id": 6,
+  "phrases": "Giả sử | bạn đang dùng iOS cũ.",
+  "note": ""
+ },
+ {
+  "id": 7,
+  "phrases": "Bạn mở một trang web | hợp pháp đã bị nhiễm ngầm.",
+  "note": ""
+ },
+ {
+  "id": 8,
+  "phrases": "Ngay khi tải xong, | mã độc chạy âm thầm | trong Safari.",
+  "note": ""
+ },
+ {
+  "id": 9,
+  "phrases": "Đó là tấn công zero-click, | bạn không làm gì thêm.",
+  "note": ""
+ },
+ {
+  "id": 10,
+  "phrases": "Apple thường cô lập | trình duyệt trong sandbox, | không cho mã web | chạm vào điện thoại.",
+  "note": ""
+ },
+ {
+  "id": 11,
+  "phrases": "Nhưng mã độc này | xâu chuỗi nhiều lỗ hổng | để thoát khỏi sandbox đó.",
+  "note": ""
+ },
+ {
+  "id": 12,
+  "phrases": "Nó leo thang đặc quyền | từng bước, | cho đến khi chiếm được | lõi hệ điều hành, tức kernel.",
+  "note": ""
+ },
+ {
+  "id": 13,
+  "phrases": "Khi lõi bị chiếm, | nó vượt nốt | các lớp bảo mật cuối, | đánh cắp mật khẩu, | tin nhắn và ví tiền mã hóa | chỉ trong vài giây.",
+  "note": ""
+ },
+ {
+  "id": 14,
+  "phrases": "Chúng từng là | vũ khí gián điệp | triệu đô.",
+  "note": ""
+ },
+ {
+  "id": 15,
+  "phrases": "Giờ mã đã lên GitHub, | kẻ lừa đảo tài chính | đang dùng.",
+  "note": ""
+ },
+ {
+  "id": 16,
+  "phrases": "Nhưng Apple đã vá | đúng các lỗ hổng này.",
+  "note": ""
+ },
+ {
+  "id": 17,
+  "phrases": "Trên iOS mới nhất, | chuỗi khai thác | sập ngay khi xâm nhập.",
+  "note": ""
+ },
+ {
+  "id": 18,
+  "phrases": "Vậy trang web | bị nhiễm lúc đầu | thì sao?",
+  "note": ""
+ },
+ {
+  "id": 19,
+  "phrases": "Nếu cập nhật | hoặc bật Chế độ phong tỏa, | cuộc tấn công | hoàn toàn vô hại.",
+  "note": "Dùng nhãn Apple tiếng Việt 'Chế độ phong tỏa' (Lockdown Mode), support.apple.com/vi-vn/105120."
+ },
+ {
+  "id": 20,
+  "phrases": "Bản vá chỉ bảo vệ | khi bạn cài.",
+  "note": "Brief: 'Bản vá chỉ bảo vệ bạn khi bạn cài nó.' (10 âm tiết, vượt khung 8); rút còn 8, bỏ 'bạn' thứ nhất và 'nó', giữ nguyên ý câu chốt."
+ },
+ {
+  "id": 21,
+  "phrases": "Cài đặt › Cài đặt chung › | Cập nhật phần mềm ngay, | chia sẻ cho người thân.",
+  "note": "EN: 'Go to Settings, General, Software Update today, and share this warning.' Theo brief thêm 'cho người thân'; khung chỉ 15 âm tiết nên bỏ 'Vào' và đổi 'hôm nay' thành 'ngay'."
+ }
+]

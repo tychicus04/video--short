@@ -1,0 +1,27 @@
+{"lines": [2, 3],
+ "note": "Câu 2–3 nói gói tin đi từ A tới B và bị nghe lén.",
+ "scenes": [
+  {"lines": [2], "idea": "gói tin đi từ A tới B",
+   "things": [
+    {"id": "a", "kind": "computer", "box": [50, 420, 250, 640], "label": "A", "when": {"line": 2}},
+    {"id": "b", "kind": "computer", "box": [470, 420, 670, 640], "label": "B", "when": {"line": 2, "phrase": 2}},
+    {"id": "wire", "kind": "path", "points": [[255, 510], [465, 510]], "arrow": true, "when": {"line": 2, "phrase": 2, "at": 0.3}},
+    {"id": "pkt", "kind": "dot", "xy": [255, 510], "label": "gói tin", "color": "blue", "when": {"line": 2, "phrase": 3}}
+   ],
+   "acts": [
+    {"do": "move", "thing": "pkt", "path": "wire", "when": {"line": 2, "phrase": 3, "at": 0.2}, "vanish": true}
+   ]},
+  {"lines": [3], "idea": "kẻ nghe lén chép gói tin",
+   "things": [
+    {"id": "a", "kind": "computer", "box": [50, 420, 250, 640], "label": "A", "when": {"line": 3}},
+    {"id": "b", "kind": "computer", "box": [470, 420, 670, 640], "label": "B", "when": {"line": 3}},
+    {"id": "wire", "kind": "path", "points": [[255, 510], [465, 510]], "arrow": true, "when": {"line": 3}},
+    {"id": "spy", "kind": "person", "xy": [360, 800], "label": "kẻ nghe lén", "when": {"line": 3, "phrase": 2}},
+    {"id": "pkt", "kind": "dot", "xy": [255, 510], "color": "blue", "when": {"line": 3}},
+    {"id": "copy", "kind": "dot", "xy": [360, 510], "color": "red", "when": {"line": 3, "phrase": 3}}
+   ],
+   "acts": [
+    {"do": "move", "thing": "pkt", "path": "wire", "vanish": true, "when": {"line": 3, "phrase": 2, "at": 0.5}},
+    {"do": "move", "thing": "copy", "to": [360, 700], "vanish": true, "when": {"line": 3, "phrase": 3, "at": 0.3}}
+   ]}
+ ]}

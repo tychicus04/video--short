@@ -60,17 +60,23 @@ def build_narration(placements: list[Placement], clips: list[Clip], total: float
         w.writeframes(np.clip(track, -32768, 32767).astype(np.int16).tobytes())
 
 
+def phrase_fracs(phrases: str) -> list[tuple[float, float]]:
+    """Start and end of each `|` phrase of a line, as fractions of the line, by share of syllables."""
+    weights = [max(syllables(x), 1) for x in phrases.split("|")]
+    ends = np.cumsum(weights) / sum(weights)
+    return [(float(a), float(b)) for a, b in zip([0.0, *ends[:-1]], ends)]
+
+
 def phrase_times(placements: list[Placement], script: list[dict]) -> list[tuple[float, float, str]]:
     """Subtitle entries: the first sentence whole, then each `|` phrase timed by its share of syllables."""
     text = {row["id"]: row["phrases"] for row in script}
     entries = []
     for k, p in enumerate(placements):
-        phrases = [text[p.id].replace("|", " ").strip()] if k == 0 else [x.strip() for x in text[p.id].split("|")]
-        weights = [max(syllables(x), 1) for x in phrases]
-        t = p.start
-        for ph, w in zip(phrases, weights):
-            entries.append([t, ph])
-            t += p.dur * w / sum(weights)
+        if k == 0:
+            entries.append([p.start, text[p.id].replace("|", " ").strip()])
+            continue
+        for ph, (f0, _) in zip(text[p.id].split("|"), phrase_fracs(text[p.id])):
+            entries.append([p.start + p.dur * f0, ph.strip()])
     entries[0][0] = 0.0
     last_end = placements[-1].start + placements[-1].dur
     ends = [e[0] for e in entries[1:]] + [last_end]
