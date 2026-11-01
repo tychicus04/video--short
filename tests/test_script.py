@@ -15,6 +15,10 @@ def test_group_sentences_windows():
     assert [(x.start, x.end, x.en) for x in s] == [(0, 2, "Imagine this."), (2, 3.5, "Update now!")]
 
 
+def test_sentence_ends_inside_closing_quote():
+    fr = [Fragment(0, 0, 1, 0, 0, '"Quantum-safe,'), Fragment(1, 1, 2, 0, 0, 'no rebuild."'), Fragment(2, 2, 3, 0, 0, "We use it.")]
+    assert [x.en for x in group_sentences(fr)] == ['"Quantum-safe, no rebuild."', "We use it."]
+
 def test_syllables():
     assert syllables("Đó là tấn công | *Zero-click.*") == 5
 

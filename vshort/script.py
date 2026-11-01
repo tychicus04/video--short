@@ -34,7 +34,7 @@ def group_sentences(frags: list[Fragment]) -> list[Sentence]:
     for f in frags:
         start = f.start if start is None else start
         words.append(f.text)
-        if f.text.rstrip().endswith((".", "?", "!", "…")):
+        if f.text.rstrip().rstrip("\"”’)").endswith((".", "?", "!", "…")):  # '…needed."' ends a sentence too
             sents.append(Sentence(len(sents) + 1, start, f.end, " ".join(words)))
             words, start = [], None
     if words:
