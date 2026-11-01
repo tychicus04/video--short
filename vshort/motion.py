@@ -106,7 +106,7 @@ def _thing_problems(th, scene_lines: list[int], text: dict[int, str], said: set[
     what = f"thing {tid!r}"
     if not isinstance(tid, str) or not tid:
         return ["thing thiếu id (chuỗi)"]
-    if kind not in KINDS:
+    if not isinstance(kind, str) or kind not in KINDS:
         return [f"{what}: kind {kind!r} không hợp lệ ({', '.join(sorted(KINDS))})"]
     probs = []
     if kind in kit.BOXED:
@@ -122,13 +122,13 @@ def _thing_problems(th, scene_lines: list[int], text: dict[int, str], said: set[
     else:
         if not _xy(th.get("xy")):
             return [f"{what}: xy phải là [x, y]"]
-        if kind == "icon" and th.get("icon") not in kit.ICONS:
+        if kind == "icon" and (not isinstance(th.get("icon"), str) or th["icon"] not in kit.ICONS):
             return [f"{what}: icon {th.get('icon')!r} không hợp lệ ({', '.join(sorted(kit.ICONS))})"]
         if kind == "text" and not th.get("label"):
             return [f"{what}: text cần label"]
         if kind == "crack" and th.get("label"):
             probs.append(f"{what}: crack không có nhãn")
-    if th.get("color", "ink") not in kit.COLORS:
+    if not isinstance(th.get("color", "ink"), str) or th.get("color", "ink") not in kit.COLORS:
         probs.append(f"{what}: color {th['color']!r} không hợp lệ ({', '.join(kit.COLORS)})")
     if "label" in th:
         found = _text_problems("nhãn", th["label"], said)
@@ -157,7 +157,7 @@ def _act_problems(m: int, a, things: dict[str, dict], scene_lines, text, said) -
     what = f"act {m} ({do})"
     if do not in ACTS:
         return [f"act {m}: do {do!r} không hợp lệ ({', '.join(ACTS)})"]
-    if tid not in things:
+    if not isinstance(tid, str) or tid not in things:
         return [f"{what}: thing {tid!r} không có trong cảnh"]
     th, probs = things[tid], []
     if do in ("move", "bounce") and th["kind"] not in kit.MOVERS:
@@ -165,12 +165,18 @@ def _act_problems(m: int, a, things: dict[str, dict], scene_lines, text, said) -
     if do == "pulse" and th["kind"] != "dot":
         probs.append(f"{what}: chỉ dot mới pulse")
     if "say" in a:
-        probs += ([f"{what}: say chỉ dùng với red"] if do != "red" else
-                  [f"{what}: {p}" for p in _text_problems("say", a["say"], said)])
+        if do != "red" or th["kind"] != "box":
+            probs.append(f"{what}: say chỉ dùng với red trên một box")
+        elif th["box"][3] - th["box"][1] < kit.SAY_BOX_H:
+            probs.append(f"{what}: box {tid!r} thấp hơn {kit.SAY_BOX_H} px, không đủ chỗ cho say dưới nhãn")
+        else:
+            probs += [f"{what}: {p}" for p in _text_problems("say", a["say"], said)]
+    if do not in ("move", "bounce") and ("to" in a or "path" in a):
+        probs.append(f"{what}: to và path chỉ dùng với move hoặc bounce")
     if "vanish" in a and (do != "move" or not isinstance(a["vanish"], bool)):
         probs.append(f"{what}: vanish chỉ dùng với move, true hoặc false")
-    if "dur" in a and not (_num(a["dur"]) and 0 < a["dur"] <= 5):
-        probs.append(f"{what}: dur phải là số giây trong (0, 5]")
+    if "dur" in a and not (_num(a["dur"]) and MIN_ACT <= a["dur"] <= 5):
+        probs.append(f"{what}: dur phải là số giây từ {MIN_ACT} đến 5")
     if do in ("move", "bounce"):
         has_to, has_path = "to" in a, "path" in a
         if do == "bounce" and (has_path or not has_to):
@@ -179,7 +185,7 @@ def _act_problems(m: int, a, things: dict[str, dict], scene_lines, text, said) -
             probs.append(f"{what}: move cần đúng một trong to hoặc path")
         elif has_to and not _xy(a["to"]):
             probs.append(f"{what}: to phải là [x, y]")
-        elif has_path and things.get(a["path"], {}).get("kind") != "path":
+        elif has_path and (not isinstance(a["path"], str) or things.get(a["path"], {}).get("kind") != "path"):
             probs.append(f"{what}: path {a['path']!r} không phải path trong cảnh")
         elif th["kind"] in kit.MOVERS:
             ends = [a["to"]] if has_to else things[a["path"]]["points"]

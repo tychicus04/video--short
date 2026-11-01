@@ -53,3 +53,15 @@ def test_red_turns_the_outline_red():
     acts = [Act("draw", "p", 0, 0.8), Act("red", "p", 1.0, 1.6, say="đã bị chiếm")]
     assert not _red(draw([PHONE], acts, 0.9), (170, 160, 550, 1020))
     assert _red(draw([PHONE], acts, 2.0), (170, 160, 550, 1020))
+
+
+def test_a_flying_icon_never_leaves_the_top_of_the_safe_area():
+    key = {"id": "k", "kind": "icon", "icon": "key", "xy": [100, 130], "label": "mật khẩu"}
+    acts = [Act("draw", "k", 0, 0.8), Act("move", "k", 1.0, 2.0, to=(620, 130))]
+    assert all(_ink(draw([key], acts, t), (0, 0, W, 58)) == 0 for t in (1.3, 1.5, 1.7))
+
+
+def test_a_short_vanishing_move_is_whole_when_it_starts():
+    keep = [Act("draw", "d", 0, 0.8), Act("move", "d", 1.0, 1.3, to=(200, 300))]
+    gone = [keep[0], Act("move", "d", 1.0, 1.3, to=(200, 300), vanish=True)]
+    assert np.array_equal(np.asarray(draw([DOT], gone, 1.0)), np.asarray(draw([DOT], keep, 1.0)))

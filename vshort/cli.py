@@ -191,6 +191,12 @@ def _motion(run: Run):
         return BAD_JSON
 
 
+def _said(doc: dict, script: list[dict]) -> dict[str, str]:
+    """The words of the animated lines, as checked by `vshort motion`."""
+    text = {str(r["id"]): r["phrases"] for r in script}
+    return {str(i): text.get(str(i), "") for i in doc["lines"]}
+
+
 def cmd_motion(a) -> int:
     run = Run(a.run)
     out = run.file("motion")
@@ -215,6 +221,7 @@ def cmd_motion(a) -> int:
         return BAD_INPUT
     out.mkdir(exist_ok=True)
     motion.sheet(doc, script).save(out / "sheet.png")
+    run.write("motion/lines.json", _said(doc, script))  # render checks the scenes still sit on these words
     print(f"{len(doc['scenes'])} cảnh, câu {doc['lines'][0]}–{doc['lines'][-1]}; ảnh để xem: {out / 'sheet.png'}")
     run.mark("motion")
     return OK
@@ -350,6 +357,14 @@ def cmd_render(a) -> int:
             for p in probs:
                 _err(p)
             _err("motion.json không còn khớp kịch bản (chạy lại `vshort motion`)")
+            return BAD_INPUT
+        checked = run.file("motion/lines.json")
+        if not checked.exists() or run.read("motion/lines.json") != _said(doc, script):
+            _err("kịch bản đã đổi sau lần kiểm hình động cuối (chạy lại `vshort motion`)")
+            return BAD_INPUT
+        if missing := sorted(set(doc["lines"]) - ids):
+            _err("timeline.json thiếu các câu có hình động: " + ", ".join(map(str, missing))
+                 + " (chạy lại `vshort tts` rồi `vshort timeline`)")
             return BAD_INPUT
         scenes = motion.timed(doc, placements, script)
     animated = {i: k for k, sc in enumerate(scenes) for i in sc.lines}

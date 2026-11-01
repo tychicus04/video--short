@@ -68,11 +68,13 @@ video (code đo bằng số âm tiết). Lời không có câu nào giải thíc
   - `color`: `ink` (mặc định), `green` (hợp pháp, an toàn), `blue` (lớp bảo vệ, dữ liệu bình thường), `red` (tấn công). `dot` mặc định
     đỏ, `wall` mặc định xanh lơ. Màu tô nhãn (và chấm).
   - Cỡ gợi ý: điện thoại 240–360 rộng; hộp/tầng 480×190; máy tính 200×220; icon chiếm khoảng 100×100 cộng nhãn; người khoảng 80×160 cộng nhãn.
-- **Act** (`do`, `thing`, `when`, tùy chọn `dur` giây trong (0, 5]):
+- **Act** (`do`, `thing`, `when`, tùy chọn `dur` giây từ 0,3 đến 5):
   - `move`: chấm hoặc icon đi tới `to` `[x, y]` (bay cong nhẹ), hoặc chạy theo `path` (id của một `path` trong cảnh); `"vanish": true`
-    thì nó mờ đi khi tới nơi (không còn tính vào 4 thứ). Mặc định 1,2 giây.
+    thì nó mờ đi khi tới nơi (không còn tính vào 4 thứ). Mặc định 1,2 giây. Đường bay cong lên một chút nhưng không vượt mép trên
+    vùng an toàn. `to`/`path` chỉ dùng với `move`/`bounce`.
   - `bounce`: chấm dội về phía `to` rồi quay lại (bị chặn).
-  - `red`: thứ đó chuyển đỏ (bị chiếm); tùy chọn `say` là một dòng chữ đỏ ngắn hiện dưới nhãn (ví dụ "đã bị chiếm"), tốt nhất dùng với `box`.
+  - `red`: thứ đó chuyển đỏ (bị chiếm); tùy chọn `say` là một dòng chữ đỏ ngắn hiện dưới nhãn (ví dụ "đã bị chiếm"), chỉ dùng với
+    `box` cao từ 100 px.
   - `pulse`: chấm nhấp nháy từ lúc đó (đang hoạt động âm thầm).
   - `hide`: xóa thứ đó.
   - Mọi hành động (trừ `pulse`) kết thúc trong câu của nó; không bắt đầu trước khi thứ đó được vẽ hay sau khi nó bị xóa. Vẽ ra mất 0,8 giây:

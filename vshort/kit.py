@@ -21,6 +21,8 @@ POINTED = {"person", "icon", "dot", "text", "crack"}  # take `xy`
 ICONS = {"key", "message", "wallet", "file", "lock", "mail"}
 MOVERS = {"dot", "icon"}
 DOT_R = 13
+SAY_BOX_H = 100  # a box needs this height to hold its label and a say line under it
+TOP = {"dot": DOT_R, "icon": 55}  # ink above a mover's centre
 
 
 @dataclass
@@ -265,7 +267,7 @@ def _position(thing: dict, acts: list[Act], t: float) -> tuple[float, float]:
         else:
             e, (fx, fy), (tx, ty) = ease(u), pos, a.to
             arc = min(120, 0.25 * math.hypot(tx - fx, ty - fy)) * math.sin(math.pi * e)
-            pos = (fx + (tx - fx) * e, fy + (ty - fy) * e - arc)
+            pos = (fx + (tx - fx) * e, max(fy + (ty - fy) * e - arc, SAFE[1] + TOP[thing["kind"]]))  # arc stays in SAFE
     return pos
 
 
@@ -276,8 +278,8 @@ def _shown(thing: dict, acts: list[Act], t: float) -> float:
     for a in mine:
         if a.do == "hide" and t >= a.t0:
             on *= 1 - ease((t - a.t0) / max(a.t1 - a.t0, 1e-6))
-        elif a.do == "move" and a.vanish and t >= a.t1 - HIDE:
-            on *= 1 - ease((t - (a.t1 - HIDE)) / HIDE)
+        elif a.do == "move" and a.vanish and t >= (fade := max(a.t0, a.t1 - HIDE)):
+            on *= 1 - ease((t - fade) / max(a.t1 - fade, 1e-6))
     return on
 
 
@@ -320,15 +322,14 @@ def _draw_thing(img: Image.Image, d: ImageDraw.ImageDraw, thing: dict, acts: lis
             return
         lx, ly = _label_at(thing)
     label, em = thing.get("label", ""), label_em(thing) or MIN_LABEL_EM
-    say = next((a.say for a in reversed(reds) if a.say), "")
-    if say and kind == "box":
+    say = next((a.say for a in reversed(reds) if a.say), "") if kind == "box" else ""
+    if say:
         ly -= 0.55 * em
     _write(img, (lx, ly), label, em, (f - 0.3) / 0.7, color)
     if r:
         _write(img, (lx, ly), label, em, r * 2, RED)
     if say:
-        sy = ly + 1.1 * em if kind == "box" else bbox(thing)[3] + 34
-        _write(img, (lx, sy), say, SMALL_EM, r * 2 - 0.4, RED)
+        _write(img, (lx, ly + 1.1 * em), say, SMALL_EM, r * 2 - 0.4, RED)
 
 
 def draw(things: list[dict], acts: list[Act], t: float) -> Image.Image:

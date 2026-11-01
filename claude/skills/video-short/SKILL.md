@@ -63,7 +63,8 @@ Mọi bước cố định là lệnh `vshort`; sáu bước cần suy xét giao
    chạy `vshort visuals $RUN`).
 11. **Ghép & soát** — chờ bước 6 và bước 10 xong (có `tts.json` và `frames.json`). `vshort timeline $RUN` (xếp giọng đọc nối tiếp,
    ra `timeline.json` và `narration.wav`; không gọi TTS; mã 2 "giọng đọc cũ không khớp kịch bản" → chạy lại `vshort tts $RUN`),
-   rồi `vshort render $RUN` (ra `final.mp4`; lỗi thì giữ bản cũ; mất khoảng bằng độ dài video, nên chạy nền hoặc đặt timeout dài và
+   rồi `vshort render $RUN` (ra `final.mp4`; lỗi thì giữ bản cũ; mã 2 nhắc "chạy lại `vshort motion`" → chạy `vshort motion $RUN`,
+   khác 0 thì làm như dự phòng ở bước 8 (`mv` sang `motion.loi.json`, chạy lại `vshort motion $RUN`), rồi render lại; mất khoảng bằng độ dài video, nên chạy nền hoặc đặt timeout dài và
    chờ nó xong) → giao `vs-reviewer` đường dẫn `$RUN`; nó ghi `$RUN/review.md`.
 12. **Trả lời Tai** (tiếng Việt):
    - đường dẫn `$RUN/final.mp4`;

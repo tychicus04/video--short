@@ -58,6 +58,9 @@ def test_acts_end_inside_their_line():
     ("title", lambda d: d.update(lines=[1, *d["lines"]]), "tiêu đề"),
     ("cue", lambda d: d["scenes"][0]["acts"][0]["when"].update(phrase=9), "phrase"),
     ("split", lambda d: d["scenes"][0].update(lines=[7, 9]), "lines"),
+    ("say-not-box", lambda d: d["scenes"][2]["acts"][0].update(say="đã bị chiếm"), "say"),
+    ("say-low-box", lambda d: d["scenes"][1]["things"][2].update(box=[120, 700, 600, 760]), "say"),
+    ("short-dur", lambda d: d["scenes"][1]["acts"][1].update(dur=0.05), "dur"),
 ])
 def test_validate_reports(case, edit, needle):
     doc, script = _ex("coruna")

@@ -4,6 +4,7 @@ from pathlib import Path
 from subprocess import CompletedProcess
 
 import numpy as np
+import pytest
 from conftest import write_silence
 from PIL import Image, ImageDraw
 
@@ -414,3 +415,66 @@ def test_render_cmd_rejects_a_stale_motion_file(tmp_path, capsys):
     (tmp_path / "motion.json").write_text(json.dumps({"lines": [3, 5], "note": "n", "scenes": []}))
     assert main(["render", str(tmp_path)]) == 2
     assert "vshort motion" in capsys.readouterr().err and (tmp_path / "final.mp4").read_bytes() == b"good"
+
+
+def _set(d, path, key, value):
+    """d[scenes][i][part][j][key] = value, or pop the key when value is ...; returns d."""
+    item = d["scenes"][path[0]][path[1]][path[2]]
+    if value is ...:
+        item.pop(key)
+    else:
+        item[key] = value
+    return d
+
+
+@pytest.mark.parametrize("edits", [
+    [((0, "things", 1), "kind", ["dot"])],
+    [((2, "things", 2), "icon", ["key"])],
+    [((0, "things", 0), "color", {"x": 1})],
+    [((0, "acts", 0), "thing", ["bug"])],
+    [((1, "acts", 1), "to", ...), ((1, "acts", 1), "path", ["wire"])],
+    [((1, "acts", 2), "to", None)],  # a red act with a stray `to`
+    [((1, "acts", 2), "path", [])],
+])
+def test_motion_cmd_reports_malformed_docs_without_a_traceback(tmp_path, capsys, edits):
+    _motion_run(tmp_path)
+    doc = json.loads((tmp_path / "motion.json").read_text())
+    for where, key, value in edits:
+        _set(doc, where, key, value)
+    (tmp_path / "motion.json").write_text(json.dumps(doc))
+    assert main(["motion", str(tmp_path)]) == 2
+    assert "motion.json" in capsys.readouterr().err
+
+
+def _goi_tin_run(tmp_path):
+    """A run of the A→B example: every spoken line placed and given a white frame."""
+    shutil.copy(EX / "goi-tin.json", tmp_path / "motion.json")
+    shutil.copy(EX / "goi-tin.script.json", tmp_path / "script.vi.json")
+    (tmp_path / "frames").mkdir()
+    Image.new("RGB", (720, 1280), "white").save(tmp_path / "frames" / "w.png")
+    ids = [1, 2, 3, 4, 5]
+    (tmp_path / "frames.json").write_text(json.dumps([{"id": i, "file": "frames/w.png", "group": "s0"} for i in ids]))
+    (tmp_path / "timeline.json").write_text(json.dumps(
+        {"total": 10.5, "placements": [{"id": i, "start": 0.2 + 2 * k, "dur": 1.7} for k, i in enumerate(ids)]}))
+    write_silence(tmp_path / "narration.wav", 10.5)
+
+
+def test_render_cmd_rejects_a_script_changed_after_motion(tmp_path, capsys):
+    _goi_tin_run(tmp_path)
+    assert main(["motion", str(tmp_path)]) == 0
+    script = json.loads((tmp_path / "script.vi.json").read_text())
+    script[1]["phrases"] = "Bạn ngồi quán cà phê, | mở điện thoại | và kết nối Wi-Fi."  # same phrase count
+    (tmp_path / "script.vi.json").write_text(json.dumps(script, ensure_ascii=False))
+    (tmp_path / "final.mp4").write_bytes(b"good")
+    assert main(["render", str(tmp_path)]) == 2
+    assert "vshort motion" in capsys.readouterr().err and (tmp_path / "final.mp4").read_bytes() == b"good"
+
+
+def test_render_cmd_names_animated_lines_missing_from_the_timeline(tmp_path, capsys):
+    _goi_tin_run(tmp_path)
+    assert main(["motion", str(tmp_path)]) == 0
+    tl = json.loads((tmp_path / "timeline.json").read_text())
+    tl["placements"] = [p for p in tl["placements"] if p["id"] != 3]
+    (tmp_path / "timeline.json").write_text(json.dumps(tl))
+    assert main(["render", str(tmp_path)]) == 2
+    assert "vshort timeline" in capsys.readouterr().err
