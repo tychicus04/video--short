@@ -9,7 +9,9 @@ from PIL import Image
 
 from vshort.fit import Placement
 from vshort.media import FF, frame_at, probe
-from vshort.render import FPS, H, W, Segment, build_ass, draw, render_video, segments, view
+from vshort.kit import Act
+from vshort.motion import Scene
+from vshort.render import FPS, H, W, Segment, _kinds, build_ass, draw, render_video, segments, view
 
 
 def test_build_ass_layout():
@@ -76,7 +78,7 @@ def test_camera_continues_across_lines_of_one_scene():
 def test_one_scene_crossfades_the_image_but_not_the_camera():
     segs = _segs((0, 3, "s0"), (3, 6, "s0"))
     (f0, w0, c0), (f1, w1, c1) = view(segs, 3.0)
-    assert (f0, f1) == (segs[0].file, segs[1].file) and w0 == w1 == 0.5 and c0 == c1
+    assert (f0, f1) == (segs[0], segs[1]) and w0 == w1 == 0.5 and c0 == c1
 
 
 def test_shots_cycle_zoom_in_zoom_out_pan_right_pan_left():
@@ -89,8 +91,8 @@ def test_shots_cycle_zoom_in_zoom_out_pan_right_pan_left():
 
 def test_short_segment_clamps_crossfade():
     segs = _segs((0, 3, "a"), (3, 3.8, "b"), (3.8, 7, "c"))
-    assert [(f, w) for f, w, _ in view(segs, 3.4)] == [(segs[1].file, 1.0)]
-    assert [(f, w) for f, w, _ in view(segs, 3.15)] == [(segs[1].file, 1.0)]  # a full 0.4 s fade would still be running
+    assert [(f, w) for f, w, _ in view(segs, 3.4)] == [(segs[1], 1.0)]
+    assert [(f, w) for f, w, _ in view(segs, 3.15)] == [(segs[1], 1.0)]  # a full 0.4 s fade would still be running
     assert abs(sum(w for _, w, _ in view(segs, 3.05)) - 1) < 1e-9
 
 
@@ -217,3 +219,29 @@ def test_the_black_edge_columns_of_a_frame_never_show():
         for _, _, cam in view(segs, n / FPS):
             edges = np.asarray(draw(img, *cam))
             assert edges[:, :4].min() > 200 and edges[:, -4:].min() > 200, (n / FPS, cam)
+
+
+def test_animated_shots_leave_the_camera_rotation_alone():
+    assert _kinds(["s0", "m0", "s1", "s2"]) == [0, -1, 1, 2]
+    assert _kinds(["s0", "m0", "m1", "v4", "s1"]) == [0, -1, -1, 0, 1]  # the reference zooms against the last reference
+
+
+def test_segments_mark_animated_lines(tmp_path):
+    pl = [Placement(1, 0.2, 1.0), Placement(3, 1.5, 1.0), Placement(4, 2.8, 1.0)]
+    frames = [{"id": i, "file": f"frames/{i}.png", "group": "s0"} for i in (1, 3, 4)]
+    segs = segments(pl, frames, tmp_path, 4.3, {3: 0, 4: 0})
+    assert [(s.group, s.scene) for s in segs] == [("s0", None), ("m0", 0), ("m0", 0)]
+
+
+def test_render_video_draws_the_scene_on_animated_lines(tmp_path):
+    Image.new("RGB", (W, H), "white").save(tmp_path / "w.png")
+    segs = [Segment(1, 0, 1, tmp_path / "w.png", "s0"), Segment(2, 1, 2.5, tmp_path / "w.png", "m0", 0)]
+    scene = Scene([2], [{"id": "d", "kind": "dot", "xy": [360, 500]}], [Act("draw", "d", 1.2, 1.6)])
+    ass = tmp_path / "subs.ass"
+    ass.write_text(build_ass([(0, 2.5, "a")]), encoding="utf-8")
+    write_silence(tmp_path / "n.wav", 2.5)
+    render_video(segs, ass, tmp_path / "n.wav", 2.5, tmp_path / "out.mp4", [scene])
+    early, late = frame_at(tmp_path / "out.mp4", 0.5), frame_at(tmp_path / "out.mp4", 2.2)
+    assert early[490:510, 350:370].min() > 200  # white still, no dot
+    r, g, b = late[500, 360].astype(int)
+    assert r > 150 and g < 90 and b < 90  # the red dot on paper

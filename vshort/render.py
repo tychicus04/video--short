@@ -8,8 +8,10 @@ from pathlib import Path
 
 from PIL import Image
 
+from vshort import kit
 from vshort.fit import Placement
 from vshort.media import FF, probe
+from vshort.motion import Scene
 from vshort.plates import Plate
 from vshort.textfit import FONTS, MAX_TEXT_W, text_width
 
@@ -122,27 +124,35 @@ class Segment:
     end: float
     file: Path
     group: str  # consecutive segments with the same group are one camera shot
+    scene: int | None = None  # animated: drawn from this motion scene, no camera
 
 
-def segments(placements: list[Placement], frames: list[dict], run_dir: Path, total: float) -> list[Segment]:
-    """One segment per voice; a cut sits in the middle of the gap between two voices."""
-    by_id = {f["id"]: f for f in frames}
+def segments(placements: list[Placement], frames: list[dict], run_dir: Path, total: float,
+             animated: dict[int, int] | None = None) -> list[Segment]:
+    """One segment per voice; a cut sits in the middle of the gap between two voices.
+
+    `animated` maps a line id to the motion scene that draws it.
+    """
+    by_id, animated = {f["id"]: f for f in frames}, animated or {}
     cuts = [0.0] + [(a.start + a.dur + b.start) / 2 for a, b in zip(placements, placements[1:])] + [total]
-    return [Segment(p.id, s, e, run_dir / by_id[p.id]["file"], by_id[p.id]["group"])
+    return [Segment(p.id, s, e, run_dir / by_id[p.id]["file"],
+                    f"m{animated[p.id]}" if p.id in animated else by_id[p.id]["group"], animated.get(p.id))
             for p, s, e in zip(placements, cuts, cuts[1:])]
 
 
 def _kinds(groups: list[str]) -> list[int]:
-    """Camera move of each shot (0 zoom in, 1 zoom out, 2 pan right, 3 pan left); no two neighbours move alike.
+    """Camera move of each shot (0 zoom in, 1 zoom out, 2 pan right, 3 pan left, -1 none); no two neighbours alike.
 
     Stills rotate through the four, skipping the move the shot before them made. References only zoom (a pan at ZOOM
     shows 667 of 720 px and would cut their credit line): opposite to the shot before, or to the last reference
-    when that shot panned.
+    when that shot panned. Animated shots have no camera and leave the rotation alone.
     """
     kinds, turn, last_ref = [], 0, 1
     for g in groups:
         prev = kinds[-1] if kinds else None
-        if g.startswith("v"):
+        if g.startswith("m"):
+            k = -1
+        elif g.startswith("v"):
             k = last_ref = 1 - (prev if prev in (0, 1) else last_ref)
         else:
             k = turn % 4
@@ -166,6 +176,8 @@ def _camera(segs: list[Segment], k: int, t: float) -> tuple[float, float, float]
         hi += 1
     shot = sum(a.group != b.group for a, b in zip(segs, segs[1:k + 1]))  # which shot segment k belongs to
     kind = _kinds([g for g, _ in groupby(s.group for s in segs)])[shot]
+    if kind < 0:
+        return 1.0, W / 2, H / 2
     amp = min(1, (segs[hi].end - segs[lo].start) / 3)
     t0, t1 = segs[lo].start - XF / 2, segs[hi].end + XF / 2
     p = min(max((t - t0) / (t1 - t0), 0), 1)
@@ -180,8 +192,8 @@ def _half_fade(segs: list[Segment], k: int) -> float:
     return min(XF, *((s.end - s.start) / 3 for s in segs[k - 1:k + 1])) / 2
 
 
-def view(segs: list[Segment], t: float) -> list[tuple[Path, float, tuple[float, float, float]]]:
-    """The 1-2 images visible at t: (file, blend weight, camera)."""
+def view(segs: list[Segment], t: float) -> list[tuple[Segment, float, tuple[float, float, float]]]:
+    """The 1-2 segments visible at t: (segment, blend weight, camera)."""
     k = next((i for i, s in enumerate(segs) if t < s.end), len(segs) - 1)
     s = segs[k]
     h0 = _half_fade(segs, k) if k else 0
@@ -194,7 +206,7 @@ def view(segs: list[Segment], t: float) -> list[tuple[Path, float, tuple[float, 
         parts = [(k, 1 - w), (k + 1, w)]
     else:
         parts = [(k, 1.0)]
-    return [(segs[i].file, w, _camera(segs, i, t)) for i, w in parts]
+    return [(segs[i], w, _camera(segs, i, t)) for i, w in parts]
 
 
 def draw(img: Image.Image, scale: float, cx: float, cy: float) -> Image.Image:
@@ -208,7 +220,8 @@ def draw(img: Image.Image, scale: float, cx: float, cy: float) -> Image.Image:
     return img.resize((W, H), Image.BICUBIC, box=box)
 
 
-def render_video(segs: list[Segment], ass: Path, narration: Path, total: float, out: Path) -> None:
+def render_video(segs: list[Segment], ass: Path, narration: Path, total: float, out: Path,
+                 scenes: list[Scene] = ()) -> None:
     cache: dict[Path, Image.Image] = {}
 
     def load(f: Path) -> Image.Image:
@@ -216,9 +229,18 @@ def render_video(segs: list[Segment], ass: Path, narration: Path, total: float, 
             cache[f] = Image.open(f).convert("RGB")
         return cache[f]
 
+    def image(s: Segment, cam, t: float) -> Image.Image:
+        if s.scene is None:
+            return draw(load(s.file), *cam)
+        sc = scenes[s.scene]
+        return kit.draw(sc.things, sc.acts, t)
+
     def frame(t: float) -> Image.Image:
-        parts = [(draw(load(f), *cam), w) for f, w, cam in view(segs, t)]
-        return parts[0][0] if len(parts) == 1 else Image.blend(parts[0][0], parts[1][0], parts[1][1])
+        parts = view(segs, t)
+        if len(parts) == 2 and parts[0][0].scene is not None and parts[0][0].scene == parts[1][0].scene:
+            parts = parts[1:]  # two lines of one scene: the same picture, drawn once
+        imgs = [(image(s, cam, t), w) for s, w, cam in parts]
+        return imgs[0][0] if len(imgs) == 1 else Image.blend(imgs[0][0], imgs[1][0], imgs[1][1])
 
     tmp = out.resolve().with_name(f"{out.stem}.tmp{out.suffix}")  # a failed render must not replace a good `out`
     cmd = [FF, "-loglevel", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", str(FPS),
