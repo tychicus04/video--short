@@ -30,6 +30,10 @@ Agent không vẽ và không viết mã. Nó viết **mô tả cảnh** bằng m
      mỗi bước một câu (cái gì đi đâu, vượt qua lớp nào, lấy được gì). Không có tên kỹ thuật, không có mã.
    - Prompt của `vshort fetch` thêm yêu cầu: giải thích các bước này theo đúng thứ tự.
    - Tai duyệt brief như cũ. Lần duyệt đó cũng là điểm kiểm an toàn cho cách diễn đạt cơ chế.
+   - **Chế độ tự động** (không dừng duyệt brief): bước tự soát brief, vốn so dữ kiện với `sources.md`, kiểm thêm mục
+     "Cơ chế từng bước" theo luật an toàn ở dưới và sửa nếu lệch. Như vậy là đủ *(Claude quyết)*. Lý do: hình động
+     chỉ vẽ điều lời đọc đã nói, nên không đi xa hơn lời đọc, mà lời đọc vốn đã ra video ở chế độ này. Ngoài ra còn
+     luật nhãn do code kiểm (mục An toàn) và `vs-reviewer` soát cuối.
    - Bản dịch vẫn dịch sát. Không bẻ câu để có chỗ cho hình động. Nếu lời không có câu nào giải thích cơ chế thì
      video không có hình động.
 2. **Chọn đoạn.** Hình động dùng cho một đoạn câu liền nhau trong `script.vi.json` mà lời nói giải thích cơ chế
@@ -71,10 +75,15 @@ Agent không vẽ và không viết mã. Nó viết **mô tả cảnh** bằng m
    - Câu trong đoạn hình động không có ảnh tĩnh và không có camera zoom hay trượt: chuyển động là chính nét vẽ.
    - Giữa ảnh tĩnh và hình động, và giữa hai cảnh, nối bằng mờ chồng như hiện nay (XF).
    - Phụ đề không đổi.
-7. **Không chồng lên tư liệu.** Câu thuộc đoạn hình động không được có mục `patch`, `svg` hay `photo`. `vshort visuals`
-   từ chối mục đó và báo lỗi rõ, không lặng lẽ bỏ qua *(Claude quyết)*.
-8. **Lỗi không chặn video.** Nếu mô tả cảnh vẫn không qua kiểm sau khi agent đã sửa, các câu đó quay về ảnh tĩnh như
-   hiện nay, video vẫn ra, và báo cáo cuối ghi lý do *(Claude quyết, giống cách dự phòng của `vs-visuals`)*.
+7. **Không chồng lên tư liệu.** Bước hình động chạy **trước** `vs-visuals`, nên `vs-visuals` biết câu nào đã có hình
+   động *(Claude quyết)*.
+   - Câu thuộc đoạn hình động không được có `svg` hay `photo`: `vshort visuals` từ chối mục đó và báo lỗi rõ, không
+     lặng lẽ bỏ qua.
+   - `patch` thì vẫn được và vẫn làm như cũ, vì ảnh tĩnh của các câu đó là bản dự phòng (mục 8). Ví dụ Coruna: thanh
+     địa chỉ "untrusted-site.com" ở câu 8–13 vẫn phải vá, kể cả khi các câu đó đang dùng hình động.
+8. **Lỗi không chặn video.** Mô tả cảnh được kiểm ngay ở bước hình động. Nếu sau khi agent đã sửa mà vẫn không qua,
+   bước đó bỏ đoạn hình động: các câu quay về ảnh tĩnh như hiện nay, video vẫn ra, và báo cáo cuối ghi lý do *(Claude
+   quyết, giống cách dự phòng của `vs-visuals`)*.
 9. **Soát cuối.** `vs-reviewer` kiểm thêm:
    - hình động khớp lời: chấm đỏ làm đúng điều câu đang nói, không đi trước, không đi sau;
    - mỗi cảnh gọn, nhãn đọc được;
@@ -107,13 +116,18 @@ Khi dựng xong, cả hai ví dụ được dựng từ mô tả cảnh và xem 
 Luật "không hướng dẫn tấn công" của hai tài liệu trước áp dụng cho hình động:
 
 - Chỉ ở mức khái niệm: tầng, ranh giới, dữ liệu, ai lấy được gì.
-- Nhãn chỉ dùng từ có trong lời đọc của đoạn đó, hoặc danh từ thường (điện thoại, máy chủ, dữ liệu).
+- Nhãn chỉ dùng từ có trong lời đọc của đoạn đó, danh từ thường nằm trong một danh sách cố định của bộ hình (điện
+  thoại, máy chủ, dữ liệu, hệ thống, hacker…), hoặc tên `.example`. Code kiểm luật này từng chữ, nên tên kỹ thuật
+  hay tên công cụ không lọt được vào nhãn *(Claude quyết; danh sách cụ thể do người dựng lập)*.
 - Không có trong hình:
   - tên lỗ hổng hay mã CVE, tên exploit, tên hàm hay tiến trình;
   - lệnh, mã;
   - địa chỉ web thật (dùng tên `.example`);
   - các bước đủ chi tiết để làm lại.
-- Hình động không nói điều lời không nói, không thêm bước hay tầng mà brief không có.
+- Hình động không nói điều lời không nói, và không thêm bước hay tầng mang nội dung mới.
+  - Được phép một tầng trung gian chung chung khi lời nói có nhiều bước, ví dụ tầng "Hệ thống" giữa Safari và lõi
+    khi lời nói "leo thang đặc quyền từng bước".
+  - *(Claude quyết; Tai đã đồng ý bản v2 có tầng này.)*
 
 ## Không làm
 
@@ -154,15 +168,19 @@ Claude đề xuất (Tai giao "bạn thấy hợp lí là được"):
 - Tối đa một đoạn mỗi video, không dài quá nửa video.
 - Mốc theo câu và cụm phụ đề, không theo giây.
 - Luật gọn do code kiểm: tối đa 4 thứ mỗi lúc, nhãn to và ngắn, vùng an toàn, chỉ kẻ tấn công và dữ liệu di chuyển.
-- `vshort visuals` từ chối tư liệu hay chỗ vá trên câu có hình động.
+- Bước hình động chạy trước `vs-visuals`. `vshort visuals` từ chối tư liệu trên câu có hình động, nhưng vẫn vá chữ
+  cho ảnh tĩnh dự phòng.
 - Không camera trên hình động.
 - Lỗi thì quay về ảnh tĩnh, video vẫn ra.
+- Chế độ tự động: phần tự soát brief kiểm thêm mục cơ chế. Nhãn bị code giới hạn trong từ của lời đọc và danh sách
+  danh từ thường.
+- Cho phép tầng trung gian chung chung khi lời nói "từng bước".
 
 ## Để người dựng tự quyết
 
 - Định dạng file mô tả cảnh, tên lệnh và tên agent.
-- Agent nào viết cảnh (agent mới hay thêm việc cho `vs-visuals`), và thứ tự chạy với `vs-visuals`, miễn là giữ được
-  mục tiêu 7 và 8.
+- Agent nào viết cảnh: agent mới, hay thêm việc cho `vs-visuals` miễn là phần chọn và kiểm hình động xong trước phần
+  tư liệu.
 - Agent cho tọa độ, hay chương trình tự xếp chỗ.
 - Hình dạng cụ thể của từng món trong bộ hình, tốc độ vẽ và chạy.
 - Cách vẽ nét tay. Bản thử dùng: vẽ ở 2× rồi thu nhỏ, nét lượn sóng nhẹ, nét hiện dần theo độ dài, chữ hiện từ trái
