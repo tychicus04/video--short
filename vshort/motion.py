@@ -259,12 +259,12 @@ def design_problems(doc, said: set[str], run_dir: Path | None) -> list[str]:
         return probs + ["motion.json: things phải là danh sách, không rỗng"]
     by_id = {}
     for th in things:
-        probs += _thing_problems(th, said, run_dir)
+        probs += [f"motion.json: {p}" for p in _thing_problems(th, said, run_dir)]
         if isinstance(th, dict) and isinstance(th.get("id"), str):
             if not (_int(th.get("beat")) and 1 <= th["beat"] <= len(beats)):
-                probs.append(f"thing {th['id']!r}: beat {th.get('beat')!r} phải là số nhịp 1–{len(beats)}")
+                probs.append(f"motion.json: thing {th['id']!r}: beat {th.get('beat')!r} phải là số nhịp 1–{len(beats)}")
             if th["id"] in by_id:
-                probs.append(f"thing {th['id']!r} trùng id")
+                probs.append(f"motion.json: thing {th['id']!r} trùng id")
             by_id[th["id"]] = th
     for k, b in enumerate(beats, 1):
         if not isinstance(b, dict):
@@ -408,8 +408,10 @@ def _cue_problems(k: int, cue, want: list[int], text: dict[int, str]) -> list[st
 def bound(doc: dict, bind: dict) -> dict:
     """The canvas with the bind's labels and lines: what render, visuals and the checks of the voice use."""
     labels = bind.get("labels") or {}
+    ids = {i for i in labels if isinstance(i, str)} if isinstance(labels, dict) else set()
     return doc | {"lines": list(bind["lines"]),
-                  "things": [th | {"label": labels[th["id"]]} if th["id"] in labels else th for th in doc["things"]]}
+                  "things": [th | {"label": labels[th["id"]]} if isinstance(th, dict) and th.get("id") in ids else th
+                             for th in doc["things"]]}
 
 
 def _starts(bind: dict, placements: list[Placement], script: list[dict]) -> tuple[list[float | None], float]:
@@ -429,6 +431,9 @@ def bind_problems(doc, bind, script: list[dict], run_dir: Path | None, visuals: 
     """Every problem of motion.bind.json against the canvas (assumed to pass design_problems) and the script."""
     if not isinstance(bind, dict):
         return ["motion.bind.json phải là một object JSON"]
+    if not (isinstance(doc, dict) and "scenes" not in doc and isinstance(doc.get("beats"), list)
+            and isinstance(doc.get("things"), list)):
+        return design_problems(doc, set(), run_dir)  # no canvas to bind to: say what is wrong with it
     text = _spoken(script)
     probs = [] if isinstance(bind.get("note"), str) and bind["note"].strip() else [
         "motion.bind.json: thiếu note: một dòng ghi nhịp nào bỏ và vì sao"]
@@ -442,7 +447,7 @@ def bind_problems(doc, bind, script: list[dict], run_dir: Path | None, visuals: 
         if c is not None:
             probs += _cue_problems(k, c, want, text)
     labels = bind.get("labels", {})
-    ids = {th["id"] for th in doc["things"] if "label" in th}
+    ids = {th["id"] for th in doc["things"] if isinstance(th, dict) and isinstance(th.get("id"), str) and "label" in th}
     if not isinstance(labels, dict) or not all(isinstance(i, str) and i in ids for i in labels):
         probs.append("motion.bind.json: labels phải là {\"<id thing có nhãn>\": \"<nhãn mới>\"}")
     if probs:

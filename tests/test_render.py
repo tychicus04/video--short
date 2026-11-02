@@ -268,3 +268,18 @@ def test_render_video_draws_the_scene_on_animated_lines(tmp_path):
     assert early[490:510, 350:370].min() > 200  # white still, no dot
     r, g, b = late[500, 360].astype(int)
     assert r > 150 and g < 90 and b < 90  # the red dot on paper
+
+
+def test_two_lines_of_the_canvas_never_crossfade_to_their_stills(tmp_path):
+    Image.new("RGB", (W, H), "white").save(tmp_path / "w.png")
+    Image.new("RGB", (W, H), "black").save(tmp_path / "k.png")
+    segs = [Segment(1, 0, 1, tmp_path / "w.png", "s0"), Segment(2, 1, 2.5, tmp_path / "w.png", "m0", 0),
+            Segment(3, 2.5, 4, tmp_path / "k.png", "m0", 0)]
+    scene = Scene([2, 3], [{"id": "d", "kind": "dot", "xy": [360, 500]}], [Act("draw", "d", 0.8, 1.2)])
+    ass = tmp_path / "subs.ass"
+    ass.write_text(build_ass([(0, 4, "a")]), encoding="utf-8")
+    write_silence(tmp_path / "n.wav", 4)
+    render_video(segs, ass, tmp_path / "n.wav", 4, tmp_path / "out.mp4", [scene])
+    at_cut = frame_at(tmp_path / "out.mp4", 2.5).astype(int)
+    assert abs(at_cut[300, 100] - (238, 234, 226)).max() < 12  # paper, not the black still behind line 3
+    assert at_cut[500, 360, 0] > 150 and at_cut[500, 360, 1] < 90  # the dot stays

@@ -10,7 +10,7 @@ from pathlib import Path
 
 from PIL import Image, ImageOps
 
-from vshort import auto, motion
+from vshort import auto, motion, shapes
 from vshort.captions import Fragment, detect_fragments, write_sheets
 from vshort.fit import Placement, build_narration, phrase_times, sequence, total
 from vshort.media import frame_at
@@ -188,22 +188,42 @@ def cmd_stills(a) -> int:
 BAD_JSON = object()
 
 
-def _motion(run: Run):
-    """motion.json, or None when the video has no animation; prints why and returns BAD_JSON on bad JSON."""
+def _load(run: Run, name: str):
+    """RUN/name, or None when it is missing or null; prints why and returns BAD_JSON on bad JSON."""
     try:
-        return motion.load(run.file("motion.json"))
+        return motion.load(run.file(name))
     except ValueError as e:
-        _err(f"motion.json không phải JSON hợp lệ: {e}")
+        _err(f"{name} không phải JSON hợp lệ: {e}")
         return BAD_JSON
 
 
-def _said(doc: dict, script: list[dict]) -> dict[str, str]:
+def _motion(run: Run):
+    """motion.json (the canvas), or None when the video has no animation; BAD_JSON on bad JSON."""
+    return _load(run, "motion.json")
+
+
+def _bind(run: Run):
+    """motion.bind.json (the canvas tied to the lines), or None when the video has no animation or it is not bound
+    yet; BAD_JSON on bad JSON."""
+    return _load(run, "motion.bind.json") if run.file("motion.json").exists() else None
+
+
+def _said(bind: dict, script: list[dict]) -> dict[str, str]:
     """The words of the animated lines, as checked by `vshort motion`."""
     text = {str(r["id"]): r["phrases"] for r in script}
-    return {str(i): text.get(str(i), "") for i in doc["lines"]}
+    return {str(i): text.get(str(i), "") for i in bind["lines"]}
+
+
+def _used_shapes(run: Run, doc: dict) -> None:
+    """Copy every library shape the canvas uses into RUN/shapes: the video can be rebuilt as it was."""
+    for th in doc["things"]:
+        if th["kind"] == "shape" and not run.file(f"shapes/{th['shape']}.json").exists():
+            run.file("shapes").mkdir(exist_ok=True)
+            shutil.copy(shapes.LIBRARY / f"{th['shape']}.json", run.file(f"shapes/{th['shape']}.json"))
 
 
 def cmd_motion(a) -> int:
+    """`--design`: the canvas against the brief (before the voice). Without: the canvas bound to the lines."""
     run = Run(a.run)
     out = run.file("motion")
     doc = _motion(run)
@@ -212,23 +232,47 @@ def cmd_motion(a) -> int:
     if doc is None:
         shutil.rmtree(out, ignore_errors=True)  # a sheet of an animation that is gone must not be looked at
         print("Không có hình động.")
-        run.mark("motion")
+        if not a.design:
+            run.mark("motion")
         return OK
-    src = run.file("visuals.json")
-    try:
-        refs = json.loads(src.read_text(encoding="utf-8")) if src.exists() else None
-    except ValueError:
-        refs = None  # `vshort visuals` reports a broken visuals.json itself
-    script = run.read("script.vi.json")
-    probs = motion.validate(doc, script, refs if isinstance(refs, list) else None)
+    probs = shapes.check_run(run.path)
+    if a.design:
+        brief = run.file("brief.vi.md")
+        said = motion.brief_words(brief.read_text(encoding="utf-8")) if brief.exists() else set()
+        probs += motion.design_problems(doc, said, run.path)
+    else:
+        bind = _bind(run)
+        if bind is BAD_JSON:
+            return BAD_INPUT
+        if bind is None:
+            _err("thiếu motion.bind.json: gắn từng nhịp vào câu đọc (sau khi duyệt bản dịch)")
+            return BAD_INPUT
+        src = run.file("visuals.json")
+        try:
+            refs = json.loads(src.read_text(encoding="utf-8")) if src.exists() else None
+        except ValueError:
+            refs = None  # `vshort visuals` reports a broken visuals.json itself
+        script = run.read("script.vi.json")
+        probs += motion.bind_problems(doc, bind, script, run.path, refs if isinstance(refs, list) else None)
     for p in probs:
         _err(p)
     if probs:
         return BAD_INPUT
     out.mkdir(exist_ok=True)
-    motion.sheet(doc, script).save(out / "sheet.png")
-    run.write("motion/lines.json", _said(doc, script))  # render checks the scenes still sit on these words
-    print(f"{len(doc['scenes'])} cảnh, câu {doc['lines'][0]}–{doc['lines'][-1]}; ảnh để xem: {out / 'sheet.png'}")
+    if a.design:
+        motion.design_sheet(doc, run.path).save(out / "design.png")
+        look = [out / "design.png"]
+        if list(run.file("shapes").glob("*.json")):
+            shapes.sheet(run.path).save(run.file("shapes/sheet.png"))
+            look.append(run.file("shapes/sheet.png"))
+        print(f"{len(doc['beats'])} nhịp; ảnh để xem: {', '.join(map(str, look))}")
+        return OK
+    _used_shapes(run, doc)
+    motion.bind_sheet(doc, bind, script, run.path).save(out / "sheet.png")
+    run.write("motion/lines.json", _said(bind, script))  # render checks the canvas still sits on these words
+    kept = sum(c is not None for c in bind["beats"])
+    print(f"1 khung, {kept}/{len(doc['beats'])} nhịp, câu {bind['lines'][0]}–{bind['lines'][-1]}; "
+          f"ảnh để xem: {out / 'sheet.png'}")
     run.mark("motion")
     return OK
 
@@ -247,10 +291,9 @@ def cmd_visuals(a) -> int:
         return BAD_INPUT
     ids = {s["id"] for s in stills}
     probs = validate(items, ids, run.path)
-    doc = _motion(run)
-    if doc is BAD_JSON:
+    if (doc := _motion(run)) is BAD_JSON or (bind := _bind(run)) is BAD_JSON:
         return BAD_INPUT
-    probs += motion.clashes(items, motion.lines(doc))
+    probs += motion.clashes(items, motion.lines(bind if doc is not None else None))
     probs += [f"thiếu stills/{s['id']}.png (chạy lại `vshort stills`)" for s in stills
               if not run.file(f"stills/{s['id']}.png").exists()]
     refs = {}
@@ -375,20 +418,25 @@ def cmd_render(a) -> int:
         return BAD_INPUT
     scenes = []
     if doc is not None:
-        if probs := motion.validate(doc, script):
+        if (bind := _bind(run)) is BAD_JSON:
+            return BAD_INPUT
+        if bind is None:
+            _err("thiếu motion.bind.json (chạy lại `vshort motion`)")
+            return BAD_INPUT
+        if probs := shapes.check_run(run.path) + motion.bind_problems(doc, bind, script, run.path):
             for p in probs:
                 _err(p)
             _err("motion.json không còn khớp kịch bản (chạy lại `vshort motion`)")
             return BAD_INPUT
         checked = run.file("motion/lines.json")
-        if not checked.exists() or run.read("motion/lines.json") != _said(doc, script):
+        if not checked.exists() or run.read("motion/lines.json") != _said(bind, script):
             _err("kịch bản đã đổi sau lần kiểm hình động cuối (chạy lại `vshort motion`)")
             return BAD_INPUT
-        if missing := sorted(set(doc["lines"]) - ids):
+        if missing := sorted(set(bind["lines"]) - ids):
             _err("timeline.json thiếu các câu có hình động: " + ", ".join(map(str, missing))
                  + " (chạy lại `vshort tts` rồi `vshort timeline`)")
             return BAD_INPUT
-        scenes = motion.timed(doc, placements, script)
+        scenes = [motion.bind_timed(doc, bind, placements, script, run.path)]
     animated = {i: k for k, sc in enumerate(scenes) for i in sc.lines}
     ass = run.file("subs.ass")
     ass.write_text(build_ass(phrase_times(placements, script)), encoding="utf-8")
@@ -491,6 +539,8 @@ def main(argv: list[str] | None = None) -> int:
         p = sub.add_parser(name)
         p.add_argument("run")
         p.set_defaults(fn=fn)
+        if name == "motion":
+            p.add_argument("--design", action="store_true", help="check the canvas against the brief, before the voice")
     p = sub.add_parser("approve")
     p.add_argument("run")
     p.add_argument("what", choices=["brief", "script"])

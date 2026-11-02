@@ -1,43 +1,27 @@
-{"lines": [7, 8, 9, 10, 11, 12, 13],
- "note": "Câu 7–13 nói mã độc đi từ trang web, qua sandbox, tới lõi rồi lấy dữ liệu.",
- "scenes": [
-  {"lines": [7, 8, 9], "idea": "trang web hợp pháp mang mã độc",
-   "things": [
-    {"id": "phone", "kind": "phone", "box": [180, 170, 540, 1010], "label": "trang web hợp pháp", "color": "green", "url": "tin-tuc.example", "when": {"line": 7}},
-    {"id": "bug", "kind": "dot", "xy": [400, 550], "label": "mã độc", "when": {"line": 8, "phrase": 2}}
-   ],
-   "acts": [
-    {"do": "pulse", "thing": "bug", "when": {"line": 9}}
-   ]},
-  {"lines": [10, 11, 12], "idea": "mã độc thoát sandbox, leo xuống lõi",
-   "things": [
-    {"id": "safari", "kind": "box", "box": [120, 190, 600, 380], "label": "Safari", "when": {"line": 10}},
-    {"id": "system", "kind": "box", "box": [120, 460, 600, 650], "label": "Hệ thống", "when": {"line": 10, "at": 0.4}},
-    {"id": "kernel", "kind": "box", "box": [120, 730, 600, 920], "label": "Lõi (kernel)", "when": {"line": 10, "at": 0.8}},
-    {"id": "sandbox", "kind": "wall", "box": [95, 165, 625, 405], "label": "sandbox", "color": "blue", "when": {"line": 10, "phrase": 2}},
-    {"id": "bug", "kind": "dot", "xy": [500, 285], "when": {"line": 10, "phrase": 2, "at": 0.5}},
-    {"id": "crack1", "kind": "crack", "xy": [500, 405], "when": {"line": 11, "phrase": 2, "at": 0.5}},
-    {"id": "crack2", "kind": "crack", "xy": [500, 730], "when": {"line": 12, "phrase": 2}}
-   ],
-   "acts": [
-    {"do": "bounce", "thing": "bug", "to": [500, 390], "when": {"line": 10, "phrase": 3}},
-    {"do": "move", "thing": "bug", "to": [500, 555], "when": {"line": 11, "phrase": 3}},
-    {"do": "red", "thing": "system", "when": {"line": 12, "phrase": 2}},
-    {"do": "move", "thing": "bug", "to": [500, 825], "when": {"line": 12, "phrase": 3}},
-    {"do": "red", "thing": "kernel", "say": "đã bị chiếm", "when": {"line": 12, "phrase": 4}}
-   ]},
-  {"lines": [13], "idea": "dữ liệu bay sang hacker",
-   "things": [
-    {"id": "phone", "kind": "phone", "box": [60, 260, 300, 960], "label": "điện thoại", "when": {"line": 13}},
-    {"id": "hacker", "kind": "box", "box": [440, 500, 660, 680], "label": "hacker", "when": {"line": 13, "at": 0.1}},
-    {"id": "key", "kind": "icon", "xy": [180, 400], "label": "mật khẩu", "icon": "key", "when": {"line": 13, "phrase": 3}},
-    {"id": "msg", "kind": "icon", "xy": [180, 600], "label": "tin nhắn", "icon": "message", "when": {"line": 13, "phrase": 4, "at": 0.5}},
-    {"id": "wallet", "kind": "icon", "xy": [180, 800], "label": "ví tiền", "icon": "wallet", "when": {"line": 13, "phrase": 5, "at": 0.15}}
-   ],
-   "acts": [
-    {"do": "red", "thing": "phone", "when": {"line": 13, "phrase": 2}},
-    {"do": "move", "thing": "key", "to": [440, 590], "vanish": true, "dur": 0.9, "when": {"line": 13, "phrase": 4}},
-    {"do": "move", "thing": "msg", "to": [440, 590], "vanish": true, "when": {"line": 13, "phrase": 5, "at": 0.3}},
-    {"do": "move", "thing": "wallet", "to": [440, 590], "vanish": true, "when": {"line": 13, "phrase": 5, "at": 0.75}}
-   ]}
+{"note": "Cơ chế: trang web nhiễm mã độc → mã độc thoát sandbox, chiếm lõi → dữ liệu bay về hacker.",
+ "idea": "mã độc đi từ trang web, xuyên sandbox xuống lõi, rồi lấy dữ liệu gửi hacker",
+ "actor": "bug",
+ "things": [
+  {"id": "web", "kind": "computer", "box": [190, 175, 530, 375], "label": "trang web hợp pháp", "color": "green", "url": "tin-tuc.example", "beat": 1},
+  {"id": "bug", "kind": "dot", "xy": [360, 270], "label": "mã độc", "beat": 1, "at": 0.4},
+  {"id": "sandbox", "kind": "wall", "box": [60, 450, 660, 640], "label": "sandbox", "beat": 2},
+  {"id": "safari", "kind": "box", "box": [100, 480, 620, 610], "label": "Safari", "beat": 2, "at": 0.05},
+  {"id": "in", "kind": "path", "points": [[360, 270], [520, 525]], "beat": 2, "at": 0.08},
+  {"id": "crack", "kind": "crack", "xy": [520, 640], "beat": 2, "at": 0.4},
+  {"id": "down", "kind": "path", "points": [[520, 525], [520, 790]], "beat": 2, "at": 0.5},
+  {"id": "kernel", "kind": "box", "box": [100, 720, 620, 860], "label": "Lõi (kernel)", "beat": 2, "at": 0.5},
+  {"id": "hacker", "kind": "box", "box": [430, 900, 640, 1010], "label": "hacker", "beat": 3},
+  {"id": "out", "kind": "path", "points": [[250, 865], [250, 955], [425, 955]], "arrow": true, "beat": 3, "at": 0.2},
+  {"id": "key", "kind": "icon", "icon": "key", "xy": [250, 865], "label": "mật khẩu", "beat": 3, "at": 0.3}
+ ],
+ "beats": [
+  {"idea": "trang web hợp pháp mang mã độc, mã độc chạy ngay",
+   "acts": [{"do": "pulse", "thing": "bug", "at": 0.6}]},
+  {"idea": "mã độc vào Safari, thoát sandbox, leo xuống chiếm lõi",
+   "acts": [{"do": "move", "thing": "bug", "path": "in", "at": 0.12},
+            {"do": "bounce", "thing": "bug", "to": [520, 630], "at": 0.3},
+            {"do": "move", "thing": "bug", "path": "down", "at": 0.6},
+            {"do": "red", "thing": "kernel", "say": "đã bị chiếm", "at": 0.8}]},
+  {"idea": "dữ liệu bay về hacker",
+   "acts": [{"do": "move", "thing": "key", "path": "out", "vanish": true, "at": 0.6}]}
  ]}

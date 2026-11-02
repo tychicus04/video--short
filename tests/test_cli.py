@@ -397,9 +397,13 @@ def test_status_lists_every_step_in_order(tmp_path, capsys):
 EX = Path(__file__).resolve().parent.parent / "examples" / "motion"
 
 
-def _motion_run(tmp_path):
+def _motion_run(tmp_path, bind=True):
     shutil.copy(EX / "coruna.json", tmp_path / "motion.json")
+    if bind:
+        shutil.copy(EX / "coruna.bind.json", tmp_path / "motion.bind.json")
     shutil.copy(EX / "coruna.script.json", tmp_path / "script.vi.json")
+    script = json.loads((EX / "coruna.script.json").read_text())
+    (tmp_path / "brief.vi.md").write_text("\n".join(r["phrases"] for r in script), encoding="utf-8")
 
 
 def test_motion_cmd_without_a_file_means_no_animation(tmp_path, capsys):
@@ -413,8 +417,8 @@ def test_motion_cmd_without_a_file_means_no_animation(tmp_path, capsys):
 def test_motion_cmd_lists_every_problem(tmp_path, capsys):
     _motion_run(tmp_path)
     doc = json.loads((tmp_path / "motion.json").read_text())
-    doc["scenes"][0]["things"][1]["label"] = "WebKit"
-    doc["scenes"][0]["things"][0]["url"] = "apple.com"
+    doc["things"][1]["label"] = "WebKit"
+    doc["things"][0]["url"] = "apple.com"
     (tmp_path / "motion.json").write_text(json.dumps(doc))
     assert main(["motion", str(tmp_path)]) == 2
     err = capsys.readouterr().err.lower()
@@ -424,12 +428,67 @@ def test_motion_cmd_lists_every_problem(tmp_path, capsys):
 def test_motion_cmd_writes_the_sheet(tmp_path, capsys):
     _motion_run(tmp_path)
     assert main(["motion", str(tmp_path)]) == 0
-    assert (tmp_path / "motion" / "sheet.png").exists() and "3 cảnh, câu 7–13" in capsys.readouterr().out
+    assert (tmp_path / "motion" / "sheet.png").exists()
+    assert "1 khung, 3/3 nhịp, câu 7–13" in capsys.readouterr().out and Run(tmp_path).done("motion")
+
+
+def test_motion_design_checks_the_canvas_against_the_brief(tmp_path, capsys):
+    _motion_run(tmp_path, bind=False)
+    assert main(["motion", str(tmp_path), "--design"]) == 0
+    assert "3 nhịp" in capsys.readouterr().out and (tmp_path / "motion" / "design.png").exists()
+    assert not Run(tmp_path).done("motion")
+    (tmp_path / "brief.vi.md").write_text("không có chữ nào khớp", encoding="utf-8")
+    assert main(["motion", str(tmp_path), "--design"]) == 2
+    assert "sandbox" in capsys.readouterr().err
+
+
+def test_motion_cmd_without_a_bind_says_so(tmp_path, capsys):
+    _motion_run(tmp_path, bind=False)
+    assert main(["motion", str(tmp_path)]) == 2
+    assert "thiếu motion.bind.json" in capsys.readouterr().err and not Run(tmp_path).done("motion")
+
+
+def test_old_motion_file_is_rejected_plainly(tmp_path, capsys):
+    _motion_run(tmp_path)
+    (tmp_path / "motion.json").write_text(json.dumps({"lines": [7], "note": "n", "scenes": []}))
+    assert main(["motion", str(tmp_path)]) == 2
+    assert "dạng cũ" in capsys.readouterr().err
+
+
+def test_motion_cmd_copies_library_shapes_into_the_run(tmp_path, monkeypatch, capsys):
+    from vshort import shapes
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    (lib / "bo-nho.json").write_text(json.dumps({"name": "bộ nhớ", "strokes": [[[0, 0], [100, 60]]]}))
+    monkeypatch.setattr(shapes, "LIBRARY", lib)
+    run = tmp_path / "run"
+    run.mkdir()
+    _goi_tin_run(run)
+    doc = json.loads((run / "motion.json").read_text())
+    doc["things"].append({"id": "m", "kind": "shape", "shape": "bo-nho", "box": [300, 150, 420, 250], "beat": 1})
+    (run / "motion.json").write_text(json.dumps(doc))
+    assert main(["motion", str(run)]) == 0
+    assert json.loads((run / "shapes" / "bo-nho.json").read_text())["name"] == "bộ nhớ"
+
+
+def test_motion_cmd_rejects_a_run_shape_that_changes_the_library(tmp_path, monkeypatch, capsys):
+    from vshort import shapes
+    lib = tmp_path / "lib"
+    lib.mkdir()
+    (lib / "bo-nho.json").write_text(json.dumps({"name": "bộ nhớ", "strokes": [[[0, 0], [100, 60]]]}))
+    monkeypatch.setattr(shapes, "LIBRARY", lib)
+    run = tmp_path / "run"
+    (run / "shapes").mkdir(parents=True)
+    _goi_tin_run(run)
+    (run / "shapes" / "bo-nho.json").write_text(json.dumps({"name": "bộ nhớ", "strokes": [[[0, 60], [100, 0]]]}))
+    assert main(["motion", str(run), "--design"]) == 2
+    assert "đặt tên mới" in capsys.readouterr().err
 
 
 def test_visuals_cmd_rejects_a_reference_on_an_animated_line(tmp_path, capsys):
     _visuals_run(tmp_path, ids=(1, 3), scenes=(0, 0))
-    (tmp_path / "motion.json").write_text(json.dumps({"lines": [3], "note": "n", "scenes": []}))
+    (tmp_path / "motion.json").write_text("{}")
+    (tmp_path / "motion.bind.json").write_text(json.dumps({"lines": [3]}))
     (tmp_path / "visuals").mkdir()
     Image.new("RGB", (500, 300)).save(tmp_path / "visuals" / "3.jpg")
     (tmp_path / "visuals.json").write_text(json.dumps([{"kind": "photo", "id": 3, "file": "visuals/3.jpg",
@@ -440,7 +499,8 @@ def test_visuals_cmd_rejects_a_reference_on_an_animated_line(tmp_path, capsys):
 
 def test_visuals_cmd_still_patches_an_animated_line(tmp_path):
     _visuals_run(tmp_path, ids=(1, 3), scenes=(0, 0))
-    (tmp_path / "motion.json").write_text(json.dumps({"lines": [3], "note": "n", "scenes": []}))
+    (tmp_path / "motion.json").write_text("{}")
+    (tmp_path / "motion.bind.json").write_text(json.dumps({"lines": [3]}))
     (tmp_path / "visuals.json").write_text(json.dumps(
         [{"kind": "patch", "ids": [3], "box": [96, 96, 404, 144], "text": "tin-tuc.example", "note": "n"}]))
     assert main(["visuals", str(tmp_path)]) == 0
@@ -454,39 +514,43 @@ def test_render_cmd_rejects_a_stale_motion_file(tmp_path, capsys):
     assert "vshort motion" in capsys.readouterr().err and (tmp_path / "final.mp4").read_bytes() == b"good"
 
 
-def _set(d, path, key, value):
-    """d[scenes][i][part][j][key] = value, or pop the key when value is ...; returns d."""
-    item = d["scenes"][path[0]][path[1]][path[2]]
-    if value is ...:
-        item.pop(key)
-    else:
-        item[key] = value
-    return d
-
-
-@pytest.mark.parametrize("edits", [
-    [((0, "things", 1), "kind", ["dot"])],
-    [((2, "things", 2), "icon", ["key"])],
-    [((0, "things", 0), "color", {"x": 1})],
-    [((0, "acts", 0), "thing", ["bug"])],
-    [((1, "acts", 1), "to", ...), ((1, "acts", 1), "path", ["wire"])],
-    [((1, "acts", 2), "to", None)],  # a red act with a stray `to`
-    [((1, "acts", 2), "path", [])],
+@pytest.mark.parametrize("edit", [
+    lambda d: d["things"][1].update(kind=["dot"]),
+    lambda d: d["things"][10].update(icon=["key"]),
+    lambda d: d["things"][0].update(color={"x": 1}),
+    lambda d: d["beats"][0]["acts"][0].update(thing=["bug"]),
+    lambda d: d["beats"][1]["acts"][0].update(path=["wire"]),
+    lambda d: d["beats"][1]["acts"][3].update(to=None),  # a red act with a stray `to`
+    lambda d: d["beats"][1]["acts"][3].update(path=[]),
+    lambda d: d["things"][1].update(beat="1"),
+    lambda d: d.update(beats={"a": 1}),
+    lambda d: d.update(things=[1, 2]),
 ])
-def test_motion_cmd_reports_malformed_docs_without_a_traceback(tmp_path, capsys, edits):
+def test_motion_cmd_reports_malformed_docs_without_a_traceback(tmp_path, capsys, edit):
     _motion_run(tmp_path)
     doc = json.loads((tmp_path / "motion.json").read_text())
-    for where, key, value in edits:
-        _set(doc, where, key, value)
+    edit(doc)
     (tmp_path / "motion.json").write_text(json.dumps(doc))
     assert main(["motion", str(tmp_path)]) == 2
     assert "motion.json" in capsys.readouterr().err
+    assert main(["motion", str(tmp_path), "--design"]) == 2
+
+
+@pytest.mark.parametrize("bind", ["[]", '{"lines": [7], "beats": "x"}', '{"lines": [7, 8], "note": "n", "beats": [1, 2, 3]}',
+                                  '{"lines": [7], "note": "n", "beats": [null, null, null], "labels": [1]}'])
+def test_motion_cmd_reports_malformed_binds_without_a_traceback(tmp_path, capsys, bind):
+    _motion_run(tmp_path)
+    (tmp_path / "motion.bind.json").write_text(bind)
+    assert main(["motion", str(tmp_path)]) == 2
+    assert "motion.bind.json" in capsys.readouterr().err
 
 
 def _goi_tin_run(tmp_path):
     """A run of the A→B example: every spoken line placed and given a white frame."""
     shutil.copy(EX / "goi-tin.json", tmp_path / "motion.json")
+    shutil.copy(EX / "goi-tin.bind.json", tmp_path / "motion.bind.json")
     shutil.copy(EX / "goi-tin.script.json", tmp_path / "script.vi.json")
+    (tmp_path / "brief.vi.md").write_text("gói tin kẻ nghe lén", encoding="utf-8")
     (tmp_path / "frames").mkdir()
     Image.new("RGB", (720, 1280), "white").save(tmp_path / "frames" / "w.png")
     ids = [1, 2, 3, 4, 5]
@@ -500,7 +564,7 @@ def test_render_cmd_rejects_a_script_changed_after_motion(tmp_path, capsys):
     _goi_tin_run(tmp_path)
     assert main(["motion", str(tmp_path)]) == 0
     script = json.loads((tmp_path / "script.vi.json").read_text())
-    script[1]["phrases"] = "Bạn ngồi quán cà phê, | mở điện thoại | và kết nối Wi-Fi."  # same phrase count
+    script[1]["phrases"] = "Bạn ngồi quán cà phê, | mở điện thoại | và kết nối gói tin."  # same phrase count
     (tmp_path / "script.vi.json").write_text(json.dumps(script, ensure_ascii=False))
     (tmp_path / "final.mp4").write_bytes(b"good")
     assert main(["render", str(tmp_path)]) == 2
