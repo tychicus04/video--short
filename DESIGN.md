@@ -123,6 +123,18 @@ thời gian, file giọng đọc, `visuals.json` (chỗ vá chữ và hình tư 
 - Môi trường chạy (imageio-ffmpeg, numpy, pillow, opencv, torch CPU, font Be Vietnam Pro,
   `big-lama.pt`) được cài lại dưới `~/video-pipeline/`, không dùng thư mục tạm.
 
+## Hình động một khung (02/11/2026)
+- Đoạn cơ chế là **một khung hình**, vẽ theo nhịp (mỗi bước cơ chế của brief một nhịp, tối đa 6), cái đã vẽ giữ lại và nhạt đi khi
+  lời sang bước khác, một chấm đỏ đi suốt đoạn; tối đa 7 thứ trên khung; khung cuối đọc được như sơ đồ A→Z.
+- `vs-motion` vẽ khung từ brief (`motion.json`, `vshort motion RUN --design`) **trong lúc NotebookLM tạo video**; sau khi Tai duyệt
+  bản dịch, nó gắn từng nhịp vào câu đọc (`motion.bind.json`, `vshort motion RUN`), bỏ nhịp mà lời bỏ hoặc đọc lệch thứ tự; còn
+  dưới 2 nhịp thì đoạn đó dùng ảnh tĩnh. Không thêm điểm dừng.
+- Hình kit chưa có là dữ liệu nét vẽ (`assets/shapes/<tên>.json`, ô 0–100, 1–12 nét), vẽ bằng đúng nét tay của kit. Thư viện chỉ
+  thêm, không sửa; mỗi run giữ bản sao hình đã dùng trong `RUN/shapes/`. Cuối run `vshort auto` commit riêng `assets/shapes` và push;
+  push lỗi chỉ báo trong lời nhắn cuối.
+- Vùng vẽ `y 96–1050`: tránh logo góc trên phải.
+- Thiết kế: `docs/superpowers/specs/2026-11-02-hinh-dong-mot-khung-design.md`.
+
 ## Điều phối bằng `vshort auto` (02/11/2026)
 - Tai đặt ngân sách ~$5/video (trước đó ~$18,9 theo giá API). Không còn phiên Claude điều phối suốt: `vshort auto` chạy nền
   trên server, gọi các agent `vs-*` bằng `claude -p` (researcher, transcriber, translator, visuals: Haiku; motion: Sonnet;

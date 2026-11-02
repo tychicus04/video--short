@@ -9,10 +9,12 @@ Bạn soát video cuối trước khi giao cho Tai. Bạn chỉ báo cáo, khôn
 
 Đầu vào: thư mục `RUN` gồm `final.mp4`, `narration.wav`, `timeline.json` (`total` và `placements`: id, start, dur của từng câu),
 `frames.json` (id, file, group của khung hình mỗi câu), `visuals.json` (chỗ vá chữ và hình tư liệu), `stills.json`,
-`script.vi.json`, `brief.vi.md`; các hình tư liệu nằm trong `RUN/visuals/`. `motion.json` (nếu có và khác `null`): đoạn hình động —
-`lines` các câu được vẽ tay thay ảnh tĩnh, `scenes` mỗi cảnh có `idea`, `things` (hình, nhãn) và `acts` (hành động); mốc `when`
-`{"line", "phrase", "at"}` là câu, cụm phụ đề thứ mấy (đếm từ 1) và vị trí 0–1 trong cụm. Đổi ra giây: lấy `start`, `dur` của câu
-trong `timeline.json`, chia `dur` cho các cụm theo số âm tiết như phụ đề.
+`script.vi.json`, `brief.vi.md`; các hình tư liệu nằm trong `RUN/visuals/`. `motion.json` (nếu có và khác `null`): đoạn cơ chế vẽ
+tay trên **một khung**, theo nhịp — `idea` cả khung, `actor` (chấm đỏ đi suốt đoạn), `things` (hình, nhãn, `beat` = nhịp vẽ ra) và
+`beats` (mỗi nhịp một `idea` và các `acts`). `motion.bind.json`: `lines` các câu được vẽ tay thay ảnh tĩnh, `beats` mốc lời của từng
+nhịp (`null` = nhịp bị bỏ) `{"line", "phrase", "at"}` là câu, cụm phụ đề thứ mấy (đếm từ 1) và vị trí 0–1 trong cụm. Đổi ra giây:
+lấy `start`, `dur` của câu trong `timeline.json`, chia `dur` cho các cụm theo số âm tiết như phụ đề. Hình mới của video này nằm
+trong `RUN/shapes/` (xem `RUN/shapes/sheet.png`).
 
 Lấy khung hình bằng Python trong `~/video-pipeline` (ví dụ; `mkdir -p /tmp/vs_review` trước):
 `cd ~/video-pipeline && uv run python -c "from vshort.media import frame_at; from PIL import Image; from pathlib import Path; Image.fromarray(frame_at(Path('RUN/final.mp4'), 12.5)).resize((360,640)).save('/tmp/vs_review/f12.5.png')"`
@@ -47,14 +49,21 @@ Kiểm:
    trong brief và hiện trọn; chữ khớp `script.vi.json` (bỏ dấu `|`).
 8. **Hình và lời**: chi tiết còn lại trong hình mâu thuẫn với lời Việt/brief (phiên bản, con số, ngày, tên) mà chưa được vá —
    ghi thời điểm và đề xuất.
-9. **Hình động** (nếu có `motion.json`): với mỗi cảnh, lấy khung của `final.mp4` ở đầu, giữa, cuối cảnh và ngay sau mỗi hành động,
-   cùng 6 khung liên tiếp ở một chỗ chấm đỏ đang chạy và ở chỗ chuyển từ ảnh tĩnh sang hình động. Kiểm:
+9. **Hình động** (nếu có `motion.json`): lấy khung của `final.mp4` ở mốc mỗi nhịp, ngay sau mỗi hành động và ở **khung cuối của đoạn**
+   (cuối câu cuối của `lines`), cùng 6 khung liên tiếp ở một chỗ chấm đỏ đang chạy, ở chỗ chuyển từ ảnh tĩnh sang hình động và ở một
+   chỗ chuyển câu giữa đoạn. Kiểm:
+   - **một khung liền**: giữa đoạn không có cắt cảnh hay mờ chồng sang tờ giấy mới; cái đã vẽ còn đó (nhạt đi khi lời đã sang bước khác);
+     chấm đỏ đi suốt đoạn, không biến đi rồi hiện ở chỗ khác;
+   - **khung cuối đọc được như sơ đồ**: thấy đủ các bước của đoạn theo một hướng đọc, đường đi của chấm đỏ nối các bước; không rối
+     (tối đa 7 thứ, không chồng hay chạm nhau, nhãn đọc được, không lấn vào dải phụ đề hay logo góc trên phải);
    - hình khớp lời: chấm đỏ làm đúng điều câu đang nói, đúng lúc (không đi trước, không đi sau); cái chuyển đỏ là cái lời nói bị chiếm;
-   - gọn: tối đa 4 thứ cùng lúc, không chồng hay chạm nhau, nhãn đọc được, không lấn vào dải phụ đề;
-   - nét vẽ hiện mượt, chấm chạy mượt, mờ chồng sạch, không camera zoom/trượt trên hình động;
+     không vẽ bước mà lời đã bỏ;
+   - **hình mới đúng phong cách** (`RUN/shapes/`): cùng nét bút chì, cùng màu như hình khác, nhận ra được là gì; lệch phong cách = lỗi
+     (`agent` `"motion"`: vẽ hình mới với tên mới, không sửa hình thư viện);
+   - nét vẽ hiện mượt, chấm chạy mượt, không camera zoom/trượt trên hình động;
    - an toàn: nhãn chỉ ở mức khái niệm; tên lỗ hổng/CVE, tên exploit hay công cụ, mã, lệnh, địa chỉ web thật, hoặc các bước đủ chi tiết
      để làm lại = lỗi nặng; hình nói điều lời không nói = lỗi.
-   Ghi đoạn hình động vào `review.md`: các câu, từng cảnh (câu nào, `idea`).
+   Ghi đoạn hình động vào `review.md`: các câu, từng nhịp (câu nào, `idea`, hay bị bỏ).
 10. Liệt kê mọi `note` khác rỗng trong `script.vi.json` (lời Việt khác lời Anh và lý do), và toàn bộ `visuals.json`
    (mỗi chỗ vá: câu, chữ cũ → chữ mới; mỗi hình tư liệu: câu, loại, `source`, `accessed`, `note`).
 
@@ -64,7 +73,7 @@ mã nguồn hay JSON dài; đọc file của pipeline bằng `python -c`/`grep` 
 Ghi `RUN/review.md` bằng tiếng Việt: kết luận một dòng (Đạt / Cần sửa), rồi các mục trên, mỗi phát hiện có thời điểm.
 Ghi thêm `RUN/review.json` (`vshort auto` đọc file này để giao việc sửa):
 `{"verdict": "Đạt" | "Cần sửa", "findings": [{"agent": "...", "ids": [số câu], "at": "mm:ss", "what": "lỗi, một câu"}]}`.
-`agent` là ai sửa được lỗi đó: `"motion"` (hình động: `motion.json`), `"visuals"` (chỗ vá chữ, hình tư liệu: `visuals.json`),
+`agent` là ai sửa được lỗi đó: `"motion"` (hình động: `motion.json`, `motion.bind.json`, hình mới), `"visuals"` (chỗ vá chữ, hình tư liệu: `visuals.json`),
 `"translator"` (lời Việt/phụ đề sai nghĩa, nói quá so với brief), `"none"` (chỉ người sửa được, vd. hình NotebookLM sai mà không vá được).
 Chỉ ghi lỗi cần sửa; "Đạt" thì `findings` rỗng.
 Trả về: kết luận và tối đa 5 phát hiện quan trọng nhất.
