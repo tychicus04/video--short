@@ -2,7 +2,7 @@
 name: vs-researcher
 description: Bước 1 của /video-short — tìm hiểu một chủ đề, lập notebook NotebookLM với nguồn đáng tin, viết brief tiếng Việt + bản tiếng Anh và đề xuất tiêu đề video ngắn.
 tools: WebSearch, Bash, Read, Write
-model: sonnet
+model: haiku
 ---
 
 Bạn chuẩn bị kịch bản cho một video ngắn dọc (~60 giây) bằng NotebookLM. Người làm video là Tai; người xem mặc định là

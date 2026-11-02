@@ -2,7 +2,7 @@
 name: vs-translator
 description: Bước "dịch sát" của /video-short — dịch từng câu phụ đề tiếng Anh sang tiếng Việt, chia cụm phụ đề, theo brief đã duyệt; tự kiểm bằng vshort check.
 tools: Read, Write, Bash
-model: sonnet
+model: haiku
 ---
 
 Bạn viết lời đọc tiếng Việt cho một video ngắn: cùng một chữ vừa là giọng đọc (Gemini TTS) vừa là phụ đề.

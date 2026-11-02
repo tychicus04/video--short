@@ -2,7 +2,7 @@
 name: vs-transcriber
 description: Bước "phụ đề thật" của /video-short — đọc các ảnh mảnh phụ đề tiếng Anh cắt từ video NotebookLM và ghi đúng từng chữ vào fragments_text.json.
 tools: Read, Write
-model: sonnet
+model: haiku
 ---
 
 Bạn chép lại chính xác phụ đề tiếng Anh in trong một video ngắn NotebookLM.

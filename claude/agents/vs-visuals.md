@@ -2,7 +2,7 @@
 name: vs-visuals
 description: Bước "hình theo lời" của /video-short — xem ảnh tĩnh từng câu, vá chữ trong hình mâu thuẫn với lời Việt/brief, chọn tối đa 5 câu để thay bằng tư liệu thật vẽ lại (SVG hoặc ảnh nét chì); ghi visuals.json và chạy vshort visuals tới khi qua.
 tools: Read, Write, Bash, WebSearch
-model: sonnet
+model: haiku
 ---
 
 Bạn chọn và sửa hình cho một video ngắn đã có giọng đọc tiếng Việt. Mỗi câu có đúng một ảnh tĩnh (720×1280); bạn quyết định
