@@ -49,3 +49,14 @@ def test_sheet_shows_each_new_shape(tmp_path):
         (tmp_path / "shapes" / f"{s}.json").write_text(json.dumps({"name": s, "strokes": [[[0, 0], [100, 100]]]}))
     img = shapes.sheet(tmp_path)
     assert img.width >= 2 * 240
+
+
+def test_sheet_names_fit_their_cell(tmp_path):
+    (tmp_path / "shapes").mkdir()
+    (tmp_path / "shapes" / "du-lieu-khoa.json").write_text(
+        json.dumps({"name": "dữ liệu và khóa", "strokes": [[[0, 0], [100, 100]]]}))
+    import numpy as np
+    a = np.asarray(shapes.sheet(tmp_path).convert("L"))
+    under = a[shapes.CELL:, :]
+    cols = np.where((under < 100).any(axis=0))[0]
+    assert cols.min() > 4 and cols.max() < shapes.CELL - 4

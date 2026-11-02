@@ -86,15 +86,16 @@ def sheet(run_dir: Path) -> Image.Image:
     """The run's shapes side by side, each in a CELL px square with its name under it: drawn as the kit draws them."""
     docs = [(f.stem, _read(f)) for f in sorted((run_dir / "shapes").glob("*.json"))]
     docs = [(s, d) for s, d in docs if not problems(d, s)]
-    h = CELL + 50
+    h = CELL + 64
     img = Image.new("RGB", (max(1, len(docs)) * (CELL + 4), h), "white")
-    font = ImageFont.truetype(str(FONTS / "BeVietnamPro-Bold.ttf"), 22)
+    font = ImageFont.truetype(str(FONTS / "BeVietnamPro-Bold.ttf"), 18)
     for n, (slug, doc) in enumerate(docs):
         cell = kit._paper().crop((0, 0, CELL * kit.SS, h * kit.SS))
         d = ImageDraw.Draw(cell)
         for k, pts in enumerate(strokes_in_box(doc, (20, 20, CELL - 20, CELL - 20))):
             kit._stroke(d, pts, 1.0, kit.INK, 3, zlib.crc32(slug.encode()) + k)
         cell = cell.reduce(kit.SS)
-        ImageDraw.Draw(cell).text((CELL / 2, CELL + 22), f"{slug}: {doc['name']}", fill="black", font=font, anchor="mm")
+        for k, line in enumerate((slug, doc["name"])):  # two lines: a long name must not run into the next cell
+            ImageDraw.Draw(cell).text((CELL / 2, CELL + 16 + 26 * k), line, fill="black", font=font, anchor="mm")
         img.paste(cell, (n * (CELL + 4), 0))
     return img
