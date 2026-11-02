@@ -120,6 +120,10 @@ class Fakes:
         elif agent == "vs-translator":
             run.write("script.vi.json", [{"id": 1, "phrases": "Xin | chào", "note": ""},
                                          {"id": 2, "phrases": "Tạm biệt", "note": "ngắn hơn"}])
+        elif agent == "vs-motion":
+            run.write("motion.json", {"lines": [1]})
+        elif agent == "vs-visuals":
+            run.write("visuals.json", [{"kind": "patch", "ids": [2]}])
         return "xong"
 
     def vshort(self, args):
@@ -135,7 +139,7 @@ class Fakes:
         if cmd == "text":
             self.run.write("sentences.en.json", SENTS)
         if cmd not in ("check", "approve"):
-            self.run.mark(cmd)
+            Run(self.run.path).mark(cmd)  # like the real commands: their own Run, not ours
         return 0
 
     def notebooklm(self, args):
@@ -206,3 +210,81 @@ def test_translation_that_fails_check_stops(flow):
     fk.codes["check"] = [2]
     assert auto.run_auto(run) == FAILED
     assert "vshort check" in auto.get_state(run)["message"] and not run.done("translate")
+
+
+def _approved(run):
+    for s in ("approve_brief", "research", "source", "fetch", "detect", "transcribe", "text", "translate",
+              "approve_script"):
+        run.mark(s)
+    run.write("run.json", run.read("run.json") | {"notebook_id": "nb"})
+    run.write("sentences.en.json", SENTS)
+
+
+def test_build_runs_steps_in_order_with_tts_alongside(flow):
+    run, fk = flow
+    _approved(run)
+    auto.run_auto(run)
+    c = fk.cmds
+    assert {"tts", "plates", "motion", "stills", "visuals", "timeline", "render"} <= set(c)
+    assert c.index("plates") < c.index("motion") < c.index("stills") < c.index("visuals") < c.index("timeline")
+    assert c.index("tts") < c.index("timeline") < c.index("render")
+    assert fk.agents["vs-motion"] == 1 and fk.agents["vs-visuals"] == 1
+
+
+def test_motion_failure_falls_back_to_no_motion(flow):
+    run, fk = flow
+    _approved(run)
+    fk.codes["motion"] = [2]
+    auto.run_auto(run)
+    assert run.file("motion.loi.json").exists() and not run.file("motion.json").exists()
+    assert fk.cmds.count("motion") == 2 and "render" in fk.cmds
+
+
+def test_visuals_failure_follows_the_skill_fallbacks(flow):
+    run, fk = flow
+    _approved(run)
+    fk.codes["visuals"] = [2, 2, 0]
+    auto.run_auto(run)
+    after = fk.cmds[fk.cmds.index("visuals"):]
+    assert after[:4] == ["visuals", "visuals", "stills", "visuals"]
+    assert run.read("visuals.json") == [{"kind": "patch", "ids": [2]}]  # the agent's version, put back after stills
+
+
+def test_visuals_failing_every_way_ends_with_no_visuals(flow):
+    run, fk = flow
+    _approved(run)
+    fk.codes["visuals"] = [2, 2, 2, 0]
+    auto.run_auto(run)
+    assert run.read("visuals.json") == [] and run.file("visuals.loi.json").exists()
+
+
+def test_tts_quota_stops_with_reason(flow):
+    from vshort.cli import QUOTA
+    run, fk = flow
+    _approved(run)
+    fk.codes["tts"] = [QUOTA]
+    assert auto.run_auto(run) == QUOTA
+    st = auto.get_state(run)
+    assert st["state"] == "error" and "ZeroTTS" in st["message"] and "render" not in fk.cmds
+
+
+def test_timeline_stale_voice_reruns_tts_once(flow):
+    run, fk = flow
+    _approved(run)
+    fk.codes["timeline"] = [2]
+    auto.run_auto(run)
+    assert fk.cmds.count("tts") == 2 and fk.cmds.count("timeline") == 2 and "render" in fk.cmds
+
+
+def test_marks_from_two_threads_are_all_kept(tmp_path):
+    import threading
+    run = _run(tmp_path)
+
+    def mark_many(prefix):
+        for i in range(200):
+            Run(run.path).mark(f"{prefix}{i}")
+
+    ts = [threading.Thread(target=mark_many, args=(x,)) for x in "ab"]
+    [t.start() for t in ts]
+    [t.join() for t in ts]
+    assert len(Run(run.path).state) == 400

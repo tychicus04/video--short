@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from vshort.run import Run
@@ -102,6 +103,11 @@ BRIEF_CHECK = (
 TRANSCRIBE = ("RUN={run}. Đọc các ảnh mảnh phụ đề {sheets} ({n} mảnh, chỉ số 0–{last}, theo {run}/fragments.json) "
               "và ghi {run}/fragments_text.json.")
 TRANSLATE = "RUN={run}\n\nĐầu ra nguyên văn của `vshort text`:\n\n```\n{table}\n```"
+MOTION = ("RUN={run}\n\nĐọc {run}/brief.vi.md (mục \"Cơ chế từng bước\" và \"Lưu ý độ chính xác\") và {run}/script.vi.json "
+          "trước khi chọn đoạn câu.")
+VISUALS = ("RUN={run}\n\nĐọc {run}/motion.json để biết câu nào đã có hình động (đừng chọn tư liệu cho các câu đó), "
+           "{run}/sources.md (nguồn tư liệu thật) và {run}/brief.vi.md (mục \"Lưu ý độ chính xác\") khi vá chữ.")
+FAILED_CODE = 1
 
 
 class Stop(Exception):
@@ -176,10 +182,11 @@ def _flow(run: Run) -> int:
         run.mark("source")
     _vs(run, "fetch", "--prompt", FETCH_PROMPT.format(slug=meta["slug"]))
     _vs(run, "detect")
-    sheets = sorted(run.file("sheets").glob("sheet*.png"))
-    n = len(run.read("fragments.json"))
-    _agent(run, "transcribe", "vs-transcriber",
-           TRANSCRIBE.format(run=p, sheets=", ".join(map(str, sheets)), n=n, last=n - 1))
+    if not run.done("transcribe"):
+        sheets = sorted(run.file("sheets").glob("sheet*.png"))
+        n = len(run.read("fragments.json"))
+        _agent(run, "transcribe", "vs-transcriber",
+               TRANSCRIBE.format(run=p, sheets=", ".join(map(str, sheets)), n=n, last=n - 1))
     _vs(run, "text")
     if not run.done("translate"):
         run_claude(run, "translate", "vs-translator", TRANSLATE.format(run=p, table=_table(run)),
@@ -191,7 +198,78 @@ def _flow(run: Run) -> int:
         run.file("translation.md").write_text(_translation_md(run), encoding="utf-8")
         raise Stop(WAIT_SCRIPT, f"Duyệt bản dịch: {p}/translation.md (sửa thì sửa {p}/script.vi.json), rồi "
                                 f"`vshort approve {p} script` và `vshort auto {p}`.", "wait_script")
+    _build(run)
     return OK
+
+
+def _no_motion(run: Run) -> None:
+    """motion.json failed its check: keep it as motion.loi.json and go on with stills only."""
+    if run.file("motion.json").exists():
+        run.file("motion.json").replace(run.file("motion.loi.json"))
+    if code := run_vshort(["motion", str(run.path)]):
+        raise Stop(code, f"`vshort motion` lỗi cả khi không có hình động (mã {code}); xem auto.log")
+
+
+def _motion(run: Run, prompt: str, step: str = "motion_agent") -> None:
+    if not run.done(step):
+        run_claude(run, step, "vs-motion", prompt, TIMEOUT["vs-motion"])
+        run.mark(step)
+    if run_vshort(["motion", str(run.path)]):  # don't take the agent's word for it
+        _no_motion(run)
+
+
+def _visuals(run: Run, prompt: str, step: str = "visuals_agent") -> None:
+    """The agent's visuals; when they fail: none, then fresh stills with the agent's again, then none for good."""
+    if not run.done(step):
+        run_claude(run, step, "vs-visuals", prompt, TIMEOUT["vs-visuals"])
+        run.mark(step)
+    p, mine, kept = str(run.path), run.file("visuals.json"), run.file("visuals.loi.json")
+    if not run_vshort(["visuals", p]):
+        return
+    mine.replace(kept)
+    run.write("visuals.json", [])
+    if not run_vshort(["visuals", p]):
+        return
+    if run_vshort(["stills", p]):
+        raise Stop(FAILED_CODE, "`vshort stills` lỗi khi làm lại ảnh tĩnh; xem auto.log")
+    kept.replace(mine)
+    if not run_vshort(["visuals", p]):
+        return
+    mine.replace(kept)
+    run.write("visuals.json", [])
+    if code := run_vshort(["visuals", p]):
+        raise Stop(code, f"`vshort visuals` lỗi cả khi không có tư liệu (mã {code}); xem auto.log")
+
+
+def _tts_result(run: Run, code: int) -> None:
+    from vshort.cli import QUOTA
+    if code == QUOTA:
+        raise Stop(code, "Hết hạn mức Gemini TTS trong ngày và ZeroTTS không chạy được; xem auto.log")
+    if code:
+        raise Stop(code, f"`vshort tts` lỗi (mã {code}); xem auto.log")
+
+
+def _build(run: Run) -> None:
+    p = str(run.path)
+    with ThreadPoolExecutor(1) as ex:  # the voice is read while the pictures are made
+        tts = None if run.done("tts") else ex.submit(run_vshort, ["tts", p])
+        _vs(run, "plates")
+        if not run.done("motion"):
+            _motion(run, MOTION.format(run=p))
+        _vs(run, "stills")
+        if not run.done("visuals"):
+            _visuals(run, VISUALS.format(run=p))
+        if tts:
+            _tts_result(run, tts.result())
+    if not run.done("timeline"):
+        if run_vshort(["timeline", p]) == 2:  # the voice was made from another script
+            run.unmark("tts")
+            _tts_result(run, run_vshort(["tts", p]))
+            _vs(run, "timeline")
+    if not run.done("render"):
+        if run_vshort(["render", p]) == 2:  # usually: motion.json no longer matches
+            _no_motion(run)
+            _vs(run, "render")
 
 
 def run_auto(run: Run) -> int:

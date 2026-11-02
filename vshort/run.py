@@ -1,10 +1,13 @@
 """A run folder (~/notebooklm-videos/<slug>/): its files, its config and which steps are done."""
 import json
+import os
+import threading
 import tomllib
 from pathlib import Path
 from typing import Any
 
 CONFIG = Path(__file__).resolve().parent.parent / "config.toml"
+_STATE_LOCK = threading.Lock()  # `vshort auto` reads the voice in a thread while the pictures are made
 
 
 def config() -> dict[str, Any]:
@@ -15,22 +18,33 @@ class Run:
     def __init__(self, path: Path):
         self.path = Path(path)
         self._state_file = self.path / "state.json"
-        self.state: dict[str, str] = json.loads(self._state_file.read_text()) if self._state_file.exists() else {}
+        self.state: dict[str, str] = self._load()
+
+    def _load(self) -> dict[str, str]:
+        return json.loads(self._state_file.read_text()) if self._state_file.exists() else {}
+
+    def _save(self) -> None:
+        # whole file or nothing: a reader never sees it half written
+        tmp = self._state_file.with_name(f".state.{os.getpid()}.{threading.get_ident()}.tmp")
+        tmp.write_text(json.dumps(self.state, indent=1))
+        tmp.replace(self._state_file)
 
     def done(self, step: str) -> bool:
+        self.state = self._load()  # another Run (each vshort command opens its own) may have marked it since
         return self.state.get(step) == "done"
 
     def mark(self, step: str) -> None:
-        # re-read first: another process (tts | plates -> stills run in parallel) may have marked a step since we started
-        self.state = json.loads(self._state_file.read_text()) if self._state_file.exists() else {}
-        self.state[step] = "done"
-        self._state_file.write_text(json.dumps(self.state, indent=1))
+        with _STATE_LOCK:  # re-read first: another process or thread may have marked a step since we started
+            self.state = self._load()
+            self.state[step] = "done"
+            self._save()
 
     def unmark(self, *steps: str) -> None:
-        self.state = json.loads(self._state_file.read_text()) if self._state_file.exists() else {}
-        for s in steps:
-            self.state.pop(s, None)
-        self._state_file.write_text(json.dumps(self.state, indent=1))
+        with _STATE_LOCK:
+            self.state = self._load()
+            for s in steps:
+                self.state.pop(s, None)
+            self._save()
 
     def file(self, name: str) -> Path:
         return self.path / name
