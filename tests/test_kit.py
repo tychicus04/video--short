@@ -1,6 +1,6 @@
 import numpy as np
 
-from vshort.kit import Act, H, RED, W, bbox, draw, label_em
+from vshort.kit import SAFE, Act, H, RED, W, bbox, draw, label_em
 
 PHONE = {"id": "p", "kind": "phone", "box": [180, 170, 540, 1010], "label": "trang web hợp pháp", "color": "green",
          "url": "tin-tuc.example"}
@@ -70,3 +70,14 @@ def test_a_short_vanishing_move_is_whole_when_it_starts():
 def test_the_message_icon_has_no_stroke_across_the_bubble():
     msg = {"id": "m", "kind": "icon", "icon": "message", "xy": [360, 500]}  # bubble 312..408 x 445..507
     assert _ink(draw([msg], [Act("draw", "m", 0, 0.8)], 1.0), (330, 455, 390, 495)) == 0
+
+
+def test_a_shape_draws_its_strokes():
+    th = {"id": "m", "kind": "shape", "shape": "x", "box": [200, 300, 500, 600], "label": "bộ nhớ",
+          "strokes": [[(200, 300), (500, 600)], [(200, 600), (500, 300)]]}
+    assert _ink(draw([th], [Act("draw", "m", 0, 0.8)], 1.0), (200, 300, 500, 600)) > 500
+    assert bbox(th)[1] < 300  # the label sits above, as on a server
+
+
+def test_safe_area_clears_the_logo():
+    assert SAFE[1] == 96

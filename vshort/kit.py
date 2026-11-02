@@ -13,10 +13,11 @@ from vshort.visuals import PAPER
 W, H, SS = 720, 1280, 2  # frames are drawn at SS x and reduced: smooth pencil lines
 INK, RED, GREEN, BLUE, GRAY = (62, 62, 68), (196, 48, 40), (60, 140, 80), (70, 110, 160), (150, 150, 155)
 COLORS = {"ink": INK, "red": RED, "green": GREEN, "blue": BLUE}
-SAFE = (40, 60, 680, 1050)  # above the subtitle band, clear of the watermark corner
+SAFE = (40, 96, 680, 1050)  # above the subtitle band, under the logo (top right, y 24–80)
 LABEL_EM, SMALL_EM, MIN_LABEL_EM, MAX_LABEL = 44, 34, 32, 20
 DRAW, TURN, HIDE, MOVE = 0.8, 0.6, 0.4, 1.2  # seconds: draw on, turn red, erase, default move/bounce
-BOXED = {"phone", "computer", "server", "box", "wall"}  # take `box`
+DIM = 0.55  # how far a thing the voice has moved on from fades towards the paper
+BOXED = {"phone", "computer", "server", "box", "wall", "shape"}  # take `box`
 POINTED = {"person", "icon", "dot", "text", "crack"}  # take `xy`
 ICONS = {"key", "message", "wallet", "file", "lock", "mail"}
 MOVERS = {"dot", "icon"}
@@ -167,6 +168,8 @@ def _shape(thing: dict) -> list[tuple[list, int, int]]:
         w, h, cx = x1 - x0, y1 - y0, (x0 + x1) / 2
         if kind == "wall":
             return [(_rrect(x0, y0, x1, y1, 30), 4, 18)]
+        if kind == "shape":
+            return [(pts, 3, 0) for pts in thing["strokes"]]  # a library shape, scaled into its box by motion
         if kind == "box":
             return [(_rrect(x0, y0, x1, y1, min(22, h / 3)), 3, 0)]
         if kind == "server":

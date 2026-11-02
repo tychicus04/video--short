@@ -11,19 +11,19 @@
    ]},
   {"lines": [10, 11, 12], "idea": "mã độc thoát sandbox, leo xuống lõi",
    "things": [
-    {"id": "safari", "kind": "box", "box": [120, 160, 600, 350], "label": "Safari", "when": {"line": 10}},
-    {"id": "system", "kind": "box", "box": [120, 430, 600, 620], "label": "Hệ thống", "when": {"line": 10, "at": 0.4}},
-    {"id": "kernel", "kind": "box", "box": [120, 700, 600, 890], "label": "Lõi (kernel)", "when": {"line": 10, "at": 0.8}},
-    {"id": "sandbox", "kind": "wall", "box": [95, 135, 625, 375], "label": "sandbox", "color": "blue", "when": {"line": 10, "phrase": 2}},
-    {"id": "bug", "kind": "dot", "xy": [500, 255], "when": {"line": 10, "phrase": 2, "at": 0.5}},
-    {"id": "crack1", "kind": "crack", "xy": [500, 375], "when": {"line": 11, "phrase": 2, "at": 0.5}},
-    {"id": "crack2", "kind": "crack", "xy": [500, 700], "when": {"line": 12, "phrase": 2}}
+    {"id": "safari", "kind": "box", "box": [120, 190, 600, 380], "label": "Safari", "when": {"line": 10}},
+    {"id": "system", "kind": "box", "box": [120, 460, 600, 650], "label": "Hệ thống", "when": {"line": 10, "at": 0.4}},
+    {"id": "kernel", "kind": "box", "box": [120, 730, 600, 920], "label": "Lõi (kernel)", "when": {"line": 10, "at": 0.8}},
+    {"id": "sandbox", "kind": "wall", "box": [95, 165, 625, 405], "label": "sandbox", "color": "blue", "when": {"line": 10, "phrase": 2}},
+    {"id": "bug", "kind": "dot", "xy": [500, 285], "when": {"line": 10, "phrase": 2, "at": 0.5}},
+    {"id": "crack1", "kind": "crack", "xy": [500, 405], "when": {"line": 11, "phrase": 2, "at": 0.5}},
+    {"id": "crack2", "kind": "crack", "xy": [500, 730], "when": {"line": 12, "phrase": 2}}
    ],
    "acts": [
-    {"do": "bounce", "thing": "bug", "to": [500, 360], "when": {"line": 10, "phrase": 3}},
-    {"do": "move", "thing": "bug", "to": [500, 525], "when": {"line": 11, "phrase": 3}},
+    {"do": "bounce", "thing": "bug", "to": [500, 390], "when": {"line": 10, "phrase": 3}},
+    {"do": "move", "thing": "bug", "to": [500, 555], "when": {"line": 11, "phrase": 3}},
     {"do": "red", "thing": "system", "when": {"line": 12, "phrase": 2}},
-    {"do": "move", "thing": "bug", "to": [500, 795], "when": {"line": 12, "phrase": 3}},
+    {"do": "move", "thing": "bug", "to": [500, 825], "when": {"line": 12, "phrase": 3}},
     {"do": "red", "thing": "kernel", "say": "đã bị chiếm", "when": {"line": 12, "phrase": 4}}
    ]},
   {"lines": [13], "idea": "dữ liệu bay sang hacker",
