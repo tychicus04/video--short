@@ -359,3 +359,120 @@ def _sheet(sc: Scene, ends: list[float]) -> Image.Image:
         img.paste(frame, (44 + c * (SHEET_W + 4), 0))
         d.text((44 + c * (SHEET_W + 4) + 6, 6), str(c + 1), fill="black", font=font)
     return img
+
+
+def estimate(script: list[dict]) -> list[Placement]:
+    """The spoken lines back to back at SYL s per syllable: timing before the voice exists."""
+    out, t = [], LEAD
+    for i, phrases in _spoken(script).items():
+        dur = max(syllables(phrases), 1) * SYL
+        out.append(Placement(i, t, dur))
+        t += dur + GAP
+    return out
+
+
+def _lines_problems(want, text: dict[int, str]) -> list[str]:
+    """The animated lines: spoken, back to back, not the title, at most half of the video."""
+    if not (isinstance(want, list) and want and all(_int(i) for i in want)):
+        return ["motion.bind.json: lines phải là danh sách id câu, không rỗng"]
+    if missing := [i for i in want if i not in text]:
+        return [f"motion.bind.json: lines có câu {missing} không có lời trong script.vi.json"]
+    spoken, probs = list(text), []
+    k = spoken.index(want[0])
+    if spoken[k:k + len(want)] != want:
+        probs.append(f"motion.bind.json: lines {want} phải là các câu có lời liền nhau, đúng thứ tự")
+    if spoken[0] in want:
+        probs.append(f"motion.bind.json: lines không được có câu {spoken[0]} (câu tiêu đề)")
+    # ponytail: syllables stand in for seconds; the timeline does not exist yet
+    if 2 * sum(syllables(text[i]) for i in want) > sum(syllables(t) for t in text.values()):
+        probs.append("motion.bind.json: đoạn hình động dài hơn nửa video (tính theo số âm tiết lời đọc)")
+    return probs
+
+
+def _cue_problems(k: int, cue, want: list[int], text: dict[int, str]) -> list[str]:
+    what = f"motion.bind.json nhịp {k}"
+    if not isinstance(cue, dict) or not _int(cue.get("line")):
+        return [f"{what}: phải là {{\"line\": id, \"phrase\": n, \"at\": 0–1}} hoặc null (bỏ nhịp)"]
+    line = cue["line"]
+    if line not in want:
+        return [f"{what}: line {line} không thuộc lines {want}"]
+    probs, n = [], len(text[line].split("|"))
+    phrase = cue.get("phrase", 1)
+    if not _int(phrase) or not 1 <= phrase <= n:
+        probs.append(f"{what}: phrase {phrase!r} ngoài 1–{n} (câu {line} có {n} cụm)")
+    if not _num(cue.get("at", 0)) or not 0 <= cue.get("at", 0) <= 1:
+        probs.append(f"{what}: at {cue.get('at')!r} phải là số 0–1")
+    return probs
+
+
+def bound(doc: dict, bind: dict) -> dict:
+    """The canvas with the bind's labels and lines: what render, visuals and the checks of the voice use."""
+    labels = bind.get("labels") or {}
+    return doc | {"lines": list(bind["lines"]),
+                  "things": [th | {"label": labels[th["id"]]} if th["id"] in labels else th for th in doc["things"]]}
+
+
+def _starts(bind: dict, placements: list[Placement], script: list[dict]) -> tuple[list[float | None], float]:
+    """Seconds of each beat's cue (None: dropped) and the end of the last animated line."""
+    text, at = _spoken(script), {p.id: p for p in placements}
+
+    def when(cue: dict) -> float:
+        p = at[cue["line"]]
+        f0, f1 = phrase_fracs(text[cue["line"]])[cue.get("phrase", 1) - 1]
+        return p.start + p.dur * (f0 + (f1 - f0) * cue.get("at", 0))
+
+    last = at[bind["lines"][-1]]
+    return [None if c is None else when(c) for c in bind["beats"]], last.start + last.dur
+
+
+def bind_problems(doc, bind, script: list[dict], run_dir: Path | None, visuals: list | None = None) -> list[str]:
+    """Every problem of motion.bind.json against the canvas (assumed to pass design_problems) and the script."""
+    if not isinstance(bind, dict):
+        return ["motion.bind.json phải là một object JSON"]
+    text = _spoken(script)
+    probs = [] if isinstance(bind.get("note"), str) and bind["note"].strip() else [
+        "motion.bind.json: thiếu note: một dòng ghi nhịp nào bỏ và vì sao"]
+    want = bind.get("lines")
+    if bad := _lines_problems(want, text):
+        return probs + bad
+    cues, n = bind.get("beats"), len(doc["beats"])
+    if not isinstance(cues, list) or len(cues) != n:
+        return [f"motion.bind.json: beats phải có {n} phần tử (một mốc mỗi nhịp, null để bỏ nhịp)"]
+    for k, c in enumerate(cues, 1):
+        if c is not None:
+            probs += _cue_problems(k, c, want, text)
+    labels = bind.get("labels", {})
+    ids = {th["id"] for th in doc["things"] if "label" in th}
+    if not isinstance(labels, dict) or not all(isinstance(i, str) and i in ids for i in labels):
+        probs.append("motion.bind.json: labels phải là {\"<id thing có nhãn>\": \"<nhãn mới>\"}")
+    if probs:
+        return probs
+    kept = [(k, c) for k, c in enumerate(cues, 1) if c is not None]
+    if len(kept) < 2:
+        return [f"motion.bind.json: chỉ còn {len(kept)} nhịp, cần ít nhất 2 (không thì dùng ảnh tĩnh)"]
+    k, first = kept[0]
+    if first["line"] != want[0] or first.get("phrase", 1) != 1 or first.get("at", 0):
+        probs.append(f"motion.bind.json nhịp {k}: nhịp giữ lại đầu tiên phải mở đoạn: câu {want[0]}, cụm 1, at 0")
+    order = [(want.index(c["line"]), c.get("phrase", 1), c.get("at", 0)) for _, c in kept]
+    if order != sorted(order) or len(set(order)) < len(order):
+        probs.append("motion.bind.json: mốc các nhịp giữ lại phải tăng dần theo lời đọc; bỏ (null) nhịp đọc lệch thứ tự")
+    said = {w for i in want for w in _words(text[i])}
+    doc = bound(doc, bind)
+    probs += design_problems(doc, said, run_dir)  # the labels again, now against the words of the voice
+    if not probs:
+        probs += _order_problems(timed(doc, *_starts(bind, estimate(script), script), run_dir))
+    if visuals is not None:
+        probs += clashes(visuals, set(want))
+    return probs
+
+
+def bind_timed(doc: dict, bind: dict, placements: list[Placement], script: list[dict], run_dir: Path | None) -> Scene:
+    """The canvas on the voice: each kept beat starts on its cue, the canvas ends with the last animated line."""
+    return timed(bound(doc, bind), *_starts(bind, placements, script), run_dir)
+
+
+def bind_sheet(doc: dict, bind: dict, script: list[dict], run_dir: Path | None) -> Image.Image:
+    """As design_sheet, a column per kept beat, on the timing estimated from the script."""
+    starts, end = _starts(bind, estimate(script), script)
+    kept = [s for s in starts if s is not None]
+    return _sheet(timed(bound(doc, bind), starts, end, run_dir), [*kept[1:], end])

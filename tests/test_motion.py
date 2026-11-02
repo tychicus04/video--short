@@ -3,7 +3,8 @@ import json
 import pytest
 
 from vshort import motion
-from vshort.motion import clashes, load
+from vshort.fit import phrase_fracs
+from vshort.motion import clashes, estimate, load
 
 WORDS = motion.brief_words("**Cơ chế:** kẻ tấn công gửi gói tin tới máy chủ; bộ nhớ (memory) nứt.")
 
@@ -107,3 +108,93 @@ def test_load_treats_null_and_missing_as_no_animation(tmp_path):
     (tmp_path / "motion.json").write_text("{oops")
     with pytest.raises(ValueError):
         load(tmp_path / "motion.json")
+
+
+SCRIPT = [{"id": i, "phrases": p, "note": ""} for i, p in enumerate([
+    "Lỗi mới trong nhân Linux",
+    "Ai cũng nên biết | chuyện này",
+    "Bản vá đã có | từ tuần trước",
+    "Kẻ tấn công gửi | gói tin tới máy chủ.",
+    "Trong máy chủ | lộ ra bộ nhớ.",
+    "Máy chủ | bị chiếm.",
+    "Hãy cập nhật hệ điều hành | ngay hôm nay | để không bị ảnh hưởng.",
+    "Nhà cung cấp đã phát hành | bản vá cho mọi phiên bản | đang được hỗ trợ.",
+    "Theo dõi để biết thêm | về an ninh mạng mỗi ngày.",
+], 1)]
+BIND = {"lines": [4, 5, 6], "note": "n", "beats": [{"line": 4}, {"line": 5, "phrase": 2}, {"line": 6}]}
+
+
+def _start(line, phrase=1, at=0.0):
+    p = next(p for p in estimate(SCRIPT) if p.id == line)
+    f0, f1 = phrase_fracs(SCRIPT[line - 1]["phrases"])[phrase - 1]
+    return p.start + p.dur * (f0 + (f1 - f0) * at)
+
+
+def test_bind_ok(design, tmp_path):
+    assert motion.bind_problems(design, BIND, SCRIPT, tmp_path) == []
+
+
+def test_bind_rejects_out_of_order_beats(design, tmp_path):
+    b = BIND | {"beats": [{"line": 4}, {"line": 6}, {"line": 5}]}
+    assert any("tăng dần" in p for p in motion.bind_problems(design, b, SCRIPT, tmp_path))
+
+
+def test_fewer_than_two_beats_left_is_an_error(design, tmp_path):
+    b = BIND | {"beats": [{"line": 4}, None, None]}
+    assert any("ít nhất 2" in p for p in motion.bind_problems(design, b, SCRIPT, tmp_path))
+
+
+def test_first_kept_beat_must_open_the_stretch(design, tmp_path):
+    b = BIND | {"beats": [None, {"line": 5}, {"line": 6}]}
+    assert any("câu 4" in p for p in motion.bind_problems(design, b, SCRIPT, tmp_path))
+
+
+def test_bind_needs_one_cue_per_beat_inside_its_lines(design, tmp_path):
+    assert any("3 phần tử" in p for p in motion.bind_problems(design, BIND | {"beats": [{"line": 4}]}, SCRIPT, tmp_path))
+    b = BIND | {"beats": [{"line": 4}, {"line": 5}, {"line": 7}]}
+    assert any("7" in p for p in motion.bind_problems(design, b, SCRIPT, tmp_path))
+    b = BIND | {"beats": [{"line": 4}, {"line": 5, "phrase": 3}, {"line": 6}]}
+    assert any("phrase" in p for p in motion.bind_problems(design, b, SCRIPT, tmp_path))
+
+
+def test_bind_lines_rules(design, tmp_path):
+    assert any("tiêu đề" in p for p in motion.bind_problems(design, BIND | {"lines": [1, 2, 3, 4, 5, 6]}, SCRIPT,
+                                                           tmp_path))
+    assert any("liền nhau" in p for p in motion.bind_problems(design, BIND | {"lines": [4, 6]}, SCRIPT, tmp_path))
+    refs = [{"kind": "svg", "id": 5, "file": "visuals/a.svg"}]
+    assert any("câu 5" in p for p in motion.bind_problems(design, BIND, SCRIPT, tmp_path, refs))
+
+
+def test_labels_override_must_use_spoken_words(design, tmp_path):
+    assert any("'vùng'" in p for p in motion.bind_problems(design, BIND | {"labels": {"mem": "vùng nhớ"}}, SCRIPT,
+                                                          tmp_path))
+    assert motion.bind_problems(design, BIND | {"labels": {"mem": "nhớ"}}, SCRIPT, tmp_path) == []
+    design["things"][2]["label"] = "chỗ chứa"  # a brief word the voice never says
+    assert any("'chứa'" in p for p in motion.bind_problems(design, BIND, SCRIPT, tmp_path))
+    assert motion.bound(design, BIND | {"labels": {"mem": "bộ nhớ"}})["things"][2]["label"] == "bộ nhớ"
+
+
+def test_bind_timed_puts_beats_on_their_cues(design, tmp_path):
+    sc = motion.bind_timed(design, BIND, estimate(SCRIPT), SCRIPT, tmp_path)
+    draws = {a.thing: a.t0 for a in sc.acts if a.do == "draw"}
+    assert draws["mem"] == pytest.approx(_start(5, 2)) and sc.lines == [4, 5, 6]
+
+
+def test_dropped_beat_things_appear_with_next_beat(design, tmp_path):
+    b = BIND | {"beats": [{"line": 4}, None, {"line": 6}]}
+    sc = motion.bind_timed(design, b, estimate(SCRIPT), SCRIPT, tmp_path)
+    t_beat3 = _start(6)
+    assert all(a.t0 >= t_beat3 - motion.LEAD_IN for a in sc.acts if a.thing == "mem" and a.do == "draw")
+    assert [a for a in sc.acts if a.thing == "mem" and a.do == "draw"]
+    assert not [a for a in sc.acts if a.do == "move" and a.to == (520, 680)]
+
+
+def test_things_of_dropped_last_beats_are_not_drawn(design, tmp_path):
+    design["things"][2]["beat"] = 3
+    sc = motion.timed(design, [0.0, 3.0, None], 9.0, tmp_path)
+    assert "mem" not in {th["id"] for th in sc.things} and not [a for a in sc.acts if a.thing == "mem"]
+
+
+def test_bind_sheet_has_a_column_per_kept_beat(design, tmp_path):
+    img = motion.bind_sheet(design, BIND | {"beats": [{"line": 4}, None, {"line": 6}]}, SCRIPT, tmp_path)
+    assert 2 * motion.SHEET_W < img.width < 3 * motion.SHEET_W
