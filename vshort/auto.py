@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import time
+import traceback
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -26,12 +27,18 @@ def _log_cost(run: Run, step: str, agent: str, seconds: float, out: dict, ok: bo
     run.write("cost.json", rows)
 
 
+def _agent_env() -> dict[str, str]:
+    """Our environment without the Claude Code session that may have started us (`/video-short`): each agent is
+    its own top-level session, not a child of that one."""
+    return {k: v for k, v in os.environ.items() if not (k == "CLAUDECODE" or k.startswith("CLAUDE_CODE_"))}
+
+
 def run_claude(run: Run, step: str, agent: str, prompt: str, timeout: int) -> str:
     """Run one agent headless; its reply text. AgentError (reason in Vietnamese) when it fails or overruns."""
     t = time.monotonic()
     try:
         cp = subprocess.run([*CLAUDE, "-p", "--agent", agent, "--output-format", "json", prompt], cwd=ROOT,
-                            capture_output=True, text=True, timeout=timeout)
+                            capture_output=True, text=True, timeout=timeout, env=_agent_env())
     except subprocess.TimeoutExpired:
         _log_cost(run, step, agent, time.monotonic() - t, {}, False)
         raise AgentError(f"{agent} chạy quá {timeout // 60} phút ở bước {step}") from None
@@ -54,10 +61,15 @@ def get_state(run: Run) -> dict:
     return {"state": "none", "message": "", "round": 0, "pid": 0}
 
 
-def set_state(run: Run, state: str, message: str = "", round: int | None = None) -> None:
+def set_state(run: Run, state: str, message: str = "", round: int | None = None, pid: int | None = None) -> None:
+    """`pid` is the process doing the run (wait uses it to tell a run that died from one still going)."""
     old = get_state(run)
     run.write("auto.json", {"state": state, "message": message, "round": old["round"] if round is None else round,
-                            "pid": os.getpid()})
+                            "pid": pid or os.getpid()})
+
+
+def alive_run(run: Run) -> bool:
+    return bool(locked_by(run)) or _alive(get_state(run)["pid"])
 
 
 def _alive(pid: int) -> bool:
@@ -226,7 +238,9 @@ def read_review(run: Run) -> dict:
     try:
         rev = run.read("review.json")
         assert rev["verdict"] in ("Đạt", "Cần sửa") and isinstance(rev["findings"], list)
-        assert all(f["agent"] in ("motion", "visuals", "translator", "none") for f in rev["findings"])
+        for f in rev["findings"]:
+            assert f["agent"] in ("motion", "visuals", "translator", "none")
+            assert isinstance(f["what"], str) and isinstance(f.get("ids", []), list)
     except (OSError, ValueError, KeyError, TypeError, AssertionError):
         raise AgentError(f"review.json không đọc được (thiếu hoặc sai dạng) — xem {run.path}/review.md") from None
     return rev
@@ -234,44 +248,55 @@ def read_review(run: Run) -> dict:
 
 def _items(fs: list[dict]) -> str:
     return "\n".join(f"- {f['agent']}, câu {', '.join(map(str, f.get('ids', [])))}, {f.get('at', '')}: {f['what']}"
-                      for f in fs)
+                     for f in fs)
 
 
-def _review(run: Run) -> None:
-    """Review; while it finds what an agent can fix, fix it and have a fresh reviewer check the fix (≤ MAX_ROUNDS)."""
+def _fix(run: Run, r: int, todo: list[dict]) -> None:
+    """Round r's fixes; each agent step is marked, so a run that died midway redoes only what is left."""
     from vshort.cli import WAIT_SCRIPT
     p = run.path
-    while True:
-        r = get_state(run)["round"]
-        if not run.done(f"review{r}"):
-            prompt = REVIEW.format(run=p) if r == 0 else RECHECK.format(run=p, fixed=run.file(f"fix{r}.txt").read_text())
-            run.file("review.json").unlink(missing_ok=True)  # never act on the previous reviewer's findings
-            run_claude(run, f"review{r}", "vs-reviewer", prompt, TIMEOUT["vs-reviewer"])
-            run.mark(f"review{r}")
-        rev = read_review(run)
-        todo = [f for f in rev["findings"] if f["agent"] != "none"]
-        if rev["verdict"] == "Đạt" or not todo or r >= MAX_ROUNDS:
-            _finish(run, rev, r)
-            return
-        r += 1
-        set_state(run, "running", round=r)
-        run.file(f"fix{r}.txt").write_text(_items(todo) + "\n", encoding="utf-8")
-        by = {a: [f for f in todo if f["agent"] == a] for a in ("motion", "visuals", "translator")}
-        for agent in ("motion", "visuals"):
-            if by[agent]:
-                prompt = FIX.format(run=p, agent=agent, items=_items(by[agent]), how=FIX_HOW[agent])
-                (_motion if agent == "motion" else _visuals)(run, prompt, step=f"fix{r}_{agent}")
-                run.unmark("render")
-        if by["translator"] and not run.done(f"fix{r}_translator"):
+    by = {a: [f for f in todo if f["agent"] == a] for a in ("motion", "visuals", "translator")}
+    for agent in ("motion", "visuals"):
+        if by[agent]:
+            prompt = FIX.format(run=p, agent=agent, items=_items(by[agent]), how=FIX_HOW[agent])
+            (_motion if agent == "motion" else _visuals)(run, prompt, step=f"fix{r}_{agent}")
+            run.unmark("render")
+    if by["translator"]:
+        if not run.done(f"fix{r}_translator"):
             run_claude(run, f"fix{r}_translator", "vs-translator",
                        FIX.format(run=p, agent="translator", items=_items(by["translator"]),
                                   how=FIX_HOW["translator"].format(run=p)), TIMEOUT["vs-translator"])
             if not run.file("script.proposed.json").exists():
                 raise AgentError("vs-translator không ghi script.proposed.json khi sửa theo review")
             run.mark(f"fix{r}_translator")
-            run.unmark("approve_script", "tts", "timeline", "render", "motion")
-            raise Stop(WAIT_SCRIPT, _proposal(run), "wait_script")
-        _render(run)
+        # the voice, stills (a line may no longer be empty), visuals and the motion check all follow the words
+        run.unmark("approve_script", "tts", "timeline", "render", "motion", "stills", "visuals")
+        run.mark(f"fixed{r}")  # what is left (read the voice again, render) happens once Tai approves
+        raise Stop(WAIT_SCRIPT, _proposal(run), "wait_script")
+    _render(run)
+    run.mark(f"fixed{r}")
+
+
+def _review(run: Run) -> None:
+    """Review; while it finds what an agent can fix, fix it and have a fresh reviewer check the fix (≤ MAX_ROUNDS)."""
+    p = run.path
+    while True:
+        r = get_state(run)["round"]
+        if r and not run.done(f"fixed{r}"):  # died during round r's fixes: finish them first
+            _fix(run, r, run.read(f"fix{r}.json"))
+        if not run.done(f"review{r}"):
+            prompt = REVIEW.format(run=p) if r == 0 else RECHECK.format(run=p, fixed=_items(run.read(f"fix{r}.json")))
+            run.file("review.json").unlink(missing_ok=True)  # never act on the previous reviewer's findings
+            run_claude(run, f"review{r}", "vs-reviewer", prompt, TIMEOUT["vs-reviewer"])
+            read_review(run)  # a bad file is not marked done: a rerun asks a reviewer again
+            run.mark(f"review{r}")
+        rev = read_review(run)
+        todo = [f for f in rev["findings"] if f["agent"] != "none"]
+        if rev["verdict"] == "Đạt" or not todo or r >= MAX_ROUNDS:
+            _finish(run, rev, r)
+            return
+        run.write(f"fix{r + 1}.json", todo)  # before the round number moves: a resume finds what to fix
+        set_state(run, "running", round=r + 1)
 
 
 def _proposal(run: Run) -> str:
@@ -373,8 +398,10 @@ def _tts_result(run: Run, code: int) -> None:
 
 def _render(run: Run) -> None:
     if not run.done("render"):
-        if run_vshort(["render", str(run.path)]) == 2:  # usually: motion.json no longer matches
-            _no_motion(run)
+        if run_vshort(["render", str(run.path)]) == 2:
+            # as the skill did: check motion again (it may only be stale), drop it only if it no longer passes
+            if run_vshort(["motion", str(run.path)]):
+                _no_motion(run)
             _vs(run, "render")
 
 
@@ -409,5 +436,9 @@ def run_auto(run: Run) -> int:
         return e.code
     except AgentError as e:
         set_state(run, "error", str(e))
+        return FAILED
+    except Exception as e:  # a bug or a file an agent did not write: say so instead of staying "running"
+        traceback.print_exc()
+        set_state(run, "error", f"lỗi không lường trước: {type(e).__name__}: {e}; xem {run.path}/auto.log")
         return FAILED
     return code

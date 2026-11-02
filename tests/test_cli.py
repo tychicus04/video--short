@@ -587,9 +587,25 @@ def test_auto_launch_detaches_and_refuses_while_running(tmp_path, monkeypatch, c
     assert main(["auto", "s", "--topic", "Chủ đề", "--runs-dir", str(tmp_path)]) == 0
     args, kw = launched[0]
     run = tmp_path / "s"
-    assert "--foreground" in args and str(run) in args and kw["start_new_session"] is True
+    assert "--foreground" in args and str(run) in args and "-u" in args and kw["start_new_session"] is True
+    assert auto.get_state(Run(run))["pid"] == 4242  # wait checks the background run, not the launcher, is alive
     assert auto.get_state(Run(run))["state"] == "running" and (run / "auto.log").exists()
     assert "4242" in capsys.readouterr().out
     (run / "auto.lock").write_text(str(os.getpid()))  # the background run is still going
     assert main(["auto", str(run)]) == 2 and "đang chạy" in capsys.readouterr().err
     assert len(launched) == 1
+
+
+def test_wait_reports_a_run_that_died(tmp_path, capsys):
+    from vshort import auto
+    auto.set_state(Run(tmp_path), "running", pid=999999)  # no such process, no lock: it died mid-step
+    assert main(["wait", str(tmp_path), "--poll", "0"]) == 1
+    assert "dừng giữa chừng" in capsys.readouterr().out
+
+
+def test_auto_with_topic_refuses_an_existing_video(tmp_path, capsys):
+    (tmp_path / "s").mkdir()
+    (tmp_path / "s" / "run.json").write_text('{"slug": "s", "notebook_id": "nb", "topic": "cũ"}')
+    assert main(["auto", "s", "--topic", "mới", "--runs-dir", str(tmp_path), "--foreground"]) == 2
+    assert json.loads((tmp_path / "s" / "run.json").read_text())["notebook_id"] == "nb"
+    assert "vshort auto" in capsys.readouterr().err

@@ -101,3 +101,10 @@ def make_video():
         return out
 
     return make
+
+
+@pytest.fixture(autouse=True)
+def no_real_claude(monkeypatch):
+    """No test may start a real agent (it costs money and may create notebooks): `claude` is a command that fails."""
+    from vshort import auto
+    monkeypatch.setattr(auto, "CLAUDE", ["false"])

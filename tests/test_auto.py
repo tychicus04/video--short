@@ -9,6 +9,8 @@ from vshort.run import Run
 FAKE = """import json, os, sys, time
 spec = json.loads(os.environ["FAKE_CLAUDE"])
 time.sleep(spec.get("sleep", 0))
+if spec.get("echo_env"):
+    spec["out"]["result"] = os.environ.get(spec["echo_env"], "")
 print(spec["out"] if isinstance(spec["out"], str) else json.dumps(spec["out"]))
 sys.exit(spec.get("code", 0))
 """
@@ -21,8 +23,8 @@ def claude(tmp_path, monkeypatch):
     fake.write_text(FAKE)
     monkeypatch.setattr(auto, "CLAUDE", [sys.executable, str(fake)])
 
-    def set_(out, code=0, sleep=0):
-        monkeypatch.setenv("FAKE_CLAUDE", json.dumps({"out": out, "code": code, "sleep": sleep}))
+    def set_(out, code=0, sleep=0, echo_env=None):
+        monkeypatch.setenv("FAKE_CLAUDE", json.dumps({"out": out, "code": code, "sleep": sleep, "echo_env": echo_env}))
     return set_
 
 
@@ -105,9 +107,14 @@ class Fakes:
         self.prompts: dict[str, list[str]] = {}
         self.codes: dict[str, list[int]] = {}  # vshort step -> exit codes to return, in order (then 0)
         self.no_notebook = False
+        self.boom: set[str] = set()  # vshort steps that raise
+        self.die_in: str | None = None  # agent step that "kills" the run (raises SystemExit) once
         self.reviews: list[dict | None] = []  # what each reviewer call writes to review.json (None: nothing); then Đạt
 
     def claude(self, run, step, agent, prompt, timeout):
+        if step == self.die_in:
+            self.die_in = None
+            raise KeyboardInterrupt  # the process dies mid-call: nothing after it runs
         self.agents[agent] += 1
         self.prompts.setdefault(agent, []).append(prompt)
         f = run.file
@@ -141,6 +148,8 @@ class Fakes:
         code = (self.codes.get(cmd) or [0]).pop(0) if self.codes.get(cmd) else 0
         if code:
             return code
+        if cmd in self.boom:
+            raise RuntimeError(f"{cmd} hỏng")
         if cmd == "detect":
             self.run.write("fragments.json", [{"i": 0}])
             (self.run.path / "sheets").mkdir(exist_ok=True)
@@ -368,3 +377,68 @@ def test_over_budget_warns(flow):
     run.write("cost.json", [{"step": "x", "agent": "vs-reviewer", "seconds": 1, "cost_usd": 5.4, "models": [], "ok": True}])
     assert auto.run_auto(run) == OK
     assert "Vượt ngân sách" in auto.get_state(run)["message"]
+
+
+# --- final review fixes --------------------------------------------------------------------------------------------
+
+def test_unexpected_exception_ends_in_error_not_running(flow):
+    run, fk = flow
+    _approved(run)
+    fk.boom = {"render"}
+    assert auto.run_auto(run) == FAILED
+    st = auto.get_state(run)
+    assert st["state"] == "error" and "auto.log" in st["message"] and "render hỏng" in st["message"]
+
+
+def test_crash_inside_a_fix_round_redoes_the_fix_on_resume(flow):
+    run, fk = flow
+    _approved(run)
+    fk.reviews = [_needs("motion", "chấm đỏ đi sớm")]
+    fk.die_in = "fix1_motion"
+    with pytest.raises(KeyboardInterrupt):
+        auto.run_auto(run)
+    assert auto.run_auto(run) == OK
+    assert fk.agents["vs-motion"] == 2  # the first pass, then the fix — redone after the crash
+    assert fk.cmds.count("render") == 2 and fk.agents["vs-reviewer"] == 2
+    assert fk.prompts["vs-reviewer"][1].startswith("Soát lại")
+
+
+def test_bad_review_json_is_retried_on_rerun(flow):
+    run, fk = flow
+    _approved(run)
+    fk.reviews = [None]
+    assert auto.run_auto(run) == FAILED
+    assert auto.run_auto(run) == OK and fk.agents["vs-reviewer"] == 2
+
+
+def test_review_findings_need_what_and_ids(flow):
+    run, fk = flow
+    _approved(run)
+    fk.reviews = [{"verdict": "Cần sửa", "findings": [{"agent": "motion", "ids": 3}]}]
+    assert auto.run_auto(run) == FAILED
+    assert "review.json" in auto.get_state(run)["message"]
+
+
+def test_render_error_reruns_the_motion_check_before_dropping_motion(flow):
+    run, fk = flow
+    _approved(run)
+    fk.codes["render"] = [2]  # e.g. motion/lines.json older than the script: `vshort motion` makes it current
+    assert auto.run_auto(run) == OK
+    assert run.file("motion.json").exists() and not run.file("motion.loi.json").exists()
+    assert fk.cmds.count("render") == 2
+
+
+def test_translator_fix_redoes_stills_and_visuals_checks(flow):
+    run, fk = flow
+    _approved(run)
+    run.write("script.vi.json", [{"id": 1, "phrases": "Xin | chào", "note": ""}, {"id": 2, "phrases": "Tạm biệt", "note": ""}])
+    fk.reviews = [_needs("translator", "câu 1 nói quá")]
+    assert auto.run_auto(run) == WAIT_SCRIPT
+    assert not run.done("stills") and not run.done("visuals") and run.done("visuals_agent")
+
+
+def test_agents_do_not_inherit_the_claude_session(tmp_path, claude, monkeypatch):
+    run = _run(tmp_path)
+    monkeypatch.setenv("CLAUDECODE", "1")
+    claude({"result": "", "total_cost_usd": 0, "is_error": False}, echo_env="CLAUDECODE")
+    assert auto.run_claude(run, "s", "vs-translator", "p", timeout=30) == ""

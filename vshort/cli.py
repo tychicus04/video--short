@@ -426,6 +426,10 @@ def cmd_approve(a) -> int:
 
 def cmd_auto(a) -> int:
     if a.topic:  # a new video: `vshort auto <slug> --topic …`
+        existing = Path(a.runs_dir or config()["runs_dir"]).expanduser() / a.target
+        if (existing / "run.json").exists():
+            _err(f"đã có video {existing} — chạy tiếp bằng `vshort auto {existing}`, hoặc chọn slug khác")
+            return BAD_INPUT
         if code := cmd_new(argparse.Namespace(slug=a.target, notebook=None, runs_dir=a.runs_dir)):
             return code
         run = Run(Path(a.runs_dir or config()["runs_dir"]).expanduser() / a.target)
@@ -436,11 +440,11 @@ def cmd_auto(a) -> int:
         if pid := auto.locked_by(run):
             _err(f"`vshort auto` đang chạy cho {run.path} (pid {pid})")
             return BAD_INPUT
-        auto.set_state(run, "running")
         with open(run.file("auto.log"), "a") as log:
-            child = subprocess.Popen([sys.executable, "-m", "vshort.cli", "auto", str(run.path), "--foreground"],
+            child = subprocess.Popen([sys.executable, "-u", "-m", "vshort.cli", "auto", str(run.path), "--foreground"],
                                      cwd=ROOT, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
                                      start_new_session=True)
+        auto.set_state(run, "running", pid=child.pid)
         print(f"{run.path}\nđang chạy nền (pid {child.pid}); log: {run.file('auto.log')}; chờ: `vshort wait {run.path}`")
         return OK
     if not auto.acquire_lock(run):
@@ -455,6 +459,10 @@ def cmd_auto(a) -> int:
 def cmd_wait(a) -> int:
     run = Run(a.run)
     while (st := auto.get_state(run))["state"] == "running":
+        if not auto.alive_run(run):
+            print(f"error\n`vshort auto` đã dừng giữa chừng (máy tắt hoặc bị dừng) — chạy lại `vshort auto {run.path}` "
+                  f"để làm tiếp; log: {run.file('auto.log')}")
+            return FAILED
         time.sleep(a.poll)
     if st["state"] == "none":
         _err("chưa chạy `vshort auto` cho thư mục này")
