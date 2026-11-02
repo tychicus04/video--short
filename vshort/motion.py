@@ -28,6 +28,7 @@ DUR = {"draw": kit.DRAW, "red": kit.TURN, "hide": kit.HIDE, "move": kit.MOVE, "b
 KINDS = kit.BOXED | kit.POINTED | {"path"}
 AREA = f"vùng an toàn x {kit.SAFE[0]}–{kit.SAFE[2]}, y {kit.SAFE[1]}–{kit.SAFE[3]}"
 SHEET_W = 240
+JUMP = 20  # px a mover may be off the start of the path it then runs along
 
 
 OLD = "motion.json dạng cũ (scenes): viết lại theo dạng nhịp (beats)"
@@ -227,6 +228,13 @@ def _order_problems(sc: Scene) -> list[str]:
             probs.append(f"motion.json: {a.do} của {a.thing!r} bắt đầu trước khi nó được vẽ")
         elif a.t0 > gone.get(a.thing, math.inf) + 1e-9:
             probs.append(f"motion.json: {a.do} của {a.thing!r} bắt đầu sau khi nó đã bị xóa")
+    by_id = {th["id"]: th for th in sc.things}
+    for a in sc.acts:  # a path move starts where its path does: the mover must already be there
+        if a.do == "move" and a.path:
+            x, y = kit._position(by_id[a.thing], [b for b in sc.acts if b.t0 < a.t0], a.t0)
+            if (gap := math.hypot(x - a.path[0][0], y - a.path[0][1])) > JUMP:
+                probs.append(f"motion.json: {a.thing!r} nhảy {gap:.0f} px tới đầu path lúc {a.t0:.1f} s: cho nó tới đầu path "
+                             "trước (move to), hoặc đừng bỏ nhịp đưa nó tới đó")
     counted = [th["id"] for th in sc.things
                if th["kind"] not in ("path", "crack") and (th["kind"] != "dot" or th.get("label"))]
     for t in sorted(drawn[i] for i in counted):
@@ -410,7 +418,8 @@ def bound(doc: dict, bind: dict) -> dict:
     labels = bind.get("labels") or {}
     ids = {i for i in labels if isinstance(i, str)} if isinstance(labels, dict) else set()
     return doc | {"lines": list(bind["lines"]),
-                  "things": [th | {"label": labels[th["id"]]} if isinstance(th, dict) and th.get("id") in ids else th
+                  "things": [th | {"label": labels[th["id"]]} if isinstance(th, dict) and isinstance(th.get("id"), str) and th["id"] in ids
+                             else th
                              for th in doc["things"]]}
 
 

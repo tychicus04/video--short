@@ -520,6 +520,7 @@ def test_publish_shapes_commits_only_shape_files(tmp_path, monkeypatch):
     _shape(run.file("shapes/old.json"))  # copied from the library: not new
     _shape(run.file("shapes/nhan.json"))
     _shape(run.file("shapes/bad.json"), [(0, 0)])  # one point: fails its check, never published
+    run.write("motion.json", {"things": [{"id": s, "kind": "shape", "shape": s} for s in ("old", "nhan", "bad")]})
     calls = []
     monkeypatch.setattr(auto, "git", lambda args: calls.append(args) or (0, ""))
     assert auto.publish_shapes(run) == "Hình mới lên repo: nhan"
@@ -541,6 +542,7 @@ def test_shape_publish_failure_is_reported_not_fatal(flow, monkeypatch):
     run, fk = flow
     _approved(run)
     _shape(run.file("shapes/nhan.json"))
+    run.write("motion.json", {"things": [{"id": "m", "kind": "shape", "shape": "nhan"}]})
     monkeypatch.setattr(auto, "git", lambda args: (1, "fatal: unable to access 'https://github.com/x'") if args[0] == "push"
                         else (0, ""))
     assert auto.run_auto(run) == OK
@@ -566,3 +568,47 @@ def test_a_null_canvas_is_not_bound(flow):
     assert auto.run_auto(run) == OK
     assert fk.agents["vs-motion"] == 0 and "Hình động: không có\n" in auto.get_state(run)["message"]
     assert not run.file("motion.loi.json").exists()
+
+
+def test_only_shapes_of_the_surviving_canvas_are_published(tmp_path, monkeypatch):
+    run = _run(tmp_path)
+    monkeypatch.setattr(auto, "ROOT", tmp_path / "repo")
+    monkeypatch.setattr(shapes, "LIBRARY", tmp_path / "repo" / "assets" / "shapes")
+    monkeypatch.setattr(auto, "git", lambda args: (0, ""))
+    _shape(run.file("shapes/bo-nho.json"))  # rejected by the reviewer, replaced by bo-nho-2
+    _shape(run.file("shapes/bo-nho-2.json"))
+    run.write("motion.json", {"things": [{"id": "m", "kind": "shape", "shape": "bo-nho-2"}]})
+    assert auto.publish_shapes(run) == "Hình mới lên repo: bo-nho-2"
+    run.write("motion.json", None)
+    _shape(run.file("shapes/nhan.json"))
+    assert auto.publish_shapes(run) == "Hình mới: không có"
+
+
+def test_a_failed_pull_is_rebased_back(tmp_path, monkeypatch):
+    run = _run(tmp_path)
+    monkeypatch.setattr(auto, "ROOT", tmp_path / "repo")
+    monkeypatch.setattr(shapes, "LIBRARY", tmp_path / "repo" / "assets" / "shapes")
+    _shape(run.file("shapes/nhan.json"))
+    run.write("motion.json", {"things": [{"id": "m", "kind": "shape", "shape": "nhan"}]})
+    calls = []
+    monkeypatch.setattr(auto, "git", lambda args: calls.append(args) or ((1, "CONFLICT") if args[0] == "pull" else (0, "")))
+    assert "chưa lên repo" in auto.publish_shapes(run)
+    assert ["rebase", "--abort"] in calls and calls[-1][0] != "push"
+
+
+def test_a_bound_canvas_is_not_gated_on_brief_words_again(flow):
+    run, fk = flow
+    _approved(run)
+    run.write("motion.bind.json", {"lines": [1]})  # bound once: a fix may use spoken words the brief lacks
+    run.mark("motion_bind")
+    assert auto.run_auto(run) == OK
+    assert fk.cmds.count("motion") == 1 and run.file("motion.json").exists()  # the full check only, no `--design`
+
+
+def test_a_null_canvas_with_a_leftover_bind_is_no_animation(flow):
+    run, fk = flow
+    _approved(run)
+    run.write("motion.json", None)
+    run.write("motion.bind.json", {"lines": [1]})
+    assert auto.run_auto(run) == OK
+    assert "Hình động: không có" in auto.get_state(run)["message"]

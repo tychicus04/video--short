@@ -19,7 +19,7 @@
    "acts": [{"do": "pulse", "thing": "bug", "at": 0.6}]},
   {"idea": "mã độc vào Safari, thoát sandbox, leo xuống chiếm lõi",
    "acts": [{"do": "move", "thing": "bug", "path": "in", "at": 0.12},
-            {"do": "bounce", "thing": "bug", "to": [520, 630], "at": 0.3},
+            {"do": "bounce", "thing": "bug", "to": [520, 630], "at": 0.3, "dur": 0.8},
             {"do": "move", "thing": "bug", "path": "down", "at": 0.6},
             {"do": "red", "thing": "kernel", "say": "đã bị chiếm", "at": 0.8}]},
   {"idea": "dữ liệu bay về hacker",

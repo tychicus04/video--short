@@ -448,10 +448,18 @@ def test_motion_cmd_without_a_bind_says_so(tmp_path, capsys):
     assert "thiếu motion.bind.json" in capsys.readouterr().err and not Run(tmp_path).done("motion")
 
 
-def test_old_motion_file_is_rejected_plainly(tmp_path, capsys):
-    _motion_run(tmp_path)
+@pytest.mark.parametrize("bind", [True, False])
+def test_old_motion_file_is_rejected_plainly(tmp_path, capsys, bind):
+    _motion_run(tmp_path, bind=bind)
     (tmp_path / "motion.json").write_text(json.dumps({"lines": [7], "note": "n", "scenes": []}))
     assert main(["motion", str(tmp_path)]) == 2
+    assert "dạng cũ" in capsys.readouterr().err
+
+
+def test_render_says_an_old_motion_file_is_old(tmp_path, capsys):
+    _render_run(tmp_path, (1, 3))
+    (tmp_path / "motion.json").write_text(json.dumps({"lines": [3], "note": "n", "scenes": []}))
+    assert main(["render", str(tmp_path)]) == 2
     assert "dạng cũ" in capsys.readouterr().err
 
 

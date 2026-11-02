@@ -341,8 +341,7 @@ def _finish(run: Run, rev: dict, rounds: int) -> None:
     out = [f"Video: {p}/final.mp4",
            f"Chép về Mac (gõ trong terminal Mac): scp tai@pve2:~/notebooklm-videos/{slug}/final.mp4 ~/Downloads/{slug}.mp4",
            f"Giọng: {_voice(run)}"]
-    bind = run.read("motion.bind.json") if run.file("motion.json").exists() and run.file("motion.bind.json").exists() \
-        else None
+    bind = run.read("motion.bind.json") if _canvas(run) and run.file("motion.bind.json").exists() else None
     if isinstance(bind, dict) and bind.get("lines"):
         out.append("Hình động: câu " + ", ".join(map(str, bind["lines"])))
     else:
@@ -386,19 +385,24 @@ def _design(run: Run) -> None:
     run.mark("motion_design")
 
 
+def _canvas(run: Run):
+    """motion.json: None when there is none or it says null; True when it is not even JSON (the checks say why)."""
+    from vshort import motion
+    try:
+        return motion.load(run.file("motion.json"))
+    except ValueError:
+        return True
+
+
 def _motion(run: Run, prompt: str, step: str = "motion_bind") -> None:
     """The canvas bound to the lines by the agent; no canvas, or one that fails its check: stills only."""
-    from vshort import motion
     p = str(run.path)
-    try:
-        canvas = motion.load(run.file("motion.json")) is not None
-    except ValueError:
-        canvas = True  # broken JSON: `--design` says so
-    if not canvas:  # none drawn (the brief has no mechanism, or the design agent failed): stills
+    if _canvas(run) is None:  # none drawn (the brief has no mechanism, or the design agent failed): stills
         if code := run_vshort(["motion", p]):
             raise Stop(code, f"`vshort motion` lỗi cả khi không có hình động (mã {code}); xem auto.log")
         return
-    if run_vshort(["motion", p, "--design"]):
+    # only an unbound canvas is checked against the brief: a fix may since use spoken words the brief lacks
+    if not run.file("motion.bind.json").exists() and run_vshort(["motion", p, "--design"]):
         _no_motion(run)  # nothing worth binding: don't spend an agent on it
         return
     if not run.done(step):
@@ -422,8 +426,10 @@ def publish_shapes(run: Run) -> str:
     """The run's new shapes into the library, committed alone and pushed, so every machine draws them; one line for
     the final message. A git failure never fails the video."""
     from vshort import shapes
-    new = [f for f in sorted(run.file("shapes").glob("*.json"))
-           if not (shapes.LIBRARY / f.name).exists() and not shapes.problems(shapes._read(f), f.stem)]
+    doc = _canvas(run)
+    used = {th.get("shape") for th in doc.get("things", []) if isinstance(th, dict)} if isinstance(doc, dict) else set()
+    new = [f for f in sorted(run.file("shapes").glob("*.json"))  # only what the finished video draws: the library keeps all
+           if f.stem in used and not (shapes.LIBRARY / f.name).exists() and not shapes.problems(shapes._read(f), f.stem)]
     if not new:
         return "Hình mới: không có"
     shapes.LIBRARY.mkdir(parents=True, exist_ok=True)
@@ -434,6 +440,8 @@ def publish_shapes(run: Run) -> str:
                  ["pull", "--rebase", "--autostash"], ["push"]):
         code, msg = git(args)
         if code:
+            if args[0] == "pull":
+                git(["rebase", "--abort"])  # never leave the checkout mid-rebase: every later pull would fail
             return f"Hình mới chưa lên repo ({names}): git {args[0]} lỗi: {(msg.splitlines() or [''])[-1][:200]}"
     return f"Hình mới lên repo: {names}"
 

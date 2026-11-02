@@ -240,6 +240,8 @@ def cmd_motion(a) -> int:
         brief = run.file("brief.vi.md")
         said = motion.brief_words(brief.read_text(encoding="utf-8")) if brief.exists() else set()
         probs += motion.design_problems(doc, said, run.path)
+    elif isinstance(doc, dict) and "scenes" in doc:
+        probs.append(motion.OLD)
     else:
         bind = _bind(run)
         if bind is BAD_JSON:
@@ -291,9 +293,9 @@ def cmd_visuals(a) -> int:
         return BAD_INPUT
     ids = {s["id"] for s in stills}
     probs = validate(items, ids, run.path)
-    if (doc := _motion(run)) is BAD_JSON or (bind := _bind(run)) is BAD_JSON:
+    if (doc := _motion(run)) is BAD_JSON or (bind := _bind(run) if doc is not None else None) is BAD_JSON:
         return BAD_INPUT
-    probs += motion.clashes(items, motion.lines(bind if doc is not None else None))
+    probs += motion.clashes(items, motion.lines(bind))
     probs += [f"thiếu stills/{s['id']}.png (chạy lại `vshort stills`)" for s in stills
               if not run.file(f"stills/{s['id']}.png").exists()]
     refs = {}
@@ -418,6 +420,9 @@ def cmd_render(a) -> int:
         return BAD_INPUT
     scenes = []
     if doc is not None:
+        if isinstance(doc, dict) and "scenes" in doc:
+            _err(f"{motion.OLD} (rồi chạy lại `vshort motion`)")
+            return BAD_INPUT
         if (bind := _bind(run)) is BAD_JSON:
             return BAD_INPUT
         if bind is None:

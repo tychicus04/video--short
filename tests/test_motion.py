@@ -198,3 +198,20 @@ def test_things_of_dropped_last_beats_are_not_drawn(design, tmp_path):
 def test_bind_sheet_has_a_column_per_kept_beat(design, tmp_path):
     img = motion.bind_sheet(design, BIND | {"beats": [{"line": 4}, None, {"line": 6}]}, SCRIPT, tmp_path)
     assert 2 * motion.SHEET_W < img.width < 3 * motion.SHEET_W
+
+
+def test_a_dropped_move_that_leaves_the_actor_off_its_next_path_is_reported(design, tmp_path):
+    design["things"].append({"id": "p2", "kind": "path", "points": [[520, 310], [520, 680]], "beat": 2})
+    design["beats"][1]["acts"] = [{"do": "move", "thing": "atk", "path": "p2", "at": 0.4}]
+    assert motion.bind_problems(design, BIND, SCRIPT, tmp_path) == []
+    b = BIND | {"beats": [{"line": 4}, {"line": 5}, None]}
+    assert motion.bind_problems(design, b, SCRIPT, tmp_path) == []
+    b = BIND | {"beats": [{"line": 4}, None, {"line": 6}]}  # fine: beat 3 has no path move
+    assert motion.bind_problems(design, b, SCRIPT, tmp_path) == []
+    design["beats"][0]["acts"] = []  # the dot never reaches the start of p2
+    assert any("nhảy" in p for p in motion.bind_problems(design, BIND, SCRIPT, tmp_path))
+
+
+def test_bind_survives_a_thing_id_that_is_not_a_string(design, tmp_path):
+    design["things"][1]["id"] = ["srv"]
+    assert motion.bind_problems(design, BIND, SCRIPT, tmp_path)
