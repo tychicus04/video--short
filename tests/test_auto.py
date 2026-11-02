@@ -92,7 +92,10 @@ def test_state_round_trips(tmp_path):
 
 # --- the flow, with fake agents / vshort / NotebookLM -------------------------------------------------------------
 
+import threading  # noqa: E402
 from collections import Counter  # noqa: E402
+
+from vshort import shapes  # noqa: E402
 
 from vshort.cli import AUTH, FAILED, OK, WAIT_BRIEF, WAIT_SCRIPT  # noqa: E402
 
@@ -110,6 +113,10 @@ class Fakes:
         self.boom: set[str] = set()  # vshort steps that raise
         self.die_in: str | None = None  # agent step that "kills" the run (raises SystemExit) once
         self.reviews: list[dict | None] = []  # what each reviewer call writes to review.json (None: nothing); then Đạt
+        self.fail_steps: set[str] = set()  # agent steps that fail (AgentError)
+        self.fetched = threading.Event()  # set when `vshort fetch` runs
+        self.wait_fetch = False  # the design agent waits (≤ 5 s) for fetch: proves it runs alongside
+        self.saw_fetch = None
 
     def claude(self, run, step, agent, prompt, timeout):
         if step == self.die_in:
@@ -117,6 +124,8 @@ class Fakes:
             raise KeyboardInterrupt  # the process dies mid-call: nothing after it runs
         self.agents[agent] += 1
         self.prompts.setdefault(agent, []).append(prompt)
+        if step in self.fail_steps:
+            raise auto.AgentError(f"{agent} lỗi ở bước {step}")
         f = run.file
         if agent == "vs-researcher" and step == "research":
             f("brief.vi.md").write_text("# Tiêu đề\n")
@@ -136,8 +145,12 @@ class Fakes:
         elif agent == "vs-translator":
             run.write("script.vi.json", [{"id": 1, "phrases": "Xin | chào", "note": ""},
                                          {"id": 2, "phrases": "Tạm biệt", "note": "ngắn hơn"}])
+        elif agent == "vs-motion" and step == "motion_design":
+            if self.wait_fetch:
+                self.saw_fetch = self.fetched.wait(5)
+            run.write("motion.json", {"beats": []})
         elif agent == "vs-motion":
-            run.write("motion.json", {"lines": [1]})
+            run.write("motion.bind.json", {"lines": [1]})
         elif agent == "vs-visuals":
             run.write("visuals.json", [{"kind": "patch", "ids": [2]}])
         return "xong"
@@ -150,13 +163,15 @@ class Fakes:
             return code
         if cmd in self.boom:
             raise RuntimeError(f"{cmd} hỏng")
+        if cmd == "fetch":
+            self.fetched.set()
         if cmd == "detect":
             self.run.write("fragments.json", [{"i": 0}])
             (self.run.path / "sheets").mkdir(exist_ok=True)
             (self.run.path / "sheets" / "sheet00.png").write_bytes(b"")
         if cmd == "text":
             self.run.write("sentences.en.json", SENTS)
-        if cmd not in ("check", "approve"):
+        if cmd not in ("check", "approve") and "--design" not in args:
             Run(self.run.path).mark(cmd)  # like the real commands: their own Run, not ours
         return 0
 
@@ -173,6 +188,10 @@ def flow(tmp_path, monkeypatch):
     monkeypatch.setattr(auto, "run_claude", fk.claude)
     monkeypatch.setattr(auto, "run_vshort", fk.vshort)
     monkeypatch.setattr(auto, "notebooklm", fk.notebooklm)
+    fk.git = []
+    monkeypatch.setattr(auto, "git", lambda args: fk.git.append(args) or (0, ""))
+    monkeypatch.setattr(auto, "ROOT", tmp_path)
+    monkeypatch.setattr(shapes, "LIBRARY", tmp_path / "assets" / "shapes")
     return run, fk
 
 
@@ -231,9 +250,10 @@ def test_translation_that_fails_check_stops(flow):
 
 
 def _approved(run):
-    for s in ("approve_brief", "research", "source", "fetch", "detect", "transcribe", "text", "translate",
-              "approve_script"):
+    for s in ("approve_brief", "research", "source", "motion_design", "fetch", "detect", "transcribe", "text",
+              "translate", "approve_script"):
         run.mark(s)
+    run.write("motion.json", {"beats": []})
     run.write("run.json", run.read("run.json") | {"notebook_id": "nb"})
     run.write("sentences.en.json", SENTS)
 
@@ -252,10 +272,40 @@ def test_build_runs_steps_in_order_with_tts_alongside(flow):
 def test_motion_failure_falls_back_to_no_motion(flow):
     run, fk = flow
     _approved(run)
-    fk.codes["motion"] = [2]
+    fk.codes["motion"] = [0, 2]  # the canvas passes, its binding does not
     auto.run_auto(run)
     assert run.file("motion.loi.json").exists() and not run.file("motion.json").exists()
-    assert fk.cmds.count("motion") == 2 and "render" in fk.cmds
+    assert run.file("motion.bind.loi.json").exists() and not run.file("motion.bind.json").exists()
+    assert fk.cmds.count("motion") == 3 and "render" in fk.cmds
+
+
+def test_design_runs_alongside_fetch_and_finishes_before_script_stop(flow):
+    run, fk = flow
+    run.mark("approve_brief")
+    fk.wait_fetch = True
+    assert auto.run_auto(run) == WAIT_SCRIPT
+    assert fk.saw_fetch and fk.agents["vs-motion"] == 1 and run.done("motion_design")
+    assert "--design" in fk.prompts["vs-motion"][0] and run.file("motion.json").exists()
+    assert auto.run_auto(run) == WAIT_SCRIPT and fk.agents["vs-motion"] == 1
+
+
+def test_build_binds_motion_with_bind_prompt(flow):
+    run, fk = flow
+    _approved(run)
+    assert auto.run_auto(run) == OK
+    assert fk.agents["vs-motion"] == 1 and "motion.bind.json" in fk.prompts["vs-motion"][0]
+    assert run.done("motion_bind") and fk.cmds.count("motion") == 2
+
+
+def test_failed_design_falls_back_to_no_motion_at_build(flow):
+    run, fk = flow
+    run.mark("approve_brief")
+    fk.fail_steps = {"motion_design"}
+    assert auto.run_auto(run) == WAIT_SCRIPT
+    run.mark("approve_script")
+    assert auto.run_auto(run) == OK
+    assert fk.agents["vs-motion"] == 1  # no binding of a canvas that was never drawn
+    assert "Hình động: không có" in auto.get_state(run)["message"]
 
 
 def test_visuals_failure_follows_the_skill_fallbacks(flow):
@@ -442,3 +492,77 @@ def test_agents_do_not_inherit_the_claude_session(tmp_path, claude, monkeypatch)
     monkeypatch.setenv("CLAUDECODE", "1")
     claude({"result": "", "total_cost_usd": 0, "is_error": False}, echo_env="CLAUDECODE")
     assert auto.run_claude(run, "s", "vs-translator", "p", timeout=30) == ""
+
+
+def test_cost_rows_from_two_threads_are_all_kept(tmp_path):
+    run = _run(tmp_path)
+
+    def log_many():
+        for _ in range(100):
+            auto._log_cost(run, "s", "a", 0, {}, True)
+
+    ts = [threading.Thread(target=log_many) for _ in range(2)]
+    [t.start() for t in ts]
+    [t.join() for t in ts]
+    assert len(run.read("cost.json")) == 200
+
+
+def _shape(path, strokes=((0, 0), (100, 100))):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"name": path.stem, "strokes": [list(map(list, strokes))]}))
+
+
+def test_publish_shapes_commits_only_shape_files(tmp_path, monkeypatch):
+    run = _run(tmp_path)
+    monkeypatch.setattr(auto, "ROOT", tmp_path / "repo")
+    monkeypatch.setattr(shapes, "LIBRARY", tmp_path / "repo" / "assets" / "shapes")
+    _shape(tmp_path / "repo" / "assets" / "shapes" / "old.json")
+    _shape(run.file("shapes/old.json"))  # copied from the library: not new
+    _shape(run.file("shapes/nhan.json"))
+    _shape(run.file("shapes/bad.json"), [(0, 0)])  # one point: fails its check, never published
+    calls = []
+    monkeypatch.setattr(auto, "git", lambda args: calls.append(args) or (0, ""))
+    assert auto.publish_shapes(run) == "Hình mới lên repo: nhan"
+    assert (tmp_path / "repo" / "assets" / "shapes" / "nhan.json").exists()
+    assert not (tmp_path / "repo" / "assets" / "shapes" / "bad.json").exists()
+    assert [c[0] for c in calls] == ["add", "commit", "pull", "push"]
+    assert calls[0][-2:] == ["--", "assets/shapes"] and calls[1][-2:] == ["--", "assets/shapes"]
+    assert "nhan" in calls[1][calls[1].index("-m") + 1]
+
+
+def test_no_new_shapes_means_no_git(tmp_path, monkeypatch):
+    run = _run(tmp_path)
+    monkeypatch.setattr(shapes, "LIBRARY", tmp_path / "lib")
+    monkeypatch.setattr(auto, "git", lambda args: pytest.fail("git called"))
+    assert auto.publish_shapes(run) == "Hình mới: không có"
+
+
+def test_shape_publish_failure_is_reported_not_fatal(flow, monkeypatch):
+    run, fk = flow
+    _approved(run)
+    _shape(run.file("shapes/nhan.json"))
+    monkeypatch.setattr(auto, "git", lambda args: (1, "fatal: unable to access 'https://github.com/x'") if args[0] == "push"
+                        else (0, ""))
+    assert auto.run_auto(run) == OK
+    st = auto.get_state(run)
+    assert st["state"] == "done" and "chưa lên repo" in st["message"] and "unable to access" in st["message"]
+
+
+def test_git_never_prompts_and_gives_up(monkeypatch, tmp_path):
+    seen = {}
+
+    def fake_run(cmd, **kw):
+        seen.update(kw)
+        raise auto.subprocess.TimeoutExpired(cmd, kw["timeout"])
+    monkeypatch.setattr(auto.subprocess, "run", fake_run)
+    code, msg = auto.git(["push"])
+    assert code and seen["env"]["GIT_TERMINAL_PROMPT"] == "0" and seen["timeout"] <= 300
+
+
+def test_a_null_canvas_is_not_bound(flow):
+    run, fk = flow
+    _approved(run)
+    run.write("motion.json", None)  # the brief has no mechanism: the design agent wrote null
+    assert auto.run_auto(run) == OK
+    assert fk.agents["vs-motion"] == 0 and "Hình động: không có\n" in auto.get_state(run)["message"]
+    assert not run.file("motion.loi.json").exists()
