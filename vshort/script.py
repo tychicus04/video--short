@@ -81,3 +81,29 @@ def check_script(sentences: list[Sentence], script: list[dict]) -> list[str]:
                 if text_width(ph) > MAX_TEXT_W:
                     probs.append(f"Câu {s.id}: cụm '{ph}' rộng {text_width(ph):.0f}px, vượt {MAX_TEXT_W}px")
     return probs
+
+
+# ponytail: fixed word list; read the brief's own "Không nói …" phrases if one slips through
+ABSOLUTE = ("hoàn toàn", "tuyệt đối", "không gián đoạn", "không ngắt", "100%")
+
+
+def _plain(text: str) -> str:
+    return " ".join(text.replace("|", " ").split()).lower()
+
+
+def check_brief(script: list[dict], brief: str) -> list[str]:
+    """What only the brief can catch: absolute claims left unexplained, and an ending that is not the approved call to action."""
+    probs = []
+    for row in script:
+        note = _plain(row.get("note", ""))
+        probs += [f"Câu {row['id']}: có '{w}' — brief thường cấm khẳng định tuyệt đối; "
+                  f"bỏ, viết lại theo mục Lưu ý của brief, hoặc ghi note nhắc '{w}' và vì sao giữ"
+                  for w in ABSOLUTE if w in _plain(row["phrases"]) and w not in note]
+    lines = [ln.strip() for ln in brief.splitlines()]
+    head = next((i for i, ln in enumerate(lines) if ln.strip("#*: ") == "Lời kêu gọi"), None)
+    cta = next((ln.strip('"“”') for ln in lines[head + 1:] if ln), "") if head is not None else ""
+    said = [row for row in script if row["phrases"].strip()]
+    if cta and said and not _plain(said[-1]["phrases"]).endswith(_plain(cta)) and not said[-1].get("note", "").strip():
+        probs.append(f"Câu {said[-1]['id']} là câu cuối nhưng không kết bằng nguyên văn lời kêu gọi trong brief "
+                     f"({cta!r}); nếu câu tiếng Anh là câu chốt thì giữ nó và nối lời kêu gọi sau, hoặc ghi note vì sao khác")
+    return probs

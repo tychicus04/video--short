@@ -1,5 +1,5 @@
 from vshort.captions import Fragment
-from vshort.script import Sentence, check_script, group_sentences, merge_text, merged, syllables
+from vshort.script import Sentence, check_brief, check_script, group_sentences, merge_text, merged, syllables
 
 
 def test_merge_drops_ui_label_and_scene_cut_duplicate():
@@ -45,3 +45,35 @@ def test_title_takes_the_time_of_the_sentences_left_empty_after_it():
     assert check_script(s, script) == []
     script[0]["phrases"] = " "
     assert any("tiêu đề" in p for p in check_script(s, script))
+
+BRIEF = "Câu chốt\nPhá cả hai phần.\nLời kêu gọi\nHãy hỏi đội IT, và chia sẻ video này.\n"
+CTA = {"id": 3, "phrases": "Hãy hỏi đội IT, | và chia sẻ video này."}
+
+
+def test_absolute_words_need_a_note_about_that_word():
+    script = [{"id": 1, "phrases": "Tiêu đề"}, {"id": 2, "phrases": "vẫn hoàn toàn | không đọc được", "note": ""}, CTA]
+    assert check_brief(script, BRIEF) == [("Câu 2: có 'hoàn toàn' — brief thường cấm khẳng định tuyệt đối; "
+                                           "bỏ, viết lại theo mục Lưu ý của brief, hoặc ghi note nhắc 'hoàn toàn' và vì sao giữ")]
+    script[1]["note"] = "Dùng nhãn Apple tiếng Việt 'Chế độ phong tỏa'."
+    assert len(check_brief(script, BRIEF)) == 1
+    script[1]["note"] = "Giữ 'hoàn toàn': nguồn nói đúng như vậy."
+    assert check_brief(script, BRIEF) == []
+
+
+def test_last_line_ends_with_the_approved_call_to_action():
+    script = [{"id": 1, "phrases": "Tiêu đề"}, {"id": 2, "phrases": "Không mở được cửa đó."}]
+    assert check_brief(script, BRIEF) == [("Câu 2 là câu cuối nhưng không kết bằng nguyên văn lời kêu gọi trong brief "
+                                           "('Hãy hỏi đội IT, và chia sẻ video này.'); nếu câu tiếng Anh là câu chốt "
+                                           "thì giữ nó và nối lời kêu gọi sau, hoặc ghi note vì sao khác")]
+    script[1]["phrases"] = "Không mở được cửa đó. | Hãy hỏi đội IT, |  và chia sẻ video này."
+    assert check_brief(script, BRIEF) == []
+    script[1] = {"id": 2, "phrases": "Hãy hỏi đội IT.", "note": "Font không có dấu →, đổi thành ›."}
+    assert check_brief(script, BRIEF) == []
+    assert check_brief([{"id": 1, "phrases": "Tiêu đề"}], "Câu chốt\nPhá cả hai phần.\n") == []
+
+
+def test_call_to_action_heading_may_be_marked_up():
+    script = [{"id": 1, "phrases": "Tiêu đề"}, {"id": 2, "phrases": "Không mở được cửa đó."}]
+    for head in ("## Lời kêu gọi", "**Lời kêu gọi**", "Lời kêu gọi:", "Lời kêu gọi\n"):
+        brief = f'Câu chốt\nPhá cả hai phần.\n{head}\n"Hãy hỏi đội IT, và chia sẻ video này."\n'
+        assert len(check_brief(script, brief)) == 1, head
