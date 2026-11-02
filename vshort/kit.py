@@ -28,7 +28,7 @@ TOP = {"dot": DOT_R, "icon": 55}  # ink above a mover's centre
 
 @dataclass
 class Act:
-    do: str  # draw | move | bounce | red | pulse | hide
+    do: str  # draw | move | bounce | red | pulse | hide | dim | undim
     thing: str
     t0: float
     t1: float
@@ -286,6 +286,14 @@ def _shown(thing: dict, acts: list[Act], t: float) -> float:
     return on
 
 
+def _dimmed(mine: list[Act], t: float) -> float:
+    """How far the thing has faded towards the paper at t (0 to DIM): dim and undim acts in order."""
+    level = 0.0
+    for a in sorted((a for a in mine if a.do in ("dim", "undim") and a.t0 <= t), key=lambda a: a.t0):
+        level += ((DIM if a.do == "dim" else 0.0) - level) * ease((t - a.t0) / max(a.t1 - a.t0, 1e-6))
+    return level
+
+
 def _draw_thing(img: Image.Image, d: ImageDraw.ImageDraw, thing: dict, acts: list[Act], t: float) -> None:
     f = _shown(thing, acts, t)
     if f <= 0:
@@ -294,13 +302,16 @@ def _draw_thing(img: Image.Image, d: ImageDraw.ImageDraw, thing: dict, acts: lis
     mine = [a for a in acts if a.thing == thing["id"]]
     reds = [a for a in mine if a.do == "red" and a.t0 <= t]
     r = min(f, max((ease((t - a.t0) / max(a.t1 - a.t0, 1e-6)) for a in reds), default=0.0))
-    color = _color(thing)
-    outline = BLUE if kind == "wall" else RED if kind == "crack" else INK
+    dim = _dimmed(mine, t)
+    fade = (lambda c: tuple(round(v + (p - v) * dim) for v, p in zip(c, PAPER))) if dim else (lambda c: c)
+    ink, red, gray, blue = map(fade, (INK, RED, GRAY, BLUE))
+    color = fade(_color(thing))
+    outline = blue if kind == "wall" else red if kind == "crack" else ink
     if kind in MOVERS:
         x, y = _position(thing, acts, t)
         if kind == "dot":
             glow = any(a.do == "pulse" and a.t0 <= t <= a.t1 for a in mine)
-            fill = RED if r else color
+            fill = red if r else color
             rad = DOT_R * f
             if glow:
                 g = (rad + 8 + 6 * (0.5 + 0.5 * math.sin(t * 5))) * SS
@@ -308,19 +319,19 @@ def _draw_thing(img: Image.Image, d: ImageDraw.ImageDraw, thing: dict, acts: lis
             d.ellipse((x * SS - rad * SS, y * SS - rad * SS, x * SS + rad * SS, y * SS + rad * SS), fill=fill)
         else:
             for k, s in enumerate(_icon(thing["icon"], x, y - 15)):
-                _stroke(d, s, f, RED if r else color, 5, seed + k)
+                _stroke(d, s, f, red if r else color, 5, seed + k)
         lx, ly = _label_at(thing, (x, y))
     else:
         for k, (pts, w, dash) in enumerate(_shape(thing)):
             _stroke(d, pts, f, outline, w, seed + k, dash)
             if r:
-                _stroke(d, pts, r, RED, w + 2, seed + k, dash)
+                _stroke(d, pts, r, red, w + 2, seed + k, dash)
         if thing.get("url"):
             bar, lines, uxy, uem = _screen(thing)
-            _stroke(d, _rrect(*bar, 14), f, INK, 3, seed + 50)
+            _stroke(d, _rrect(*bar, 14), f, ink, 3, seed + 50)
             for k, ln in enumerate(lines):
-                _stroke(d, ln, f, GRAY, 3, seed + 60 + k)
-            _write(img, uxy, thing["url"], uem, (f - 0.3) / 0.7, INK)
+                _stroke(d, ln, f, gray, 3, seed + 60 + k)
+            _write(img, uxy, thing["url"], uem, (f - 0.3) / 0.7, ink)
         if kind in ("path", "crack"):
             return
         lx, ly = _label_at(thing)
@@ -330,9 +341,9 @@ def _draw_thing(img: Image.Image, d: ImageDraw.ImageDraw, thing: dict, acts: lis
         ly -= 0.55 * em
     _write(img, (lx, ly), label, em, (f - 0.3) / 0.7, color)
     if r:
-        _write(img, (lx, ly), label, em, r * 2, RED)
+        _write(img, (lx, ly), label, em, r * 2, red)
     if say:
-        _write(img, (lx, ly + 1.1 * em), say, SMALL_EM, r * 2 - 0.4, RED)
+        _write(img, (lx, ly + 1.1 * em), say, SMALL_EM, r * 2 - 0.4, red)
 
 
 def draw(things: list[dict], acts: list[Act], t: float) -> Image.Image:

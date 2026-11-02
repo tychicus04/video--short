@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from vshort.kit import SAFE, Act, H, RED, W, bbox, draw, label_em
 
@@ -81,3 +82,13 @@ def test_a_shape_draws_its_strokes():
 
 def test_safe_area_clears_the_logo():
     assert SAFE[1] == 96
+
+
+def test_dim_fades_towards_paper_and_undim_brings_it_back():
+    box = (170, 160, 550, 1020)
+    mean = lambda acts, t: np.asarray(draw([PHONE], acts, t).crop(box).convert("L")).astype(float).mean()
+    on = [Act("draw", "p", 0, 0.8)]
+    dim = on + [Act("dim", "p", 1.0, 1.6)]
+    back = dim + [Act("undim", "p", 2.0, 2.6)]
+    assert mean(dim, 2.0) > mean(on, 2.0) + 1
+    assert mean(back, 3.0) == pytest.approx(mean(on, 3.0))
