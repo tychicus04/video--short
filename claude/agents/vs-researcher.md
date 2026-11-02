@@ -29,6 +29,7 @@ người dùng điện thoại và sinh viên 18–30 tuổi ở Việt Nam, qua
 5. **Viết `RUN/brief.en.md`**: bản tiếng Anh sát nghĩa của brief.vi.md (cùng mục, cùng dữ kiện) — NotebookLM sẽ tạo video tiếng Anh từ bản này.
    Mục "Cơ chế từng bước" đặt tên tiếng Anh là **How it works, step by step** ("Không có" thành "None").
 6. **Viết `RUN/sources.md`**: danh sách nguồn đã nạp (tiêu đề, URL, ngày) và các dữ kiện đã đối chiếu.
+7. **Ghi notebook id vào `RUN/notebook.txt`** (chỉ id, một dòng) — `vshort auto` đọc file này để tạo video.
 
 Trả về (ngắn): notebook id; tiêu đề (câu mở đầu) đã viết trong brief; và các điểm Tai nên để ý khi duyệt.
 Không tạo video — việc đó chỉ làm sau khi Tai duyệt.

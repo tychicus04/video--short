@@ -552,3 +552,22 @@ def test_status_shows_auto_state(tmp_path, capsys):
     auto.set_state(Run(tmp_path), "running", "")
     assert main(["status", str(tmp_path)]) == 0
     assert "auto: running" in capsys.readouterr().out
+
+
+def test_auto_foreground_starts_a_run_and_holds_the_lock(tmp_path, monkeypatch):
+    from vshort import auto
+    seen = []
+
+    def fake_run_auto(run):
+        seen.append((run.read("run.json"), run.file("auto.lock").exists()))
+        return 21
+
+    monkeypatch.setattr(auto, "run_auto", fake_run_auto)
+    assert main(["auto", "my-slug", "--topic", "Chủ đề", "--auto", "--runs-dir", str(tmp_path), "--foreground"]) == 21
+    meta, locked = seen[0]
+    assert (meta["slug"], meta["topic"], meta["auto"], locked) == ("my-slug", "Chủ đề", True, True)
+    run = tmp_path / "my-slug"
+    assert not (run / "auto.lock").exists()  # released when it stops
+    assert main(["auto", str(run), "--foreground"]) == 21 and seen[1][0]["topic"] == "Chủ đề"
+    (run / "auto.lock").write_text(str(__import__("os").getpid()))  # another live run holds it
+    assert main(["auto", str(run), "--foreground"]) == 2

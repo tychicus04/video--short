@@ -424,6 +424,23 @@ def cmd_approve(a) -> int:
     return OK
 
 
+def cmd_auto(a) -> int:
+    if a.topic:  # a new video: `vshort auto <slug> --topic …`
+        if code := cmd_new(argparse.Namespace(slug=a.target, notebook=None, runs_dir=a.runs_dir)):
+            return code
+        run = Run(Path(a.runs_dir or config()["runs_dir"]).expanduser() / a.target)
+        run.write("run.json", run.read("run.json") | {"topic": a.topic, "auto": a.auto})
+    else:
+        run = Run(a.target)
+    if not auto.acquire_lock(run):
+        _err(f"`vshort auto` đang chạy cho {run.path} (pid {run.file('auto.lock').read_text().strip()})")
+        return BAD_INPUT
+    try:
+        return auto.run_auto(run)
+    finally:
+        auto.release_lock(run)
+
+
 def cmd_wait(a) -> int:
     run = Run(a.run)
     while (st := auto.get_state(run))["state"] == "running":
@@ -458,6 +475,13 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("run")
     p.add_argument("what", choices=["brief", "script"])
     p.set_defaults(fn=cmd_approve)
+    p = sub.add_parser("auto")
+    p.add_argument("target", help="slug của video mới (cùng --topic) hoặc thư mục RUN đang làm")
+    p.add_argument("--topic")
+    p.add_argument("--auto", action="store_true", help="không dừng duyệt brief (vẫn dừng duyệt bản dịch)")
+    p.add_argument("--runs-dir")
+    p.add_argument("--foreground", action="store_true")
+    p.set_defaults(fn=cmd_auto)
     p = sub.add_parser("wait")
     p.add_argument("run")
     p.add_argument("--poll", type=float, default=15)
