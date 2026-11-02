@@ -515,3 +515,40 @@ def test_render_cmd_names_animated_lines_missing_from_the_timeline(tmp_path, cap
     (tmp_path / "timeline.json").write_text(json.dumps(tl))
     assert main(["render", str(tmp_path)]) == 2
     assert "vshort timeline" in capsys.readouterr().err
+
+
+def test_approve_brief_refuses_stale_english(tmp_path, capsys):
+    import os
+    en, vi = tmp_path / "brief.en.md", tmp_path / "brief.vi.md"
+    en.write_text("en")
+    vi.write_text("vi")
+    os.utime(en, (1000, 1000))
+    os.utime(vi, (2000, 2000))
+    assert main(["approve", str(tmp_path), "brief"]) == 2
+    assert "brief.en.md" in capsys.readouterr().err and not Run(tmp_path).done("approve_brief")
+    os.utime(en, (3000, 3000))
+    assert main(["approve", str(tmp_path), "brief"]) == 0 and Run(tmp_path).done("approve_brief")
+
+
+def test_approve_script_runs_check(tmp_path, capsys):
+    (tmp_path / "sentences.en.json").write_text('[{"id": 1, "start": 0, "end": 1, "en": "Hi"}]')
+    (tmp_path / "script.vi.json").write_text('[{"id": 1, "phrases": "", "note": ""}]')
+    assert main(["approve", str(tmp_path), "script"]) == 2 and not Run(tmp_path).done("approve_script")
+    (tmp_path / "script.proposed.json").write_text("[]")
+    assert main(["approve", str(tmp_path), "script"]) == 2
+    assert "script.proposed.json" in capsys.readouterr().err
+
+
+def test_wait_returns_state_code(tmp_path, capsys):
+    from vshort import auto
+    auto.set_state(Run(tmp_path), "wait_script", "xem bản dịch")
+    assert main(["wait", str(tmp_path), "--poll", "0"]) == 21
+    assert "xem bản dịch" in capsys.readouterr().out
+    assert main(["wait", str(tmp_path / "chưa"), "--poll", "0"]) == 2
+
+
+def test_status_shows_auto_state(tmp_path, capsys):
+    from vshort import auto
+    auto.set_state(Run(tmp_path), "running", "")
+    assert main(["status", str(tmp_path)]) == 0
+    assert "auto: running" in capsys.readouterr().out

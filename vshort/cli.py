@@ -4,12 +4,13 @@ import json
 import shutil
 import subprocess
 import sys
+import time
 from dataclasses import asdict
 from pathlib import Path
 
 from PIL import Image, ImageOps
 
-from vshort import motion
+from vshort import auto, motion
 from vshort.captions import Fragment, detect_fragments, write_sheets
 from vshort.fit import Placement, build_narration, phrase_times, sequence, total
 from vshort.media import frame_at
@@ -24,6 +25,7 @@ from vshort.visuals import patch_text, pencil, svg_frame, validate
 
 ROOT = Path(__file__).resolve().parent.parent
 OK, FAILED, BAD_INPUT, AUTH, QUOTA = 0, 1, 2, 4, 75
+WAIT_BRIEF, WAIT_SCRIPT = 20, 21  # `vshort auto` stopped for Tai to approve the brief / the translation
 RELOGIN = (
     "NotebookLM đã hết phiên đăng nhập. Trên Mac chạy `notebooklm login`, rồi scp storage_state.json sang server:\n"
     "  scp ~/.notebooklm/profiles/default/storage_state.json tai@pve2:~/.notebooklm/profiles/default/\n"
@@ -401,7 +403,36 @@ def cmd_status(a) -> int:
     steps = ["new", "fetch", "detect", "text", "plates", "tts", "stills", "motion", "visuals", "timeline", "render"]
     for s in steps:
         print(f"{'✓' if run.done(s) else '·'} {s}")
+    if (st := auto.get_state(run))["state"] != "none":
+        print(f"auto: {st['state']}" + (f" — {st['message']}" if st["message"] else ""))
     return OK
+
+
+def cmd_approve(a) -> int:
+    run = Run(a.run)
+    if a.what == "brief":
+        if run.file("brief.vi.md").stat().st_mtime > run.file("brief.en.md").stat().st_mtime:
+            _err("brief.vi.md mới hơn brief.en.md — cập nhật bản tiếng Anh trước (NotebookLM làm video từ bản tiếng Anh)")
+            return BAD_INPUT
+    else:
+        if run.file("script.proposed.json").exists():
+            _err("còn script.proposed.json — chép bản đề xuất vào script.vi.json hoặc xóa nó trước")
+            return BAD_INPUT
+        if code := cmd_check(a):
+            return code
+    run.mark(f"approve_{a.what}")
+    return OK
+
+
+def cmd_wait(a) -> int:
+    run = Run(a.run)
+    while (st := auto.get_state(run))["state"] == "running":
+        time.sleep(a.poll)
+    if st["state"] == "none":
+        _err("chưa chạy `vshort auto` cho thư mục này")
+        return BAD_INPUT
+    print(st["state"] + (f"\n{st['message']}" if st["message"] else ""))
+    return {"done": OK, "wait_brief": WAIT_BRIEF, "wait_script": WAIT_SCRIPT}.get(st["state"], FAILED)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -423,6 +454,14 @@ def main(argv: list[str] | None = None) -> int:
         p = sub.add_parser(name)
         p.add_argument("run")
         p.set_defaults(fn=fn)
+    p = sub.add_parser("approve")
+    p.add_argument("run")
+    p.add_argument("what", choices=["brief", "script"])
+    p.set_defaults(fn=cmd_approve)
+    p = sub.add_parser("wait")
+    p.add_argument("run")
+    p.add_argument("--poll", type=float, default=15)
+    p.set_defaults(fn=cmd_wait)
     a = ap.parse_args(argv)
     return a.fn(a)
 

@@ -69,3 +69,20 @@ def test_unmark_removes_steps(tmp_path):
     run.mark("timeline")
     run.unmark("tts")
     assert not Run(run.path).done("tts") and Run(run.path).done("timeline")
+
+
+def test_lock_refuses_second_and_takes_dead_lock(tmp_path):
+    run = _run(tmp_path)
+    assert auto.acquire_lock(run) and not auto.acquire_lock(run)
+    run.file("auto.lock").write_text("999999")  # no such process: a run that died
+    assert auto.acquire_lock(run)
+    auto.release_lock(run)
+    assert not run.file("auto.lock").exists()
+
+
+def test_state_round_trips(tmp_path):
+    run = _run(tmp_path)
+    assert auto.get_state(run)["state"] == "none"
+    auto.set_state(run, "wait_brief", "duyệt brief")
+    s = auto.get_state(run)
+    assert (s["state"], s["message"], s["round"]) == ("wait_brief", "duyệt brief", 0)
