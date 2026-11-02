@@ -17,6 +17,9 @@ def test_iter_frames_crop_and_times(make_video, tmp_path):
 def test_frame_at_exact(make_video, tmp_path):
     v = make_video(tmp_path, scenes=[(0, 1, "#000000"), (1, 2, "#FFFFFF")], captions=[])
     assert frame_at(v, 1.02, gray=True).mean() > 235
+    frames = list(iter_frames(v))
+    for t in (0.0, 0.95, 0.98, 1.0, 1.01, 1.5):  # around the cut: the same frame a full decode gives
+        assert (frame_at(v, t, gray=True) == next(f for ft, f in frames if ft >= t - 1e-6)).all()
 
 
 def test_iter_frames_early_stop_is_quiet(make_video, tmp_path, capfd):

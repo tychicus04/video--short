@@ -65,10 +65,11 @@ def iter_frames(
 
 
 def frame_at(video: Path, t: float, gray: bool = False) -> np.ndarray:
-    """The first frame at or after t (output-side seek, so it is exact)."""
+    """The first frame at or after t. Input-side seek: ffmpeg decodes from the keyframe before t and drops
+    frames until t, so it is as exact as an output-side seek without decoding the video from the start."""
     info = probe(video)
     out = subprocess.run(
-        [FF, "-loglevel", "error", "-i", str(video), "-ss", str(t), "-frames:v", "1",
+        [FF, "-loglevel", "error", "-ss", str(t), "-i", str(video), "-frames:v", "1",
          "-f", "rawvideo", "-pix_fmt", "gray" if gray else "rgb24", "-"],
         capture_output=True, check=True,
     ).stdout
