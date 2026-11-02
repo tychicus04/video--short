@@ -122,6 +122,13 @@ thời gian, file giọng đọc, `visuals.json` (chỗ vá chữ và hình tư 
 - Môi trường chạy (imageio-ffmpeg, numpy, pillow, opencv, torch CPU, font Be Vietnam Pro,
   `big-lama.pt`) được cài lại dưới `~/video-pipeline/`, không dùng thư mục tạm.
 
+## Điều phối bằng `vshort auto` (02/11/2026)
+- Tai đặt ngân sách ~$5/video (trước đó ~$18,9 theo giá API). Không còn phiên Claude điều phối suốt: `vshort auto` chạy nền
+  trên server, gọi các agent `vs-*` bằng `claude -p` (researcher, transcriber, translator, visuals: Haiku; motion: Sonnet;
+  reviewer: Opus), dừng hai lần cho Tai duyệt (brief, bản dịch), tối đa 2 vòng sửa sau soát, ghi chi phí từng video
+  (`cost.json`). `/video-short` chỉ khởi động, chờ, đưa Tai duyệt và báo kết quả.
+- Thiết kế: `docs/superpowers/specs/2026-11-02-dieu-phoi-bang-script-design.md`.
+
 ## Để người dựng tự quyết
 
 - Tên model Gemini TTS chính xác, giọng mặc định trung tính (để trong file cấu hình),

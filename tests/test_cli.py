@@ -571,3 +571,25 @@ def test_auto_foreground_starts_a_run_and_holds_the_lock(tmp_path, monkeypatch):
     assert main(["auto", str(run), "--foreground"]) == 21 and seen[1][0]["topic"] == "Chủ đề"
     (run / "auto.lock").write_text(str(__import__("os").getpid()))  # another live run holds it
     assert main(["auto", str(run), "--foreground"]) == 2
+
+
+def test_auto_launch_detaches_and_refuses_while_running(tmp_path, monkeypatch, capsys):
+    import os
+    from vshort import auto
+    launched = []
+
+    class FakePopen:
+        def __init__(self, args, **kw):
+            launched.append((args, kw))
+            self.pid = 4242
+
+    monkeypatch.setattr(cli.subprocess, "Popen", FakePopen)
+    assert main(["auto", "s", "--topic", "Chủ đề", "--runs-dir", str(tmp_path)]) == 0
+    args, kw = launched[0]
+    run = tmp_path / "s"
+    assert "--foreground" in args and str(run) in args and kw["start_new_session"] is True
+    assert auto.get_state(Run(run))["state"] == "running" and (run / "auto.log").exists()
+    assert "4242" in capsys.readouterr().out
+    (run / "auto.lock").write_text(str(os.getpid()))  # the background run is still going
+    assert main(["auto", str(run)]) == 2 and "đang chạy" in capsys.readouterr().err
+    assert len(launched) == 1

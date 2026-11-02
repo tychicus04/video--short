@@ -70,12 +70,18 @@ def _alive(pid: int) -> bool:
     return True
 
 
+def locked_by(run: Run) -> int | None:
+    """The pid of the live `vshort auto` working on this run, if any (a dead one's lock doesn't count)."""
+    lock = run.file("auto.lock")
+    pid = lock.read_text().strip() if lock.exists() else ""
+    return int(pid) if pid.isdigit() and _alive(int(pid)) else None
+
+
 def acquire_lock(run: Run) -> bool:
     """One `vshort auto` per run folder; the lock of a process that died is taken over."""
-    lock = run.file("auto.lock")
-    if lock.exists() and lock.read_text().strip().isdigit() and _alive(int(lock.read_text())):
+    if locked_by(run):
         return False
-    lock.write_text(str(os.getpid()))
+    run.file("auto.lock").write_text(str(os.getpid()))
     return True
 
 

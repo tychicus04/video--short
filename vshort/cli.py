@@ -432,6 +432,17 @@ def cmd_auto(a) -> int:
         run.write("run.json", run.read("run.json") | {"topic": a.topic, "auto": a.auto})
     else:
         run = Run(a.target)
+    if not a.foreground:  # a video takes ~1.5 h: run on after the session or ssh that started it is gone
+        if pid := auto.locked_by(run):
+            _err(f"`vshort auto` đang chạy cho {run.path} (pid {pid})")
+            return BAD_INPUT
+        auto.set_state(run, "running")
+        with open(run.file("auto.log"), "a") as log:
+            child = subprocess.Popen([sys.executable, "-m", "vshort.cli", "auto", str(run.path), "--foreground"],
+                                     cwd=ROOT, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
+                                     start_new_session=True)
+        print(f"{run.path}\nđang chạy nền (pid {child.pid}); log: {run.file('auto.log')}; chờ: `vshort wait {run.path}`")
+        return OK
     if not auto.acquire_lock(run):
         _err(f"`vshort auto` đang chạy cho {run.path} (pid {run.file('auto.lock').read_text().strip()})")
         return BAD_INPUT
