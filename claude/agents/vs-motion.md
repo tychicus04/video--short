@@ -27,7 +27,9 @@ gói tin chạy từ A sang B, kẻ nghe lén ở giữa, một bản chép đi 
 Đọc `RUN/brief.vi.md`: mục **"Cơ chế từng bước"** (chuẩn nội dung) và **"Lưu ý độ chính xác"**. Mục cơ chế ghi "Không có" (video
 không giải thích cơ chế) → ghi đúng `null` vào `RUN/motion.json` và dừng.
 
-Mỗi bước cơ chế là **một nhịp** (1–6 nhịp). Từ các bước, liệt kê các nhân vật và đồ vật cần vẽ. Bố cục cả khung theo **một hướng
+Mỗi bước cơ chế là **một nhịp** (1–6 nhịp). Từ các bước, liệt kê các nhân vật và đồ vật cần vẽ. **Đồ vật đặc trưng của chủ đề**
+(bộ nhớ, nhân hệ điều hành, luồng, khóa root, bộ định tuyến…) phải nhìn ra là gì mà không cần đọc nhãn: kit không có thì **vẽ hình
+mới** (mục dưới). Hộp có nhãn (`box`) chỉ dành cho một lớp hay vùng chung chung; một khung toàn hộp có nhãn là không đạt. Bố cục cả khung theo **một hướng
 đọc** (trên → dưới hoặc trái → phải), theo đúng thứ tự các bước: bước sau nằm sau bước trước trên hướng đọc. Luật gọn (code kiểm):
 - Tối đa **7 thứ** có mặt cùng lúc trên khung. Một hình kèm nhãn của nó tính là một; `path`, `crack` và `dot` không nhãn không tính.
   Thà ít hơn: khung cuối là sơ đồ đọc được ở cỡ điện thoại, không phải bản vẽ dày đặc.
@@ -37,6 +39,7 @@ Mỗi bước cơ chế là **một nhịp** (1–6 nhịp). Từ các bước, 
   đi của nó còn trên khung, nối các bước thành một chuỗi. Bước "dữ liệu bay đi" vẽ một `path` có `arrow` rồi cho icon chạy theo.
 - Nhãn ngắn (tối đa 20 ký tự), một dòng, chữ cỡ 44 (nhỏ nhất 32; nhãn trong `box` tự thu nhỏ cho vừa hộp).
 - Mọi thứ, kể cả nhãn và chỗ một món bay tới, nằm trong **x 40–680, y 96–1050** (khung 720×1280): trên là logo, dưới là phụ đề.
+  **Dùng hết vùng này**: hình to (thứ chính của một nhịp rộng từ 200 px), trải đều theo hướng đọc, không dồn vào một góc.
 - Chỉ `dot` và `icon` được di chuyển. Mọi thứ khác chỉ tự vẽ ra, chuyển đỏ hoặc nứt.
 - Mỗi hành động đặt đúng chỗ trong nhịp của nó: chấm đỏ không phá tường trước khi nhịp nói tường bảo vệ thế nào.
 
@@ -65,8 +68,8 @@ Mỗi bước cơ chế là **một nhịp** (1–6 nhịp). Từ các bước, 
     `~/video-pipeline/assets/shapes/` hoặc `RUN/shapes/` (xem dưới), co vào `box`, giữ tỉ lệ.
   - `person`, `icon`, `dot`, `text`, `crack`: `xy` `[x, y]` là tâm. Nhãn nằm dưới (`text` là chính nhãn). `icon`: `"icon"` là một trong
     `key` (mật khẩu), `message`, `wallet`, `file`, `lock`, `mail`. `crack` là vết nứt đỏ nhỏ (không nhãn).
-  - `path`: `points` `[[x, y], …]` (từ 2 điểm), tùy chọn `"arrow": true`; đường đi, không nhãn. Điểm đầu đặt đúng chỗ món sẽ chạy theo
-    đang đứng.
+  - `path`: `points` `[[x, y], …]` (từ 2 điểm), tùy chọn `"arrow": true`; đường đi, không nhãn. Điểm đầu đặt **đúng** chỗ món sẽ chạy
+    theo đang đứng lúc đó (lệch quá 20 px là code báo "nhảy").
   - `color`: `ink` (mặc định), `green` (hợp pháp, an toàn), `blue` (lớp bảo vệ, dữ liệu bình thường), `red` (tấn công). `dot` mặc định
     đỏ, `wall` mặc định xanh lơ.
   - Cỡ gợi ý: máy tính 340×200; hộp/tầng 520×130; icon khoảng 100×100 cộng nhãn; người khoảng 80×160 cộng nhãn; hình thư viện 200–300.
