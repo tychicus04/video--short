@@ -10,8 +10,8 @@ from vshort.tts import Clip
 def test_sequence_lays_clips_back_to_back():
     clips = [Clip(1, Path("a"), 2.0), Clip(3, Path("b"), 1.0), Clip(4, Path("c"), 1.5)]
     p = sequence(clips)
-    assert [(x.id, round(x.start, 2), x.dur) for x in p] == [(1, 0.2, 2.0), (3, 2.5, 1.0), (4, 3.8, 1.5)]
-    assert round(total(p), 2) == 5.8
+    assert [(x.id, round(x.start, 2), x.dur) for x in p] == [(1, 0.2, 2.0), (3, 2.7, 1.0), (4, 4.2, 1.5)]
+    assert round(total(p), 2) == 6.2
 
 
 def test_phrase_times_contiguous():

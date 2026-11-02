@@ -20,7 +20,9 @@ def test_sentence_ends_inside_closing_quote():
     assert [x.en for x in group_sentences(fr)] == ['"Quantum-safe, no rebuild."', "We use it."]
 
 def test_syllables():
-    assert syllables("Đó là tấn công | *Zero-click.*") == 5
+    assert syllables("Đó là tấn công | *Zero-click.*") == 7
+    assert syllables("Anthropic: AI viết exploit root Linux") == 11
+    assert syllables("CVE-2026-98432, người dùng") == 3 + 8 + 10 + 2
 
 
 def test_check_script_reports_problems():

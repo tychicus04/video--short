@@ -15,7 +15,7 @@ from vshort.textfit import FONTS
 PAPER = (238, 234, 226)
 W, H = 720, 1280
 SUBTITLE = (0, 1094, W, 1206)  # patched text must stay readable: out of the subtitle band and the watermark corner
-WATERMARK = (524, 1232, 704, 1264)
+WATERMARK = (483, 1214, 706, 1270)  # around NotebookLM's watermark, which render.py erases (524–704 x 1232–1264)
 MIN_PATCH_EM = 14
 MIN_CONTRAST = 40  # colour distance from the fill that counts as old ink
 MIN_SPAN, MIN_BAND, MIN_EM = 6, 4, 8  # old ink thinner than this is a rule or speck, not text; smallest font drawn

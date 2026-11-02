@@ -99,10 +99,11 @@ def _speaker_from_client(client, model: str, voice: str, sleep: Callable[[float]
     return speak
 
 
-def gemini_speaker(api_key: str, model: str, voice: str) -> Speaker:
+def gemini_speaker(api_key: str, model: str, voice: str, style: str = "") -> Speaker:
     from google import genai
 
-    return _speaker_from_client(genai.Client(api_key=api_key), model, voice)
+    speak = _speaker_from_client(genai.Client(api_key=api_key), model, voice)
+    return (lambda text: speak(f"{style}\n\n{text}")) if style else speak
 
 
 def zerotts_speaker(model_dir: Path, voice: str) -> Speaker:

@@ -11,7 +11,7 @@ from vshort.script import syllables
 from vshort.tts import Clip
 
 RATE = 24000
-GAP = 0.3  # silence between two sentences
+GAP = 0.5  # silence between two sentences: a breath, as NotebookLM leaves
 LEAD = 0.2  # before the first
 TAIL = 0.5  # after the last
 

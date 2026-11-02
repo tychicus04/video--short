@@ -1,8 +1,10 @@
-"""Final video: fixed low subtitles in NotebookLM's caption style, clean plates, no watermark, no outro, new voice."""
+"""Final video: fixed low subtitles in NotebookLM's caption style, clean plates, NotebookLM's watermark erased, a faint ANM logo
+top right, the ANM outro in place of NotebookLM's, new voice."""
 import math
 import os
 import subprocess
 from dataclasses import dataclass
+from functools import lru_cache
 from itertools import groupby
 from pathlib import Path
 
@@ -26,6 +28,40 @@ LINE_H, CAP_EM, PAD_X, PAD_Y = 62, 50, 22, 12
 SUB_Y = 1150  # every caption box is centred here, on NotebookLM's own low caption band
 INK, BOX = "3A3434", "D6DEE2"  # ASS BGR, sampled from NotebookLM's captions: dark grey ink on a light grey box
 WATERMARK = "delogo=x=524:y=1232:w=180:h=32"
+LOGO = Path(__file__).resolve().parent.parent / "assets" / "brand" / "anm-logo.png"
+LOGO_BOX = (481, 24, 704, 80)  # top right, clear of the captions and the erased watermark
+LOGO_ALPHA = 0.35  # faint: a grey mark, not a sticker
+SHIELD_W = 185  # the logo's shield ends here; its words start at x 188
+OUTRO = 2.5  # seconds of logo after the last line, silent
+
+
+@lru_cache
+def _logo() -> tuple[Image.Image, Image.Image, Image.Image]:
+    """(faint grey mark filling LOGO_BOX, outro shield, outro words), scaled once."""
+    im = Image.open(LOGO).convert("RGBA")
+    x0, y0, x1, y1 = LOGO_BOX
+    mark = im.resize((x1 - x0, y1 - y0), Image.LANCZOS)
+    mark = Image.merge("RGBA", (*[mark.convert("L")] * 3, mark.getchannel("A").point(lambda a: round(a * LOGO_ALPHA))))
+    shield = im.crop((0, 0, SHIELD_W, im.height))
+    shield = shield.resize((round(shield.width * 300 / shield.height), 300), Image.LANCZOS)
+    words = im.crop((SHIELD_W + 3, 0, im.width, im.height))
+    words = words.resize((600, round(words.height * 600 / words.width)), Image.LANCZOS)
+    return mark, shield, words
+
+
+def end_card(t: float, paper: Image.Image) -> Image.Image:
+    """The outro at t s: the shield grows in, then the words wipe in from the left."""
+    _, shield, words = _logo()
+    img = paper.copy()
+    p = kit.ease(t / 0.5)
+    if p:
+        s = shield.resize((max(1, round(shield.width * (0.7 + 0.3 * p))), max(1, round(shield.height * (0.7 + 0.3 * p)))))
+        s.putalpha(s.getchannel("A").point(lambda a: round(a * p)))
+        img.paste(s, (round((W - s.width) / 2), round(560 - s.height / 2)), s)
+    if q := round(words.width * kit.ease((t - 0.5) / 0.8)):
+        w = words.crop((0, 0, q, words.height))
+        img.paste(w, ((W - words.width) // 2, 760), w)
+    return img
 
 
 def fs(em: float) -> int:
@@ -221,7 +257,8 @@ def draw(img: Image.Image, scale: float, cx: float, cy: float) -> Image.Image:
 
 
 def render_video(segs: list[Segment], ass: Path, narration: Path, total: float, out: Path,
-                 scenes: list[Scene] = ()) -> None:
+                 scenes: list[Scene] = (), outro: float = 0.0) -> None:
+    """`total` s of lines with the logo in the corner, then `outro` s of end_card faded in from the last frame."""
     cache: dict[Path, Image.Image] = {}
 
     def load(f: Path) -> Image.Image:
@@ -240,18 +277,30 @@ def render_video(segs: list[Segment], ass: Path, narration: Path, total: float, 
         if len(parts) == 2 and parts[0][0].scene is not None and parts[0][0].scene == parts[1][0].scene:
             parts = parts[1:]  # two lines of one scene: the same picture, drawn once
         imgs = [(image(s, cam, t), w) for s, w, cam in parts]
-        return imgs[0][0] if len(imgs) == 1 else Image.blend(imgs[0][0], imgs[1][0], imgs[1][1])
+        img = imgs[0][0] if len(imgs) == 1 else Image.blend(imgs[0][0], imgs[1][0], imgs[1][1])
+        img.paste(mark, LOGO_BOX[:2], mark)  # after the camera: the logo stays put
+        return img
 
+    mark = _logo()[0]
+    paper = kit._paper().reduce(kit.SS) if outro else None
+    last = None
     tmp = out.resolve().with_name(f"{out.stem}.tmp{out.suffix}")  # a failed render must not replace a good `out`
     cmd = [FF, "-loglevel", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", str(FPS),
-           "-i", "-", "-i", str(narration.resolve()), "-vf", f"ass={ass.name}:fontsdir={FONTS}", "-map", "0:v",
-           "-map", "1:a", "-t", str(total), "-c:v", "libx264", "-crf", "18", "-preset", "medium", "-pix_fmt", "yuv420p",
-           "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(tmp)]
+           "-i", "-", "-i", str(narration.resolve()), "-vf", f"ass={ass.name}:fontsdir={FONTS}", "-af", "apad",
+           "-map", "0:v", "-map", "1:a", "-t", str(total + outro), "-c:v", "libx264", "-crf", "18", "-preset", "medium",
+           "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(tmp)]
     try:
         with subprocess.Popen(cmd, stdin=subprocess.PIPE, cwd=ass.parent) as p:
             try:
-                for n in range(math.ceil(total * FPS)):
-                    p.stdin.write(frame(n / FPS).tobytes())
+                for n in range(math.ceil((total + outro) * FPS)):
+                    t = n / FPS
+                    if t < total:
+                        img = last = frame(t)
+                    else:
+                        img = end_card(t - total, paper)
+                        if last is not None and t - total < XF:
+                            img = Image.blend(last, img, (t - total) / XF)
+                    p.stdin.write(img.tobytes())
                 p.stdin.close()
             except BrokenPipeError:
                 pass  # ffmpeg died; its exit code below says why

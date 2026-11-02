@@ -1,6 +1,7 @@
 """Caption fragments -> English sentences with time windows; checks on the Vietnamese script."""
 import math
 import re
+import unicodedata
 from dataclasses import dataclass, replace
 
 from vshort.captions import Fragment
@@ -45,7 +46,17 @@ def group_sentences(frags: list[Fragment]) -> list[Sentence]:
 
 
 def syllables(text: str) -> int:
-    return sum(1 for tok in text.replace("|", " ").replace("*", "").split() if re.search(r"\w", tok))
+    """Spoken syllables: a Vietnamese word is one vowel cluster, but "Anthropic" is three, "CVE" three, "2026" about eight."""
+    n = 0
+    for part in re.findall(r"\d+|[^\W\d_]+", text):
+        if part.isdigit():
+            n += 2 * len(part)  # ponytail: ~2 per digit ("hai nghìn không trăm hai mươi sáu"), not a number reader
+        elif part.isascii() and part.isupper():
+            n += len(part)  # spelled out
+        else:
+            bare = "".join(c for c in unicodedata.normalize("NFD", part.lower()) if not unicodedata.combining(c))
+            n += max(len(re.findall(r"[aeiouy]+", bare)), 1)
+    return n
 
 
 def merged(sentences: list[Sentence], script: list[dict]) -> list[Sentence]:

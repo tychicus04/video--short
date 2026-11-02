@@ -82,7 +82,7 @@ def test_timeline_writes_back_to_back_narration(tmp_path):
     _timeline_run(tmp_path, SCRIPT)
     assert main(["timeline", str(tmp_path)]) == 0
     t = json.loads((tmp_path / "timeline.json").read_text())
-    assert [p["id"] for p in t["placements"]] == [1, 3] and abs(t["total"] - 3.0) < 1e-6  # 0.2+1+0.3+1+0.5
+    assert [p["id"] for p in t["placements"]] == [1, 3] and abs(t["total"] - 3.2) < 1e-6  # 0.2+1+0.5+1+0.5
     assert (tmp_path / "narration.wav").exists() and Run(tmp_path).done("timeline")
 
 
@@ -115,7 +115,7 @@ def _out_of_quota(tmp_path, monkeypatch, local):
     monkeypatch.setattr(cli, "load_api_key", lambda p: "k")
     seen = {"gemini": [], "zerotts": []}
 
-    def gemini(key, model, voice):
+    def gemini(key, model, voice, style=""):
         def speak(text):
             seen["gemini"].append(text)
             raise QuotaExceeded()
