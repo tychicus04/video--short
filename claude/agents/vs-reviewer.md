@@ -32,7 +32,9 @@ Kiểm:
 4. **Không lặng dài**: đo `narration.wav` (ví dụ đọc bằng `wave` + numpy, cửa sổ 20 ms, im lặng là RMS dưới 2 % đỉnh);
    mọi đoạn lặng dài hơn 0,8 giây, trừ đoạn ở đầu và cuối file, = lỗi (ghi khoảng thời gian).
 5. **Hình tư liệu khớp nguồn**: với mỗi mục `svg`/`photo` trong `visuals.json`, xem `frames/<id>.png`, chép lại mọi chữ và con số
-   trong hình (trừ dòng nguồn/credit), rồi đối chiếu từng chữ với trang `source` (tải bằng `curl -sL`, bỏ thẻ HTML).
+   trong hình (trừ dòng nguồn/credit), rồi đối chiếu từng chữ với trang `source`: tải bằng `curl -sL`, bỏ thẻ HTML, **ghi ra file**
+   `/tmp/vs_review/src/<id>.txt` rồi `grep -c -i -F` từng chữ/số (in mỗi chữ một dòng: chữ, số lần gặp). Đừng in cả trang; chỉ in
+   vài dòng quanh chỗ gặp (`grep -o -i -E '.{0,80}<chữ>.{0,80}'`) khi cần xem ngữ cảnh.
    Chữ hay con số nào không có trong trang nguồn (kể cả ý chỉ có trong brief) = lỗi nặng; chữ/số lệch nguồn, thiếu dòng
    nguồn/credit = lỗi. Số hình tư liệu ít hơn 3 (kể cả 0) không phải lỗi khi không có tư liệu thật phù hợp. Hình có chỉ đường tới mã tấn công (tên/chủ repo, URL tải mã) hoặc thứ giúp dựng lại một cuộc tấn công (mã khai thác, lệnh,
    payload, offset, quy trình từng bước) = lỗi nặng; hình vẽ lại chỉ được có chi tiết cấp tiêu đề (ai phát hiện, chuyện gì, khi nào,
@@ -55,5 +57,12 @@ Kiểm:
 10. Liệt kê mọi `note` khác rỗng trong `script.vi.json` (lời Việt khác lời Anh và lý do), và toàn bộ `visuals.json`
    (mỗi chỗ vá: câu, chữ cũ → chữ mới; mỗi hình tư liệu: câu, loại, `source`, `accessed`, `note`).
 
+Giữ ngữ cảnh gọn (mỗi lượt đọc lại toàn bộ): lệnh Python/Bash chỉ in kết luận và con số (thời điểm lỗi, số đo), không in dữ liệu thô,
+mã nguồn hay JSON dài; đọc file của pipeline bằng `python -c`/`grep` lấy đúng trường cần. Ghép nhiều khung vào một ảnh rồi đọc một lần.
+
 Ghi `RUN/review.md` bằng tiếng Việt: kết luận một dòng (Đạt / Cần sửa), rồi các mục trên, mỗi phát hiện có thời điểm.
 Trả về: kết luận và tối đa 5 phát hiện quan trọng nhất.
+
+**Soát lại** (lời giao bắt đầu bằng "Soát lại" kèm danh sách đã sửa): đọc `review.md` cũ, chỉ soát lại các phần trong danh sách
+(cùng cách kiểm như trên, ở đúng các câu/thời điểm đó) và chỗ chuyển ngay trước/sau chúng; không soát lại phần không đổi.
+Ghi thêm mục "Soát lại" vào cuối `review.md` (mỗi lỗi cũ: đã hết / còn, kèm thời điểm) và sửa dòng kết luận nếu đổi.

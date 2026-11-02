@@ -18,7 +18,8 @@ from vshort.render import build_ass, clean_video, render_video, segments
 from vshort.run import Run, config
 from vshort.script import Sentence, check_brief, check_script, group_sentences, merge_text, merged
 from vshort.stills import contact_sheet, grid_image, pick_still, scene_of
-from vshort.tts import Clip, QuotaExceeded, clip_paths, gemini_speaker, load_api_key, synth_script
+from vshort.tts import (Clip, QuotaExceeded, clip_paths, gemini_speaker, load_api_key, synth_lines, synth_script,
+                        zerotts_speaker)
 from vshort.visuals import patch_text, pencil, svg_frame, validate
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -300,16 +301,30 @@ def _tts_tag(cfg: dict) -> str:
     return f"{cfg['tts_model']}|{cfg['voice']}"
 
 
+def _zerotts_tag(cfg: dict) -> str:
+    return f"zerotts|{cfg['zerotts_voice']}"
+
+
 def cmd_tts(a) -> int:
     run = Run(a.run)
     cfg = config()
-    speak = gemini_speaker(load_api_key(Path(cfg["env_file"]).expanduser()), cfg["tts_model"], cfg["voice"])
+    lines, out, local = _tts_lines(run), run.file("tts"), _zerotts_tag(cfg)
     try:
-        clips = synth_script(_tts_lines(run), run.file("tts"), speak, tag=_tts_tag(cfg))
+        if lines and all(p.exists() for p in clip_paths(lines, out, local)):
+            clips = synth_lines(lines, out, None, local)  # read by ZeroTTS on a day Gemini was out: keep that voice
+        else:
+            speak = gemini_speaker(load_api_key(Path(cfg["env_file"]).expanduser()), cfg["tts_model"], cfg["voice"])
+            clips = synth_script(lines, out, speak, tag=_tts_tag(cfg))
     except QuotaExceeded:
-        _err("Hết hạn mức Gemini TTS trong ngày (gói miễn phí: 10 lần/ngày cho mỗi model). "
-             "Đợi hạn mức hồi lại rồi chạy lại lệnh này.")
-        return QUOTA
+        print(f"Hết hạn mức Gemini TTS trong ngày: đọc bằng ZeroTTS (giọng {cfg['zerotts_voice']}).")
+        try:
+            clips = synth_lines(lines, out, zerotts_speaker(Path(cfg["zerotts_model"]).expanduser(),
+                                                            cfg["zerotts_voice"]), local)
+        except (OSError, subprocess.CalledProcessError) as e:  # not installed, no weights, or it crashed
+            why = e.stderr.decode(errors="replace").strip() if isinstance(e, subprocess.CalledProcessError) else ""
+            _err("Hết hạn mức Gemini TTS trong ngày (gói miễn phí: 10 lần/ngày cho mỗi model) và ZeroTTS không chạy được "
+                 f"({why.splitlines()[-1] if why else e}). Đợi hạn mức hồi lại rồi chạy lại lệnh này.")
+            return QUOTA
     except ValueError as e:
         _err(str(e))
         return FAILED
@@ -322,7 +337,8 @@ def cmd_timeline(a) -> int:
     run = Run(a.run)
     rows = run.read("tts.json")
     made = [Path(c["path"]).name for c in rows]  # clip names carry the ids and a hash of the text they were made from
-    if made != [p.name for p in clip_paths(_tts_lines(run), run.file("tts"), _tts_tag(config()))]:
+    lines, cfg = _tts_lines(run), config()
+    if made not in ([p.name for p in clip_paths(lines, run.file("tts"), tag)] for tag in (_tts_tag(cfg), _zerotts_tag(cfg))):
         _err("giọng đọc cũ không khớp kịch bản — chạy lại `vshort tts`")
         return BAD_INPUT
     clips = [Clip(c["id"], Path(c["path"]), c["duration"]) for c in rows]

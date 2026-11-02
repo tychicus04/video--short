@@ -115,7 +115,10 @@ thời gian, file giọng đọc, `visuals.json` (chỗ vá chữ và hình tư 
   Tai chọn **đọc cả kịch bản trong một lần gọi** rồi tự cắt thành từng câu theo khoảng lặng
   (thay cho mỗi câu một lần gọi):
   - mỗi video chỉ tốn một lần gọi; âm thanh lưu theo nội dung nên chạy lại không tốn thêm; `timeline` không gọi TTS;
-  - giới hạn theo phút thì tự đợi rồi gọi lại; hết hạn mức theo ngày thì dừng (mã 75) và chạy lại sau.
+  - giới hạn theo phút thì tự đợi rồi gọi lại; hết hạn mức theo ngày thì **đọc bằng ZeroTTS** (Tai chọn 02/11/2026):
+    TTS tiếng Việt chạy CPU trên máy, mỗi câu một lần gọi lệnh `zerotts` (không phải cắt theo khoảng lặng), giọng
+    `zerotts_voice` trong `config.toml`. Đã đọc bằng ZeroTTS thì chạy lại vẫn giữ giọng đó. ZeroTTS không chạy được
+    (chưa cài, thiếu weights) thì dừng (mã 75) như trước.
 - Môi trường chạy (imageio-ffmpeg, numpy, pillow, opencv, torch CPU, font Be Vietnam Pro,
   `big-lama.pt`) được cài lại dưới `~/video-pipeline/`, không dùng thư mục tạm.
 

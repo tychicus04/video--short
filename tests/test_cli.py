@@ -1,5 +1,7 @@
+import io
 import json
 import shutil
+import wave
 from pathlib import Path
 from subprocess import CompletedProcess
 
@@ -106,21 +108,56 @@ def test_timeline_ignores_the_markup_of_the_script(tmp_path):
     assert main(["timeline", str(tmp_path)]) == 0
 
 
-def test_tts_quota_exit_75(tmp_path, monkeypatch, capsys):
-    (tmp_path / "script.vi.json").write_text('[{"id": 1, "phrases": "Xin | *chào*", "note": ""}]')
+def _out_of_quota(tmp_path, monkeypatch, local):
+    """Gemini is out for the day; `local(text)` stands in for one ZeroTTS call. Returns the texts each was asked."""
+    (tmp_path / "script.vi.json").write_text(
+        '[{"id": 1, "phrases": "Xin | *chào*", "note": ""}, {"id": 2, "phrases": "Tạm biệt", "note": ""}]')
     monkeypatch.setattr(cli, "load_api_key", lambda p: "k")
-    seen = []
+    seen = {"gemini": [], "zerotts": []}
 
-    def speaker(key, model, voice):
+    def gemini(key, model, voice):
         def speak(text):
-            seen.append(text)
+            seen["gemini"].append(text)
             raise QuotaExceeded()
         return speak
 
-    monkeypatch.setattr(cli, "gemini_speaker", speaker)
+    def zerotts(model_dir, voice):
+        return lambda text: seen["zerotts"].append(text) or local(text)
+
+    monkeypatch.setattr(cli, "gemini_speaker", gemini)
+    monkeypatch.setattr(cli, "zerotts_speaker", zerotts)
+    return seen
+
+
+def _wav(seconds):
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(48000)
+        w.writeframes(bytes(2 * round(seconds * 48000)))
+    return buf.getvalue()
+
+
+def test_tts_out_of_gemini_quota_reads_each_line_with_zerotts(tmp_path, monkeypatch):
+    seen = _out_of_quota(tmp_path, monkeypatch, lambda text: _wav(1.5))
+    assert main(["tts", str(tmp_path)]) == 0
+    assert seen["gemini"] == ["Xin chào.\n\nTạm biệt."]  # the words the subtitles show, without | and *
+    assert seen["zerotts"] == ["Xin chào", "Tạm biệt"]  # one call per line: nothing to cut at silences
+    assert [c["duration"] for c in json.loads((tmp_path / "tts.json").read_text())] == [1.5, 1.5]
+    assert main(["timeline", str(tmp_path)]) == 0  # the ZeroTTS clips count as made from this script
+    seen["gemini"].clear()
+    assert main(["tts", str(tmp_path)]) == 0 and seen["gemini"] == []  # a rerun keeps the ZeroTTS voice
+
+
+def test_tts_quota_exit_75_when_zerotts_cannot_run(tmp_path, monkeypatch, capsys):
+    def missing(text):
+        raise FileNotFoundError(2, "No such file or directory", "zerotts")
+
+    _out_of_quota(tmp_path, monkeypatch, missing)
     assert main(["tts", str(tmp_path)]) == 75
-    assert seen == ["Xin chào."]  # the words the subtitles show, without | and *, closed with a full stop
-    assert "chạy lại" in capsys.readouterr().err
+    assert "ZeroTTS không chạy được" in (err := capsys.readouterr().err) and "chạy lại" in err
+    assert not list((tmp_path / "tts").glob("*.wav")) and not Run(tmp_path).done("tts")
 
 
 def test_fetch_rerun_continues_the_same_video(tmp_path, monkeypatch):

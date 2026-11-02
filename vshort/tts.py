@@ -1,9 +1,12 @@
-"""Gemini text-to-speech: one call for the whole script, cut into per-sentence clips; cached by text."""
+"""Text-to-speech, cached by text: Gemini reads the whole script in one call, cut into per-sentence clips;
+ZeroTTS (local, when Gemini's daily quota is gone) reads one sentence per call."""
 import hashlib
 import json
 import io
 import os
 import re
+import subprocess
+import tempfile
 import time
 import wave
 from collections.abc import Callable
@@ -100,6 +103,18 @@ def gemini_speaker(api_key: str, model: str, voice: str) -> Speaker:
     from google import genai
 
     return _speaker_from_client(genai.Client(api_key=api_key), model, voice)
+
+
+def zerotts_speaker(model_dir: Path, voice: str) -> Speaker:
+    """ZeroTTS (local, CPU, no quota) through its own `zerotts` command, so the pipeline needs none of its libraries."""
+    def speak(text: str) -> bytes:
+        with tempfile.TemporaryDirectory() as d:
+            out = Path(d) / "a.wav"
+            subprocess.run(["zerotts", "say", "-", "-o", str(out), "-v", voice, "--model", str(model_dir), "--chunk"],
+                           input=text.encode(), capture_output=True, check=True)
+            return out.read_bytes()
+
+    return speak
 
 
 def _duration(path: Path) -> float:
@@ -210,4 +225,19 @@ def synth_script(lines: list[tuple[int, str]], out_dir: Path, speak: Speaker, ta
             rate, a = w.getframerate(), np.frombuffer(w.readframes(w.getnframes()), np.int16)
         for p, (b, e) in zip(paths, _sentence_spans(a, rate, [max(syllables(t), 1) for _, t in lines])):
             _write_wav(p, a[b:e], rate)
+    return [Clip(i, p, _duration(p)) for (i, _), p in zip(lines, paths)]
+
+
+def synth_lines(lines: list[tuple[int, str]], out_dir: Path, speak: Speaker | None, tag: str) -> list[Clip]:
+    """One call per sentence (ZeroTTS has no quota), so nothing is cut at silences; clips cached by text.
+
+    `speak` may be None when every clip is already made.
+    """
+    out_dir.mkdir(parents=True, exist_ok=True)
+    paths = clip_paths(lines, out_dir, tag)
+    for (_, text), p in zip(lines, paths):
+        if not p.exists():
+            tmp = p.with_suffix(".part")
+            tmp.write_bytes(speak(text))
+            tmp.rename(p)
     return [Clip(i, p, _duration(p)) for (i, _), p in zip(lines, paths)]

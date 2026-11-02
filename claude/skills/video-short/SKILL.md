@@ -14,9 +14,11 @@ Mọi bước cố định là lệnh `vshort`; sáu bước cần suy xét giao
 - `vshort` = `cd ~/video-pipeline && uv run vshort …`
 - `notebooklm` = `cd ~/Document/notebooklm-py-main && uv run notebooklm …`
 - Thư mục chạy: `RUN=~/notebooklm-videos/<slug>` (slug ngắn, không dấu, gạch nối).
-- Mã thoát `vshort`: 0 xong · 1 lỗi · 2 dữ liệu sai (in danh sách lỗi) · 4 hết phiên NotebookLM · 75 hết hạn mức Gemini.
+- Mã thoát `vshort`: 0 xong · 1 lỗi · 2 dữ liệu sai (in danh sách lỗi) · 4 hết phiên NotebookLM · 75 hết hạn mức Gemini và ZeroTTS không chạy được.
 - Mỗi lệnh ghi trạng thái vào `$RUN/state.json`; `vshort status $RUN` cho biết đang ở đâu. Khi chạy tiếp một video dở, bắt đầu từ bước chưa xong.
 - Không bao giờ in, ghi hay gửi đi `GEMINI_API_KEY`.
+- Giữ ngữ cảnh gọn: mọi lượt đọc lại toàn bộ ngữ cảnh. Lệnh in nhiều thì chỉ lấy phần cần (`| tail -20`, `grep`); không `cat`/Read
+  cả file log hay file lớn; không đọc lại file agent đã tóm tắt; không tự mở ảnh khi agent đã soát.
 
 ## Các bước
 
@@ -39,8 +41,9 @@ Mọi bước cố định là lệnh `vshort`; sáu bước cần suy xét giao
    - `vshort text $RUN` → in từng câu tiếng Anh: `id  start–end  en`.
 5. **Dịch sát** — giao `vs-translator` đường dẫn `$RUN` và nguyên văn đầu ra của `vshort text`.
    Nó ghi `$RUN/script.vi.json` và tự chạy `vshort check $RUN` tới khi mã 0. Không có giới hạn độ dài câu.
-6. **Giọng đọc** (nền, song song với bước 7–10) — `vshort tts $RUN` (một lần gọi Gemini cho cả kịch bản, tự cắt thành từng câu).
-   Mã 75 → hết hạn mức Gemini trong ngày (gói miễn phí 10 lần/ngày mỗi model). Mã 1 với thông báo bắt đầu bằng "Không tách"
+6. **Giọng đọc** (nền, song song với bước 7–10) — `vshort tts $RUN` (một lần gọi Gemini cho cả kịch bản, tự cắt thành từng câu;
+   hết hạn mức Gemini trong ngày thì tự đọc bằng ZeroTTS từng câu, in "đọc bằng ZeroTTS" — ghi lại để báo Tai ở bước 12).
+   Mã 75 → hết hạn mức Gemini và ZeroTTS cũng không chạy được. Mã 1 với thông báo bắt đầu bằng "Không tách"
    ("Không tách được giọng đọc…" hoặc "Không tách chắc chắn…") → báo nguyên văn.
    Với cả hai mã: đợi bước 7–10 chạy xong rồi mới báo Tai và dừng. Khi Tai gọi lại `/video-short`, xem `vshort status $RUN`:
    các bước đã ✓ (`plates`, `motion`, `stills`, `visuals`) được bỏ qua, chạy tiếp từ `tts`.
@@ -66,6 +69,9 @@ Mọi bước cố định là lệnh `vshort`; sáu bước cần suy xét giao
    rồi `vshort render $RUN` (ra `final.mp4`; lỗi thì giữ bản cũ; mã 2 nhắc "chạy lại `vshort motion`" → chạy `vshort motion $RUN`,
    khác 0 thì làm như dự phòng ở bước 8 (`mv` sang `motion.loi.json`, chạy lại `vshort motion $RUN`), rồi render lại; mất khoảng bằng độ dài video, nên chạy nền hoặc đặt timeout dài và
    chờ nó xong) → giao `vs-reviewer` đường dẫn `$RUN`; nó ghi `$RUN/review.md`.
+   Sửa theo review rồi soát lại: giao **một `vs-reviewer` mới** (không `SendMessage` cho reviewer cũ — nó đọc lại cả lịch sử mỗi lượt)
+   với `$RUN`, câu "Soát lại: chỉ các phần đã sửa" và danh sách đã sửa (lỗi nào, file nào, câu/thời điểm nào). Tương tự với agent sửa:
+   giao việc sửa cho agent mới kèm đường dẫn `review.md`, trừ khi agent cũ vừa xong và việc sửa nhỏ.
 12. **Trả lời Tai** (tiếng Việt):
    - đường dẫn `$RUN/final.mp4`;
    - lệnh chép về Mac, ghi rõ "gõ trong terminal Mac, không có dấu `!`":

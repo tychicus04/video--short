@@ -1,5 +1,7 @@
 tts_model = "gemini-2.5-flash-preview-tts"
 voice = "Charon"
+zerotts_model = "~/models/zerotts"  # weights copied as real files: onnxruntime refuses the HF cache's symlinks
+zerotts_voice = "quangminh"
 env_file = "~/Document/notebooklm-py-main/.env"
 notebooklm_dir = "~/Document/notebooklm-py-main"
 runs_dir = "~/notebooklm-videos"
