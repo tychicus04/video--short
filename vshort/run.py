@@ -26,6 +26,12 @@ class Run:
         self.state[step] = "done"
         self._state_file.write_text(json.dumps(self.state, indent=1))
 
+    def unmark(self, *steps: str) -> None:
+        self.state = json.loads(self._state_file.read_text()) if self._state_file.exists() else {}
+        for s in steps:
+            self.state.pop(s, None)
+        self._state_file.write_text(json.dumps(self.state, indent=1))
+
     def file(self, name: str) -> Path:
         return self.path / name
 
