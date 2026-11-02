@@ -107,6 +107,18 @@ MOTION = ("RUN={run}\n\nĐọc {run}/brief.vi.md (mục \"Cơ chế từng bư�
           "trước khi chọn đoạn câu.")
 VISUALS = ("RUN={run}\n\nĐọc {run}/motion.json để biết câu nào đã có hình động (đừng chọn tư liệu cho các câu đó), "
            "{run}/sources.md (nguồn tư liệu thật) và {run}/brief.vi.md (mục \"Lưu ý độ chính xác\") khi vá chữ.")
+REVIEW = "RUN={run}. final.mp4 đã render. Soát video cuối; ghi {run}/review.md và {run}/review.json."
+RECHECK = ("Soát lại: chỉ các phần đã sửa.\n\nRUN={run}. review.md cũ: {run}/review.md. Đã sửa (lỗi, agent, câu, thời điểm):\n"
+           "{fixed}\nGhi kết quả vào cuối review.md và ghi lại review.json cho lần soát này.")
+FIX = ("RUN={run}\n\nSửa theo {run}/review.json, các lỗi agent={agent}:\n{items}\n{how}")
+FIX_HOW = {
+    "motion": "Sửa motion.json rồi tự chạy `vshort motion` tới khi mã 0.",
+    "visuals": "Sửa visuals.json rồi tự chạy `vshort visuals` tới khi mã 0.",
+    "translator": ("Ghi bản sửa vào {run}/script.proposed.json (cùng dạng script.vi.json, sửa cả `note`); "
+                   "KHÔNG sửa script.vi.json — Tai duyệt bản đề xuất trước."),
+}
+MAX_ROUNDS = 2
+BUDGET = 5.0
 FAILED_CODE = 1
 
 
@@ -199,7 +211,111 @@ def _flow(run: Run) -> int:
         raise Stop(WAIT_SCRIPT, f"Duyệt bản dịch: {p}/translation.md (sửa thì sửa {p}/script.vi.json), rồi "
                                 f"`vshort approve {p} script` và `vshort auto {p}`.", "wait_script")
     _build(run)
+    _review(run)
     return OK
+
+
+def read_review(run: Run) -> dict:
+    """RUN/review.json as the reviewer wrote it: {"verdict": "Đạt"|"Cần sửa", "findings": [{agent, ids, at, what}]}."""
+    try:
+        rev = run.read("review.json")
+        assert rev["verdict"] in ("Đạt", "Cần sửa") and isinstance(rev["findings"], list)
+        assert all(f["agent"] in ("motion", "visuals", "translator", "none") for f in rev["findings"])
+    except (OSError, ValueError, KeyError, TypeError, AssertionError):
+        raise AgentError(f"review.json không đọc được (thiếu hoặc sai dạng) — xem {run.path}/review.md") from None
+    return rev
+
+
+def _items(fs: list[dict]) -> str:
+    return "\n".join(f"- {f['agent']}, câu {', '.join(map(str, f.get('ids', [])))}, {f.get('at', '')}: {f['what']}"
+                      for f in fs)
+
+
+def _review(run: Run) -> None:
+    """Review; while it finds what an agent can fix, fix it and have a fresh reviewer check the fix (≤ MAX_ROUNDS)."""
+    from vshort.cli import WAIT_SCRIPT
+    p = run.path
+    while True:
+        r = get_state(run)["round"]
+        if not run.done(f"review{r}"):
+            prompt = REVIEW.format(run=p) if r == 0 else RECHECK.format(run=p, fixed=run.file(f"fix{r}.txt").read_text())
+            run.file("review.json").unlink(missing_ok=True)  # never act on the previous reviewer's findings
+            run_claude(run, f"review{r}", "vs-reviewer", prompt, TIMEOUT["vs-reviewer"])
+            run.mark(f"review{r}")
+        rev = read_review(run)
+        todo = [f for f in rev["findings"] if f["agent"] != "none"]
+        if rev["verdict"] == "Đạt" or not todo or r >= MAX_ROUNDS:
+            _finish(run, rev, r)
+            return
+        r += 1
+        set_state(run, "running", round=r)
+        run.file(f"fix{r}.txt").write_text(_items(todo) + "\n", encoding="utf-8")
+        by = {a: [f for f in todo if f["agent"] == a] for a in ("motion", "visuals", "translator")}
+        for agent in ("motion", "visuals"):
+            if by[agent]:
+                prompt = FIX.format(run=p, agent=agent, items=_items(by[agent]), how=FIX_HOW[agent])
+                (_motion if agent == "motion" else _visuals)(run, prompt, step=f"fix{r}_{agent}")
+                run.unmark("render")
+        if by["translator"] and not run.done(f"fix{r}_translator"):
+            run_claude(run, f"fix{r}_translator", "vs-translator",
+                       FIX.format(run=p, agent="translator", items=_items(by["translator"]),
+                                  how=FIX_HOW["translator"].format(run=p)), TIMEOUT["vs-translator"])
+            if not run.file("script.proposed.json").exists():
+                raise AgentError("vs-translator không ghi script.proposed.json khi sửa theo review")
+            run.mark(f"fix{r}_translator")
+            run.unmark("approve_script", "tts", "timeline", "render", "motion")
+            raise Stop(WAIT_SCRIPT, _proposal(run), "wait_script")
+        _render(run)
+
+
+def _proposal(run: Run) -> str:
+    old = {r["id"]: r for r in run.read("script.vi.json")}
+    lines = [f"Reviewer thấy lỗi ở bản dịch; bản sửa đề xuất: {run.path}/script.proposed.json"]
+    for r in run.read("script.proposed.json"):
+        a, b = (" ".join(x.replace("|", " ").split()) for x in (old.get(r["id"], {}).get("phrases", ""), r["phrases"]))
+        if a != b:
+            lines.append(f"câu {r['id']}: {a}  →  {b}" + (f"  ({r['note']})" if r.get("note") else ""))
+    lines.append(f"Đồng ý thì chép đè lên script.vi.json (hoặc sửa tay) và xóa script.proposed.json, rồi "
+                 f"`vshort approve {run.path} script` và `vshort auto {run.path}`.")
+    return "\n".join(lines)
+
+
+def _voice(run: Run) -> str:
+    from vshort import cli
+    try:
+        made = [Path(c["path"]).name for c in run.read("tts.json")]
+        local = [q.name for q in cli.clip_paths(cli._tts_lines(run), run.file("tts"), cli._zerotts_tag(cli.config()))]
+    except (OSError, ValueError, KeyError):
+        return "?"
+    return "ZeroTTS (hết lượt Gemini)" if made == local else "Gemini"
+
+
+def _finish(run: Run, rev: dict, rounds: int) -> None:
+    p, slug = run.path, run.path.name
+    out = [f"Video: {p}/final.mp4",
+           f"Chép về Mac (gõ trong terminal Mac): scp tai@pve2:~/notebooklm-videos/{slug}/final.mp4 ~/Downloads/{slug}.mp4",
+           f"Giọng: {_voice(run)}"]
+    if run.file("motion.json").exists():
+        out.append("Hình động: câu " + ", ".join(map(str, run.read("motion.json").get("lines", []))))
+    else:
+        out.append("Hình động: không có" + (" (motion.json không qua kiểm, xem motion.loi.json)"
+                                             if run.file("motion.loi.json").exists() else ""))
+    for v in run.read("visuals.json") if run.file("visuals.json").exists() else []:
+        out.append(f"- {v.get('kind')} câu {v.get('ids') or v.get('id')}: "
+                   + (f"{v.get('old', '')} → {v.get('new', '')}" if v.get("kind") == "patch" else v.get("source", "")))
+    left = [f for f in rev["findings"]]
+    out.append(f"Soát: {rev['verdict']} sau {rounds} vòng sửa"
+               + (" — còn lỗi, xem review.md" if rev["verdict"] != "Đạt" else ""))
+    out += [f"  • {f['what']}" for f in left[:5]]
+    rows = run.read("cost.json") if run.file("cost.json").exists() else []
+    per: dict[str, float] = {}
+    for row in rows:
+        per[row["agent"]] = per.get(row["agent"], 0) + row["cost_usd"]
+    total = total_cost(run)
+    out.append(f"Chi phí Claude: ${total:.2f} (" + ", ".join(f"{a} ${c:.2f}" for a, c in per.items()) + ")")
+    if total > BUDGET:
+        out.append(f"Vượt ngân sách ${BUDGET:.0f}.")
+    set_state(run, "done", "\n".join(out))
 
 
 def _no_motion(run: Run) -> None:
@@ -249,6 +365,13 @@ def _tts_result(run: Run, code: int) -> None:
         raise Stop(code, f"`vshort tts` lỗi (mã {code}); xem auto.log")
 
 
+def _render(run: Run) -> None:
+    if not run.done("render"):
+        if run_vshort(["render", str(run.path)]) == 2:  # usually: motion.json no longer matches
+            _no_motion(run)
+            _vs(run, "render")
+
+
 def _build(run: Run) -> None:
     p = str(run.path)
     with ThreadPoolExecutor(1) as ex:  # the voice is read while the pictures are made
@@ -266,10 +389,7 @@ def _build(run: Run) -> None:
             run.unmark("tts")
             _tts_result(run, run_vshort(["tts", p]))
             _vs(run, "timeline")
-    if not run.done("render"):
-        if run_vshort(["render", p]) == 2:  # usually: motion.json no longer matches
-            _no_motion(run)
-            _vs(run, "render")
+    _render(run)
 
 
 def run_auto(run: Run) -> int:
@@ -284,5 +404,4 @@ def run_auto(run: Run) -> int:
     except AgentError as e:
         set_state(run, "error", str(e))
         return FAILED
-    set_state(run, "done", get_state(run)["message"])
-    return code if code is not None else OK
+    return code

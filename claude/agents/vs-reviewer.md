@@ -61,6 +61,11 @@ Giữ ngữ cảnh gọn (mỗi lượt đọc lại toàn bộ): lệnh Python/
 mã nguồn hay JSON dài; đọc file của pipeline bằng `python -c`/`grep` lấy đúng trường cần. Ghép nhiều khung vào một ảnh rồi đọc một lần.
 
 Ghi `RUN/review.md` bằng tiếng Việt: kết luận một dòng (Đạt / Cần sửa), rồi các mục trên, mỗi phát hiện có thời điểm.
+Ghi thêm `RUN/review.json` (`vshort auto` đọc file này để giao việc sửa):
+`{"verdict": "Đạt" | "Cần sửa", "findings": [{"agent": "...", "ids": [số câu], "at": "mm:ss", "what": "lỗi, một câu"}]}`.
+`agent` là ai sửa được lỗi đó: `"motion"` (hình động: `motion.json`), `"visuals"` (chỗ vá chữ, hình tư liệu: `visuals.json`),
+`"translator"` (lời Việt/phụ đề sai nghĩa, nói quá so với brief), `"none"` (chỉ người sửa được, vd. hình NotebookLM sai mà không vá được).
+Chỉ ghi lỗi cần sửa; "Đạt" thì `findings` rỗng.
 Trả về: kết luận và tối đa 5 phát hiện quan trọng nhất.
 
 **Soát lại** (lời giao bắt đầu bằng "Soát lại" kèm danh sách đã sửa): đọc `review.md` cũ, chỉ soát lại các phần trong danh sách

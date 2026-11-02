@@ -105,6 +105,7 @@ class Fakes:
         self.prompts: dict[str, list[str]] = {}
         self.codes: dict[str, list[int]] = {}  # vshort step -> exit codes to return, in order (then 0)
         self.no_notebook = False
+        self.reviews: list[dict | None] = []  # what each reviewer call writes to review.json (None: nothing); then Đạt
 
     def claude(self, run, step, agent, prompt, timeout):
         self.agents[agent] += 1
@@ -117,6 +118,14 @@ class Fakes:
                 f("notebook.txt").write_text("nb-123\n")
         elif agent == "vs-transcriber":
             f("fragments_text.json").write_text('{"0": "Hello there."}')
+        elif agent == "vs-translator" and "script.proposed.json" in prompt:
+            run.write("script.proposed.json", [{"id": 1, "phrases": "Chào | bạn", "note": "sửa theo review"},
+                                               {"id": 2, "phrases": "Tạm biệt", "note": ""}])
+        elif agent == "vs-reviewer":
+            r = self.reviews.pop(0) if self.reviews else {"verdict": "Đạt", "findings": []}
+            if r is not None:
+                run.write("review.json", r)
+            run.file("review.md").write_text("Kết luận: " + (r or {}).get("verdict", "?"))
         elif agent == "vs-translator":
             run.write("script.vi.json", [{"id": 1, "phrases": "Xin | chào", "note": ""},
                                          {"id": 2, "phrases": "Tạm biệt", "note": "ngắn hơn"}])
@@ -288,3 +297,74 @@ def test_marks_from_two_threads_are_all_kept(tmp_path):
     [t.start() for t in ts]
     [t.join() for t in ts]
     assert len(Run(run.path).state) == 400
+
+
+def _needs(agent, what="lỗi"):
+    return {"verdict": "Cần sửa", "findings": [{"agent": agent, "ids": [1], "at": "00:03", "what": what}]}
+
+
+def test_pass_review_finishes_with_cost_summary(flow):
+    run, fk = flow
+    _approved(run)
+    run.write("cost.json", [{"step": "x", "agent": "vs-motion", "seconds": 1, "cost_usd": 1.25, "models": [], "ok": True}])
+    assert auto.run_auto(run) == OK
+    st = auto.get_state(run)
+    assert st["state"] == "done"
+    for want in ("final.mp4", "scp", "câu 1", "$1.25", "Đạt"):
+        assert want in st["message"], want
+    assert "Vượt ngân sách" not in st["message"]
+
+
+def test_motion_finding_runs_one_fix_round_with_fresh_reviewer(flow):
+    run, fk = flow
+    _approved(run)
+    fk.reviews = [_needs("motion", "chấm đỏ đi sớm")]
+    assert auto.run_auto(run) == OK
+    assert fk.agents["vs-motion"] == 2 and "review.json" in fk.prompts["vs-motion"][1]
+    assert fk.agents["vs-reviewer"] == 2 and fk.prompts["vs-reviewer"][1].startswith("Soát lại")
+    assert "chấm đỏ đi sớm" in fk.prompts["vs-reviewer"][1]
+    assert fk.cmds.count("render") == 2 and auto.get_state(run)["round"] == 1
+
+
+def test_fix_rounds_stop_after_two(flow):
+    run, fk = flow
+    _approved(run)
+    fk.reviews = [_needs("visuals")] * 3
+    assert auto.run_auto(run) == OK
+    assert fk.agents["vs-reviewer"] == 3 and fk.agents["vs-visuals"] == 3
+    st = auto.get_state(run)
+    assert st["state"] == "done" and "còn lỗi" in st["message"]
+
+
+def test_translator_finding_waits_for_tai(flow):
+    run, fk = flow
+    _approved(run)
+    run.write("script.vi.json", [{"id": 1, "phrases": "Xin | chào", "note": ""}, {"id": 2, "phrases": "Tạm biệt", "note": ""}])
+    before = run.file("script.vi.json").read_text()
+    fk.reviews = [_needs("translator", "câu 1 nói quá")]
+    assert auto.run_auto(run) == WAIT_SCRIPT
+    assert run.file("script.vi.json").read_text() == before and run.file("script.proposed.json").exists()
+    assert not run.done("tts") and not run.done("approve_script")
+    assert "Chào bạn" in auto.get_state(run)["message"]
+    # Tai takes the proposal and approves: the voice is read again, then a fresh reviewer checks the fix
+    run.file("script.proposed.json").replace(run.file("script.vi.json"))
+    run.mark("approve_script")
+    assert auto.run_auto(run) == OK
+    assert fk.cmds.count("tts") == 2 and fk.agents["vs-reviewer"] == 2
+    assert fk.prompts["vs-reviewer"][1].startswith("Soát lại") and "câu 1 nói quá" in fk.prompts["vs-reviewer"][1]
+
+
+def test_bad_review_json_stops_without_looping(flow):
+    run, fk = flow
+    _approved(run)
+    fk.reviews = [None]
+    assert auto.run_auto(run) == FAILED
+    assert "review.json" in auto.get_state(run)["message"] and fk.agents["vs-reviewer"] == 1
+
+
+def test_over_budget_warns(flow):
+    run, fk = flow
+    _approved(run)
+    run.write("cost.json", [{"step": "x", "agent": "vs-reviewer", "seconds": 1, "cost_usd": 5.4, "models": [], "ok": True}])
+    assert auto.run_auto(run) == OK
+    assert "Vượt ngân sách" in auto.get_state(run)["message"]
