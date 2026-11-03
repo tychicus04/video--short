@@ -475,7 +475,8 @@ def _draw_thing(img: Image.Image, d: ImageDraw.ImageDraw, thing: dict, acts: lis
     fade = (lambda c: tuple(round(v + (p - v) * dim) for v, p in zip(c, PAPER))) if dim else (lambda c: c)
     ink, red, gray, blue = map(fade, (INK, RED, GRAY, BLUE))
     color = fade(_color(thing))
-    outline = blue if kind == "wall" else red if kind == "crack" else color if kind in ("check", "cross", "path") else ink
+    outline = (blue if kind == "wall" else red if kind == "crack"
+               else color if kind in ("check", "cross", "path", "shape") else ink)  # a prop's colour: a red badge
     if kind in MOVERS:
         x, y = _position(thing, acts, t, by_id)
         if kind == "dot":

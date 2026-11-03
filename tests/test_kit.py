@@ -84,6 +84,13 @@ def test_the_message_icon_has_no_stroke_across_the_bubble():
     assert _ink(draw([msg], [Act("draw", "m", 0, 0.8)], 1.0), (330, 455, 390, 495)) == 0
 
 
+def test_a_prop_takes_its_colour():  # reviewer 03/11: a red badge and a green badge both came out ink
+    th = {"id": "m", "kind": "shape", "shape": "x", "box": [200, 300, 500, 600], "color": "red",
+          "strokes": [[(200, 300), (500, 600)], [(200, 600), (500, 300)]]}
+    assert _red(draw([th], [Act("draw", "m", 0, 0.8)], 1.0), (200, 300, 500, 600))
+    assert not _red(draw([th | {"color": "ink"}], [Act("draw", "m", 0, 0.8)], 1.0), (200, 300, 500, 600))
+
+
 def test_a_path_takes_its_colour():  # a red trail of the attacker's walk; a path without colour stays ink
     red = {"id": "w", "kind": "path", "points": [[100, 600], [600, 600]], "color": "red"}
     assert _red(draw([red], [Act("draw", "w", 0, 0.8)], 1.0), (100, 590, 600, 610))
