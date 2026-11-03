@@ -8,6 +8,7 @@ import { RunList } from '@/RunList'
 import { errorMessage, getState, onAccessLost, post, type State } from '@/api'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Toaster } from '@/components/ui/sonner'
 import { StatusBadge } from '@/status'
 
@@ -46,9 +47,12 @@ function useServerState() {
   const [failed, setFailed] = useState('')
   const [at, setAt] = useState<Date | null>(null)
   const latest = useRef(0)
+  const pending = useRef(0)
 
+  /** Read now. Used after a write or a login too: what was in flight before it may be older than the change. */
   const refresh = useCallback(async () => {
     const mine = ++latest.current // an older answer arriving late must not replace a newer one
+    pending.current++
     try {
       const s = await getState()
       if (mine !== latest.current) return
@@ -57,17 +61,20 @@ function useServerState() {
       setAt(new Date())
     } catch (e) {
       if (mine === latest.current) setFailed(errorMessage(e))
+    } finally {
+      pending.current--
     }
   }, [])
 
   useEffect(() => {
+    // the timer asks only when no read is out: on a slow line reads would pile up, and every one but the last is thrown away
+    const poll = () => document.hidden || pending.current || refresh()
     refresh()
-    const tick = setInterval(() => document.hidden || refresh(), REFRESH_MS)
-    const wake = () => document.hidden || refresh()
-    document.addEventListener('visibilitychange', wake)
+    const tick = setInterval(poll, REFRESH_MS)
+    document.addEventListener('visibilitychange', poll)
     return () => {
       clearInterval(tick)
-      document.removeEventListener('visibilitychange', wake)
+      document.removeEventListener('visibilitychange', poll)
     }
   }, [refresh])
 
@@ -199,6 +206,11 @@ export default function App() {
 
         {/* hidden, not unmounted: a half-pasted list of topics survives a look at one video */}
         <div hidden={route.name !== 'list'} className="space-y-6">
+          {state ? (
+            <AddTopics canWrite={state.can_write} maxRunning={state.max_running} refresh={refresh} />
+          ) : (
+            <Skeleton className="h-44 rounded-xl" />
+          )}
           <section className="space-y-4">
             <div className="flex items-end justify-between gap-3">
               <h1 className="text-xl font-semibold tracking-tight">Video</h1>
@@ -208,7 +220,6 @@ export default function App() {
             </div>
             <RunList rows={state?.rows ?? null} canWrite={!!state?.can_write} refresh={refresh} />
           </section>
-          {state && <AddTopics canWrite={state.can_write} maxRunning={state.max_running} refresh={refresh} />}
         </div>
         {route.name === 'run' && <RunSlot slug={route.slug} state={state} />}
       </main>

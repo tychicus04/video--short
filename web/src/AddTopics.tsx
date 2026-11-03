@@ -72,6 +72,7 @@ export function AddTopics({
       toast.success(items.length === 1 ? `Đã thêm ${items[0].slug} vào hàng đợi` : `Đã thêm ${items.length} chủ đề vào hàng đợi`)
       setText('')
       setEdited({})
+      setAuto(false) // "Bỏ duyệt brief" is for this batch only
       setRefused(null)
       refresh()
     } catch (e) {
@@ -83,18 +84,19 @@ export function AddTopics({
   }
 
   return (
-    <Card>
+    <Card size="sm">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
+        <CardTitle className="flex items-center gap-2 text-sm">
           <ListPlus className="size-4 text-muted-foreground" /> Thêm chủ đề
         </CardTitle>
-        <CardDescription>
-          Mỗi dòng một chủ đề, hoặc một đường link bài báo. Máy chủ chạy tối đa {maxRunning} video cùng lúc, phần còn lại xếp hàng.
+        <CardDescription className="text-xs">
+          Mỗi dòng một chủ đề, hoặc một link bài báo.
+          <span className="hidden sm:inline"> Chạy tối đa {maxRunning} video cùng lúc, phần còn lại xếp hàng.</span>
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-3">
         <Textarea
-          rows={4}
+          rows={2}
           value={text}
           onChange={(e) => change(() => setText(e.target.value))}
           placeholder={'Ví dụ:\nLỗ hổng nhân Linux CVE-2026-98432\nhttps://example.com/bai-viet-ve-chu-de-khac'}
@@ -119,21 +121,20 @@ export function AddTopics({
           </div>
         )}
 
-        <label htmlFor="auto-brief" className="flex cursor-pointer items-start gap-2.5">
-          <Checkbox id="auto-brief" checked={auto} onCheckedChange={(v) => setAuto(v === true)} className="mt-0.5" />
-          <span className="text-sm">
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+          <label htmlFor="auto-brief" className="flex cursor-pointer items-center gap-2 text-sm">
+            <Checkbox id="auto-brief" checked={auto} onCheckedChange={(v) => setAuto(v === true)} />
             Bỏ duyệt brief
-            <span className="block text-xs text-muted-foreground">Chạy thẳng, không dừng lại chờ bạn duyệt brief.</span>
-          </span>
-        </label>
-
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          <Button size="lg" onClick={submit} disabled={!canWrite || busy || !items.length || local.some(Boolean)}>
-            {busy ? <Loader2 className="animate-spin" /> : <ListPlus />}
-            Thêm vào hàng đợi
-            {items.length > 1 && ` (${items.length})`}
-          </Button>
-          {!canWrite && <span className="text-sm text-muted-foreground">Cần mã truy cập</span>}
+            <span className="hidden text-xs text-muted-foreground sm:inline">· chạy thẳng, không dừng chờ bạn duyệt brief</span>
+          </label>
+          <div className="flex w-full items-center gap-3 sm:w-auto">
+            {!canWrite && <span className="text-sm text-muted-foreground">Cần mã truy cập</span>}
+            <Button size="lg" className="flex-1 sm:flex-none" onClick={submit} disabled={!canWrite || busy || !items.length || local.some(Boolean)}>
+              {busy ? <Loader2 className="animate-spin" /> : <ListPlus />}
+              Thêm vào hàng đợi
+              {items.length > 1 && ` (${items.length})`}
+            </Button>
+          </div>
         </div>
       </CardContent>
     </Card>

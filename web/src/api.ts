@@ -86,14 +86,18 @@ export const onAccessLost = (fn: (() => void) | null) => {
   lostAccess = fn
 }
 
+const READ_TIMEOUT_MS = 10_000 // a read that takes longer is given up, so the 5-second refresh can try again and the failure is shown
+
 async function call(path: string, init?: RequestInit): Promise<any> {
+  let text: string
   let r: Response
   try {
-    r = await fetch(path, { cache: 'no-store', ...init })
+    // only reads are given a deadline: a write may wait for an agent for a minute or two
+    r = await fetch(path, { cache: 'no-store', signal: init?.method ? undefined : AbortSignal.timeout(READ_TIMEOUT_MS), ...init })
+    text = await r.text() // not r.json(): login, remove, resume, approve... answer 204 with nothing in it. The deadline covers the body too.
   } catch {
-    throw new ApiError(0, 'Không kết nối được máy chủ')
+    throw new ApiError(0, 'Không kết nối được máy chủ') // down, unreachable, or too slow
   }
-  const text = await r.text() // not r.json(): login, remove, resume, approve... answer 204 with nothing in it
   let data: any = null
   try {
     data = text ? JSON.parse(text) : null
