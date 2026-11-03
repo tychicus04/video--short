@@ -129,7 +129,10 @@ export function RunDetail({
 
   useEffect(() => {
     const warn = (e: BeforeUnloadEvent) => {
-      if (holding.current) e.preventDefault()
+      if (holding.current) {
+        e.preventDefault()
+        e.returnValue = '' // older Safari asks only when this is set
+      }
     }
     addEventListener('beforeunload', warn)
     return () => removeEventListener('beforeunload', warn)
