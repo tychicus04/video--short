@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="vi"><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Patrick+Hand&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#1c1c1e;color:#e8e8e8;font:15px/1.55 -apple-system,system-ui,sans-serif}
+.wrap{display:flex;gap:32px;padding:24px;flex-wrap:wrap;justify-content:center;align-items:flex-start}
+.phone{width:360px;height:640px;border-radius:18px;overflow:hidden;background:#EDE9E1;position:relative;box-shadow:0 0 0 8px #333}
+.phone svg{width:100%;height:100%;display:block}
+.cap{position:absolute;left:14px;right:14px;bottom:24px;text-align:center;color:#fff;font:600 16px/1.35 system-ui;text-shadow:0 1px 3px #000,0 0 8px #000}
+.ctl{display:flex;gap:8px;align-items:center;margin-top:16px;width:376px}
+.ctl button{background:#333;color:#eee;border:1px solid #555;border-radius:6px;padding:4px 10px;cursor:pointer}
+.ctl input{flex:1}
+.side{max-width:440px}
+h2{margin:0 0 6px;font-size:20px}
+h3{margin:18px 0 6px;font-size:15px;color:#aaa;text-transform:uppercase;letter-spacing:.04em}
+table{border-collapse:collapse;width:100%}
+td{padding:3px 8px 3px 0;vertical-align:top;border-bottom:1px solid #333}
+td:first-child{color:#fff;white-space:nowrap}
+.now img{width:100%;border-radius:8px;margin-top:4px}
+.q{margin-top:18px;padding:12px;background:#2a2a2e;border-radius:8px}
+.mut{color:#999;font-size:13px}
+</style></head><body>
+<div class="wrap">
+ <div>
+  <div class="phone"><svg id="svg" viewBox="0 0 720 1280">
+   <defs><filter id="rough"><feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="4"/><feDisplacementMap in="SourceGraphic" scale="2.5"/></filter></defs>
+   <rect width="720" height="1280" fill="#EDE9E1"/>
+   <g id="cam" filter="url(#rough)"></g>
+  </svg><div class="cap" id="cap"></div></div>
+  <div class="ctl"><button id="pp">⏸</button><button id="re">↺ xem lại</button><input id="sl" type="range" min="0" max="40" step="0.05" value="0"><span id="tt" class="mut">0.0</span></div>
+ </div>
+ <div class="side">
+  <h2>Bản phác: vụ LXD kể bằng ẩn dụ đời thường</h2>
+  <div class="mut">Lời câu 3–8 của video vừa làm. Bản phác dựng bằng web cho nhanh, chưa phải bộ vẽ thật của pipeline.</div>
+  <h3>Đổi chữ kỹ thuật sang đồ vật ai cũng biết</h3>
+  <table>
+   <tr><td>thẻ nhân viên</td><td>chứng chỉ công khai (ai nhìn cũng thấy, photo được)</td></tr>
+   <tr><td>chìa khóa riêng</td><td>khóa riêng (chỉ chủ thẻ có)</td></tr>
+   <tr><td>máy quét + bảo vệ</td><td>máy chủ LXD kiểm tra</td></tr>
+   <tr><td>bảng tên đáng tin</td><td>danh sách tin cậy</td></tr>
+   <tr><td>tòa nhà / phòng / tầng nền</td><td>cụm / máy ảo / máy chủ host</td></tr>
+  </table>
+  <h3>Cái gì chuyển động</h3>
+  <div>Máy quay đi theo từng bước (phóng vào chỗ đang nói), cuối cùng lùi ra cho thấy cả chuỗi A→Z trên một khung. Người đi lại, chìa cắm vào máy quét, thẻ photo bay sang tay kẻ gian, bảo vệ dò từng thẻ với bảng, barie mở, các phòng lần lượt chuyển đỏ.</div>
+  <h3>Hiện tại (video vừa làm)</h3>
+  <div class="now"><img src="2026-11-03-hinh-dong-lxd-cu.png" alt="khung hình động hiện tại"></div>
+  <div class="q">Đây có phải kiểu "dễ hiểu cho đại chúng" Tai muốn không? Trả lời ở terminal.</div>
+ </div>
+</div>
+<script>
+const NS='http://www.w3.org/2000/svg',INK='#2a2a2a',RED='#cf3a2f',GREEN='#2e8b57',FONT="'Patrick Hand','Comic Sans MS',cursive";
+const cam=document.getElementById('cam'),items=[];
+const clamp=x=>Math.max(0,Math.min(1,x)),ease=u=>u<.5?4*u*u*u:1-Math.pow(-2*u+2,3)/2;
+function kf(fr,t){if(t<=fr[0][0])return fr[0].slice(1);for(let i=1;i<fr.length;i++){const a=fr[i-1],b=fr[i];if(t<b[0]){const u=ease((t-a[0])/(b[0]-a[0]));return a.slice(1).map((v,j)=>v+(b[j+1]-v)*u)}}return fr[fr.length-1].slice(1)}
+function colorAt(cs,t){let c=cs[0][1];for(const[tt,cc]of cs)if(t>=tt)c=cc;return c}
+function mk(tag,a,p){const e=document.createElementNS(NS,tag);for(const k in a)e.setAttribute(k,a[k]);p.appendChild(e);return e}
+function draw(p,ds,t0,{dur=.8,color=INK,w=4,colors,fill,fills,t1}={}){
+ const g=mk('g',{},p),cs=colors||[[0,color]];let bg=null;
+ if(fill||fills)bg=mk('path',{d:ds[0],stroke:'none'},g);
+ const ps=ds.map(d=>{const e=mk('path',{d,fill:'none','stroke-width':w,'stroke-linecap':'round','stroke-linejoin':'round'},g);const L=e.getTotalLength()||1;e.style.strokeDasharray=L+' '+L;return[e,L]});
+ items.push(t=>{const u=clamp((t-t0)/dur);g.style.display=t<t0?'none':'';const c=colorAt(cs,t);
+  for(const[e,L]of ps){e.style.strokeDashoffset=L*(1-u);e.setAttribute('stroke',c)}
+  if(bg){bg.setAttribute('fill',fills?colorAt(fills,t):fill);bg.style.opacity=u}
+  g.style.opacity=t1==null?1:1-clamp((t-t1)/.4)});
+ return g}
+function text(p,s,x,y,t0,{size=30,color=INK,colors,anchor='middle',t1}={}){
+ const e=mk('text',{x,y,'font-size':size,'text-anchor':anchor,'font-family':FONT},p);e.textContent=s;const cs=colors||[[0,color]];
+ items.push(t=>{let o=clamp((t-t0)/.4);if(t1!=null)o*=1-clamp((t-t1)/.4);e.style.opacity=o;e.setAttribute('fill',colorAt(cs,t))});return e}
+function mover(p,fr,{bob=false}={}){const g=mk('g',{},p);
+ items.push(t=>{let[x,y,s]=kf(fr,t);if(bob){const[x2,y2]=kf(fr,t-.05);if(Math.hypot(x-x2,y-y2)>.3)y-=Math.abs(Math.sin(t*9))*7}g.setAttribute('transform',`translate(${x} ${y}) scale(${s??1})`)});return g}
+function rotor(p,px,py,fr){const g=mk('g',{},p);items.push(t=>g.setAttribute('transform',`rotate(${kf(fr,t)[0]} ${px} ${py})`));return g}
+const circ=(x,y,r)=>`M ${x-r} ${y} a ${r} ${r} 0 1 0 ${2*r} 0 a ${r} ${r} 0 1 0 ${-2*r} 0`;
+const rect=(a,b,c,d)=>`M ${a} ${b} H ${c} V ${d} H ${a} Z`;
+const check=(x,y,s=1)=>`M ${x-14*s} ${y} l ${10*s} ${11*s} l ${22*s} ${-26*s}`;
+const cross=(x,y)=>`M ${x-12} ${y-12} L ${x+12} ${y+12} M ${x+12} ${y-12} L ${x-12} ${y+12}`;
+function person(p,t0,color,{hood,cap}={}){const ds=[circ(0,-70,24),'M -36 40 C -38 -10 -26 -38 0 -40 C 26 -38 38 -10 36 40 Z','M -14 40 L -16 92 M 14 40 L 16 92'];
+ if(hood)ds.push('M -34 -60 C -42 -114 42 -114 34 -60 L 30 -38');if(cap)ds.push('M -28 -84 C -20 -106 20 -106 28 -84 Z M 26 -86 L 46 -82');
+ return draw(p,ds,t0,{color,w:4.5,fill:'#EDE9E1'})}
+function badge(p,t0,color){return draw(p,[rect(-26,-14,26,22),rect(-21,-9,-7,10),'M 0 -5 H 20 M 0 3 H 20 M 0 11 H 13'],t0,{color,w:3,fill:'#fff',dur:.5})}
+function key(p,t0,color=INK){return draw(p,[circ(-14,0,9),'M -5 0 H 24 M 16 0 V 8 M 22 0 V 6'],t0,{color,w:3.5,dur:.5})}
+
+// --- tòa nhà, cổng, bảo vệ (bước 4)
+draw(cam,['M 40 870 L 360 828 L 680 870',rect(60,870,660,1040)],6.2,{dur:1});
+text(cam,'cụm LXD',360,862,6.6,{size:26});
+[90,290,490].forEach((x,i)=>{draw(cam,[rect(x,892,x+140,952)],6.6+i*.15,{colors:[[0,INK],[32+i*.6,RED]],fills:[[0,'#fff'],[32+i*.6,'#f5c8c2']]});
+ text(cam,'máy ảo',x+70,930,7+i*.15,{size:22,colors:[[0,INK],[32+i*.6,RED]]})});
+draw(cam,[rect(80,966,640,1030)],7.1,{colors:[[0,INK],[34.6,RED]],fills:[[0,'#fff'],[34.6,'#f5c8c2']]});
+text(cam,'máy chủ host',360,993,7.4,{size:24,colors:[[0,INK],[34.6,RED]]});
+text(cam,'(nếu kỹ sư có quyền cao)',360,1020,34.9,{size:19,color:RED});
+draw(cam,['M 40 760 H 360 M 520 760 H 540','M 80 740 V 780 M 160 740 V 780 M 240 740 V 780 M 360 735 V 785'],7.3);
+const arm=rotor(cam,360,752,[[0,0],[27,0],[28,-78]]);
+draw(arm,['M 360 752 H 518','M 392 746 L 384 758 M 432 746 L 424 758 M 472 746 L 464 758 M 512 746 L 504 758'],7.5,{w:6,colors:[[0,INK],[27,GREEN]]});
+draw(cam,[rect(540,610,680,760),'M 530 610 L 610 584 L 690 610'],7.7);
+person(mover(cam,[[0,610,690,.62]]),8,INK,{cap:true});
+text(cam,'bảo vệ',610,752,8.4,{size:22});
+// bảng tên đáng tin
+draw(cam,[rect(380,440,680,575)],8.2);
+text(cam,'danh sách tin cậy',530,428,8.4,{size:28});
+badge(mover(cam,[[0,430,490,.9]]),8.6,GREEN);
+text(cam,'kỹ sư',475,500,8.8,{size:26,anchor:'start'});
+draw(cam,[check(620,495,1.1)],9,{color:GREEN,w:5});
+const row=draw(cam,[rect(392,458,668,528)],25.9,{color:GREEN,w:5,dur:.4,t1:29});
+
+// --- máy quét (bước 3)
+draw(cam,[rect(296,600,344,640),'M 320 640 V 748','M 308 626 H 332'],1,{fills:[[0,'#cfd6dc'],[3.7,'#86d39f'],[5.6,'#cfd6dc'],[22.2,'#86d39f'],[28,'#cfd6dc']]});
+draw(cam,[check(376,614)],3.8,{color:GREEN,w:5,t1:5.5});
+text(cam,'đúng chủ thẻ',400,622,3.9,{size:24,color:GREEN,anchor:'start',t1:5.5});
+
+// --- kỹ sư
+const eng=mover(cam,[[0,170,300],[1.6,170,300],[3.2,262,660],[9,262,660],[10.6,140,400]],{bob:true});
+person(eng,.2,GREEN);badge(mover(eng,[[0,0,5]]),.7,GREEN);
+key(mover(eng,[[0,52,30],[3.3,52,30],[3.8,58,-34],[4.6,58,-34],[5,52,30]]),1);
+text(eng,'kỹ sư',0,125,.5,{size:26,color:GREEN});
+text(eng,'thẻ = chứng chỉ công khai',0,-112,1.1,{size:22,t1:5.4});
+text(eng,'chìa = khóa riêng',95,72,1.4,{size:22,anchor:'start',t1:3.1});
+
+// --- kẻ tấn công
+const atk=mover(cam,[[0,560,250],[17,560,250],[19.5,262,660],[28.2,262,660],[29.8,440,670]],{bob:true});
+person(atk,11.2,RED,{hood:true});
+const copy=mover(atk,[[0,-420,155],[12.6,-420,155],[14,-62,10],[16,-62,10],[16.8,9,14]]);
+badge(copy,12.5,GREEN);
+badge(mover(atk,[[0,0,5]]),11.6,RED);
+draw(atk,['M -26 -4 V -22 Q -26 -27 -21 -27 Q -16 -27 -16 -22 V -9'],16.9,{color:RED,w:3,dur:.4});
+key(mover(atk,[[0,52,30],[21.4,52,30],[21.9,58,-34],[22.9,58,-34],[23.3,52,30]]),17);
+text(atk,'kẻ tấn công',0,125,11.6,{size:26,color:RED});
+text(atk,'bản sao thẻ',-62,-36,14,{size:22,color:GREEN,t1:16.4});
+text(cam,'thẻ thì ai cũng nhìn thấy',360,170,14.3,{size:24,t1:16.5});
+text(cam,'không cần chìa của kỹ sư',360,202,14.6,{size:24,color:RED,t1:16.5});
+text(atk,'kẹp vào sau thẻ mình',0,-112,17.2,{size:22,color:RED,t1:20.8});
+
+// --- máy chủ dò thẻ (bước 7)
+draw(cam,[circ(262,665,40)],22.4,{color:GREEN,w:4,t1:29.2});
+text(cam,'đáng lẽ chỉ xét thẻ này',320,546,22.8,{size:24,color:GREEN,t1:29.2});
+draw(cam,['M 292 662 C 360 662 400 640 420 588','M 408 600 L 420 586 L 428 603'],24,{color:RED,w:3.5,dur:.6,t1:29.2});
+draw(cam,[cross(388,652)],24.6,{color:RED,w:5,dur:.3,t1:29.2});
+draw(cam,['M 300 692 C 410 704 480 650 488 588','M 476 602 L 488 587 L 497 602'],25.3,{color:GREEN,w:3.5,dur:.6,t1:29.2});
+text(cam,'cho vào',440,712,27.4,{size:26,color:GREEN,t1:30});
+
+// --- chiếm quyền (bước 8)
+[[160,912],[360,912],[560,912]].forEach(([x,y],i)=>draw(cam,[`M 440 768 Q ${(440+x)/2} 830 ${x} ${y-14}`],31.4+i*.6,{color:RED,w:3.5,dur:.5}));
+draw(cam,['M 440 768 Q 470 900 360 970'],34.1,{color:RED,w:3.5,dur:.5});
+
+const CAM=[[0,300,560,1.6],[5.6,300,560,1.6],[6.6,360,640,1],[10.8,360,640,1],[11.8,360,380,1.4],[16.5,360,380,1.4],[19.5,330,560,1.4],[21,420,600,1.5],[29,420,600,1.5],[30.5,380,860,1.25],[35.5,380,860,1.25],[37,360,640,1],[40,360,640,1]];
+const CAPS=[[0,'Bình thường, xác thực an toàn đòi hỏi bạn chứng minh đang giữ một khóa riêng bí mật.'],[6,'Thử hình dung một cụm LXD có API HTTPS mở ra mạng, và một kỹ sư là client đáng tin.'],[11,'Kẻ tấn công lấy được chứng chỉ công khai của kỹ sư, thứ không phải bí mật, nên không cần khóa riêng.'],[16,'Hắn gắn chứng chỉ đáng tin đó vào sau chuỗi chứng chỉ của mình, rồi gửi yêu cầu tới API.'],[21,'Máy chủ đáng lẽ chỉ xét chứng chỉ mà client chứng minh có giữ khóa, nhưng nó lại đối chiếu mọi chứng chỉ trong chuỗi với danh sách tin cậy, rồi chấp nhận hắn.'],[30,'Hắn ngay lập tức có mọi quyền của client đó: vào được các máy ảo, nếu client đó có quyền cao, hắn có thể chiếm luôn máy chủ host.']];
+const capEl=document.getElementById('cap'),sl=document.getElementById('sl'),tt=document.getElementById('tt'),pp=document.getElementById('pp');
+function render(t){const[cx,cy,z]=kf(CAM,t);cam.setAttribute('transform',`translate(360 640) scale(${z}) translate(${-cx} ${-cy})`);
+ for(const f of items)f(t);let c='';for(const[s,x]of CAPS)if(t>=s)c=x;capEl.textContent=c;sl.value=t;tt.textContent=t.toFixed(1)}
+let t=0,playing=true,last=null;
+function loop(now){if(playing){if(last!=null)t+=(now-last)/1000;if(t>40)t=40,playing=false,pp.textContent='▶'}last=now;render(t);requestAnimationFrame(loop)}
+pp.onclick=()=>{playing=!playing;if(playing&&t>=40)t=0;pp.textContent=playing?'⏸':'▶'};
+document.getElementById('re').onclick=()=>{t=0;playing=true;pp.textContent='⏸'};
+sl.oninput=()=>{t=+sl.value;playing=false;pp.textContent='▶'};
+document.fonts.ready.then(()=>requestAnimationFrame(loop));
+</script>
+</body></html>
