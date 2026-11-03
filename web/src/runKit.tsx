@@ -1,5 +1,5 @@
 // What the pages of one video share: the context RunDetail hands each of them, and the small pieces they all draw.
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { TriangleAlert } from 'lucide-react'
 import type { Detail } from '@/api'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -32,6 +32,22 @@ export function useUnsaved(c: Ctx, unsaved: boolean) {
     hold(unsaved)
     return () => hold(false)
   }, [hold, unsaved])
+}
+
+const kept = new Map<string, unknown>()
+
+/**
+ * useState for a draft that must outlive the page: leaving a video by a link, the logo or the back button unmounts it, and
+ * coming back shows the draft again. Kept per video in memory only; reloading the tab drops it (beforeunload asks first).
+ * The caller still drops a draft itself when it is saved, undone, or the file already says the same.
+ */
+export function useKept<T>(slug: string, name: string, initial: T): [T, Dispatch<SetStateAction<T>>] {
+  const id = `${slug}/${name}`
+  const [value, set] = useState<T>(() => (kept.has(id) ? (kept.get(id) as T) : initial))
+  useEffect(() => {
+    kept.set(id, value)
+  }, [id, value])
+  return [value, set]
 }
 
 export interface Notice {

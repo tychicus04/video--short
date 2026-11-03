@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { Check, ChevronDown, Languages, Loader2, Save, Undo2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { ApiError, errorMessage, post } from '@/api'
-import { NoticeBox, runApi, useUnsaved, type Ctx, type Notice } from '@/runKit'
+import { NoticeBox, runApi, useKept, useUnsaved, type Ctx, type Notice } from '@/runKit'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -23,22 +23,34 @@ export function BriefReview({ c }: { c: Ctx }) {
   const serverEn = d.brief_en ?? ''
   const stale = d.brief_en_stale
 
-  // null: not edited, the page shows the file. A draft is kept until the file says the same.
-  const [viDraft, setViDraft] = useState<string | null>(null)
-  const [enDraft, setEnDraft] = useState<string | null>(null)
-  const [enOpen, setEnOpen] = useState(stale)
+  // null: not edited, the page shows the file. A draft is kept (also when Tai leaves this video and comes back) until the file says the same.
+  // The English draft remembers the file text it was made from: if the file changes under it, the draft is not put over the new text.
+  const [viDraft, setViDraft] = useKept<string | null>(c.slug, 'brief.vi', null)
+  const [enDraft, setEnDraft] = useKept<{ base: string; text: string } | null>(c.slug, 'brief.en', null)
+  const [enOpen, setEnOpen] = useState(stale || enDraft !== null)
   const [syncing, setSyncing] = useState(false) // the Vietnamese brief is out: the agent may take a minute or two
   const [approving, setApproving] = useState(false)
   const [notice, setNotice] = useState<Notice | null>(null)
 
   const viDirty = viDraft !== null && viDraft !== serverVi
-  const enDirty = enDraft !== null && enDraft !== serverEn
+  const enDirty = enDraft !== null && enDraft.text !== serverEn
+  const enText = enDraft?.text ?? serverEn
   useEffect(() => {
     if (viDraft === serverVi) setViDraft(null)
-  }, [viDraft, serverVi])
+  }, [viDraft, serverVi, setViDraft])
   useEffect(() => {
-    if (enDraft === serverEn) setEnDraft(null)
-  }, [enDraft, serverEn])
+    if (!enDraft) return
+    if (enDraft.text === serverEn) setEnDraft(null)
+    else if (enDraft.base !== serverEn) {
+      setEnDraft(null)
+      setEnOpen(true)
+      setNotice({
+        kind: 'warn',
+        title: 'Bản tiếng Anh vừa đổi trên máy chủ',
+        text: 'Bản tiếng Anh bạn đang sửa dựa trên bản cũ nên đã được bỏ, để không ghi đè bản mới. Xem lại bản mới rồi sửa tiếp nếu cần.',
+      })
+    }
+  }, [enDraft, serverEn, setEnDraft])
   useUnsaved(c, viDirty || enDirty)
 
   async function saveVi() {
@@ -79,7 +91,7 @@ export function BriefReview({ c }: { c: Ctx }) {
   async function saveEn() {
     setNotice(null)
     try {
-      await c.write(() => post(runApi(c, 'brief_en'), { en: enDraft ?? serverEn }))
+      await c.write(() => post(runApi(c, 'brief_en'), { en: enText }))
       toast.success('Đã lưu bản tiếng Anh')
     } catch (e) {
       setNotice({ kind: 'error', text: errorMessage(e) })
@@ -130,7 +142,7 @@ export function BriefReview({ c }: { c: Ctx }) {
             className="min-h-72 leading-6"
           />
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            <Button size="lg" className="h-10 w-full sm:w-auto" onClick={saveVi} disabled={c.off || !viDirty}>
+            <Button size="lg" className="h-10 w-full sm:w-auto" onClick={saveVi} disabled={c.off || !viDirty || enDirty}>
               {syncing ? <Loader2 className="animate-spin" /> : <Languages />}
               Lưu và cập nhật bản tiếng Anh
             </Button>
@@ -139,6 +151,7 @@ export function BriefReview({ c }: { c: Ctx }) {
                 <Undo2 /> Hoàn tác
               </Button>
             )}
+            {viDirty && enDirty && !c.busy && <span className="text-sm text-amber-200">Lưu hoặc bỏ bản tiếng Anh đang sửa trước</span>}
             {syncing && (
               <span role="status" className="text-sm text-sky-300">
                 Đang cập nhật bản tiếng Anh… có thể mất 1–2 phút, đừng đóng trang.
@@ -174,8 +187,8 @@ export function BriefReview({ c }: { c: Ctx }) {
         {enOpen && (
           <div id="brief-en" className="space-y-3 border-t px-4 py-4">
             <Textarea
-              value={enDraft ?? serverEn}
-              onChange={(e) => setEnDraft(e.target.value)}
+              value={enText}
+              onChange={(e) => setEnDraft({ base: enDraft?.base ?? serverEn, text: e.target.value })}
               readOnly={c.off}
               aria-label="Brief tiếng Anh"
               spellCheck={false}

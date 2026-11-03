@@ -4,24 +4,15 @@ import { useEffect, useState } from 'react'
 import { Check, CircleCheck, Loader2, Save, TriangleAlert, Undo2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { errorMessage, post, type ProposedRow, type TranslationRow } from '@/api'
-import { NoticeBox, runApi, useUnsaved, type Ctx, type Notice } from '@/runKit'
+import { NoticeBox, runApi, useKept, useUnsaved, type Ctx, type Notice } from '@/runKit'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 
-/** Vietnamese text with each "|" drawn dim, as the break between two subtitle chunks. */
-function Chunks({ text }: { text: string }) {
-  return text
-    .split('|')
-    .flatMap((part, i) => (i === 0 ? [part] : [<span key={i} className="text-foreground/30">|</span>, part]))
-}
-
-// Both layers of PhraseField share these, so a line breaks at the same place in each.
-const LAYER = 'min-w-0 px-2.5 py-1.5 text-base leading-6 break-words whitespace-pre-wrap md:text-sm'
-
-/** A textarea whose text is invisible, under a copy of the same text with the bars dimmed: plain <textarea> cannot colour one character. */
+/** One line of Vietnamese. A plain textarea, so every "|" is plain text exactly as typed. Telex/IME and iOS autocorrect must not touch it. */
 function PhraseField({
   id,
   value,
@@ -36,32 +27,22 @@ function PhraseField({
   invalid: boolean
 }) {
   return (
-    <div
-      className={cn(
-        'grid rounded-lg border bg-input/30 transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50',
-        invalid ? 'border-destructive/60' : 'border-input',
-        readOnly && 'opacity-70',
-      )}
-    >
-      <textarea
-        aria-label={`Lời Việt của câu ${id}`}
-        aria-invalid={invalid || undefined}
-        rows={1}
-        value={value}
-        readOnly={readOnly}
-        spellCheck={false}
-        enterKeyHint="done"
-        onChange={(e) => onChange(e.target.value.replace(/\r?\n/g, ' '))} // a subtitle is one line; only pasted line breaks get here
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') e.preventDefault()
-        }}
-        className={cn(LAYER, 'col-start-1 row-start-1 resize-none appearance-none overflow-hidden bg-transparent text-transparent caret-foreground outline-none selection:bg-sky-400/30')}
-      />
-      <div aria-hidden className={cn(LAYER, 'pointer-events-none col-start-1 row-start-1')}>
-        <Chunks text={value} />
-        {'​'}
-      </div>
-    </div>
+    <Textarea
+      aria-label={`Lời Việt của câu ${id}`}
+      aria-invalid={invalid || undefined}
+      rows={Math.max(1, Math.ceil(value.length / 34))} // for a browser without field-sizing: about one row per 34 characters
+      value={value}
+      readOnly={readOnly}
+      spellCheck={false}
+      autoCorrect="off"
+      autoCapitalize="off"
+      enterKeyHint="done"
+      onChange={(e) => onChange(e.target.value.replace(/\r?\n/g, ' '))} // a subtitle is one line; only pasted line breaks get here
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' && !e.nativeEvent.isComposing) e.preventDefault() // not while a Telex word is still being composed
+      }}
+      className={cn('min-h-0 resize-none px-2.5 py-1.5 leading-6', readOnly && 'opacity-70')}
+    />
   )
 }
 
@@ -70,7 +51,7 @@ function Proposal({ now, p }: { now: TranslationRow; p: ProposedRow | undefined 
   if (p.phrases === now.phrases && p.note === now.note) return <span className="text-xs text-muted-foreground">Giống bản hiện tại</span>
   return (
     <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/[0.07] px-2.5 py-1.5 text-sm leading-6 break-words whitespace-pre-wrap">
-      <Chunks text={p.phrases} />
+      {p.phrases}
       {p.note !== now.note && <div className="mt-1 text-xs text-muted-foreground">Ghi chú: {p.note || '(bỏ ghi chú)'}</div>}
     </div>
   )
@@ -84,7 +65,8 @@ export function ScriptReview({ c }: { c: Ctx }) {
   const { d } = c
   const rows = d.translation
   const proposed = d.proposed
-  const [drafts, setDrafts] = useState<Record<number, string>>({}) // id -> the Vietnamese Tai typed, only where it differs from the file
+  // id -> the Vietnamese Tai typed, only where it differs from the file. Kept when Tai leaves this video and comes back.
+  const [drafts, setDrafts] = useKept<Record<number, string>>(c.slug, 'script.rows', {})
   const [result, setResult] = useState<{ ok: boolean; problems: string[] } | null>(null)
   const [notice, setNotice] = useState<Notice | null>(null)
   const [doing, setDoing] = useState<'save' | 'approve' | 'proposal' | null>(null)
@@ -96,10 +78,14 @@ export function ScriptReview({ c }: { c: Ctx }) {
   useEffect(() => {
     if (!rows) return
     setDrafts((prev) => {
-      const keep = Object.entries(prev).filter(([id, text]) => rows.find((r) => r.id === Number(id))?.phrases !== text)
+      // gone: the file says the same, or the sentence is no longer in the translation
+      const keep = Object.entries(prev).filter(([id, text]) => {
+        const row = rows.find((r) => r.id === Number(id))
+        return row && row.phrases !== text
+      })
       return keep.length === Object.keys(prev).length ? prev : Object.fromEntries(keep)
     })
-  }, [rows])
+  }, [rows, setDrafts])
 
   if (!rows)
     return (
@@ -166,7 +152,7 @@ export function ScriptReview({ c }: { c: Ctx }) {
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        Đối chiếu từng câu, sửa lời Việt ngay trong ô. Dấu <span className="font-mono text-foreground/40">|</span> là chỗ ngắt cụm phụ đề, giữ nguyên hoặc đổi chỗ khi sửa.
+        Đối chiếu từng câu, sửa lời Việt ngay trong ô. Dấu <span className="font-mono text-foreground">|</span> là chỗ ngắt cụm phụ đề, giữ nguyên khi sửa.
       </p>
 
       {notice && <NoticeBox n={notice} />}
