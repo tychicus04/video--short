@@ -1,13 +1,24 @@
-"""The web control panel's server, read side: the status of every video, one video's files, final.mp4 with HTTP Range
-(Safari and iOS will not play a video without it), the shared access-code login and the built UI. Endpoints are plain
-`def`: Starlette runs them in its threadpool, so a slow `ps` or file read does not hold up the others."""
+"""The web control panel's server: the status of every video, one video's files, final.mp4 with HTTP Range (Safari and
+iOS will not play a video without it), the shared access-code login, the edits Tai makes (queue, brief, translation,
+approve, retry), the loop that starts what the queue says, and the built UI. Read endpoints are plain `def`: Starlette
+runs them in its threadpool, so a slow `ps` or file read does not hold up the others. A write reads its body in async
+code and does the rest in the threadpool too (`_post`): it may wait for LOCK, a `vshort` command or an agent."""
+import difflib
 import hmac
 import json
+import os
+import subprocess
+import sys
+import threading
+import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import quote, unquote
 
+import anyio
 import uvicorn
 from starlette.applications import Starlette
+from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException
 from starlette.requests import Request
 from starlette.responses import FileResponse, JSONResponse, Response
@@ -22,6 +33,11 @@ DIST = ROOT / "web" / "dist"
 COOKIE = "vshort_token"
 YEAR = 365 * 24 * 3600
 LOG_LINES = 50
+TICK = 5  # seconds between two looks at the queue
+LOCK = threading.Lock()  # every load -> change -> save of queue.json, in tick() and in the routes. Not reentrant: take it last.
+BAD_BODY = "Dữ liệu gửi lên sai dạng"
+BRIEF_SYNC = ("RUN={run}. Tai vừa sửa {run}/brief.vi.md (diff bên dưới). Sửa {run}/brief.en.md cho khớp đúng những chỗ đó, "
+              "giữ nguyên phần còn lại. Không tạo notebook, không nạp nguồn, không tìm web.\n\n```diff\n{diff}\n```")
 
 
 def token() -> str:
@@ -141,6 +157,238 @@ async def login(request: Request) -> Response:
     return r
 
 
+# --- writes ---------------------------------------------------------------------------------------------------------
+
+def _is_run(slug: str) -> bool:
+    """The folder of a video that has started: a real folder in runs_dir (not a link out), not a topic still in the queue."""
+    if not queue.SLUG_RE.fullmatch(slug):
+        return False
+    d = queue.runs_dir().resolve() / slug
+    return d.is_dir() and not d.is_symlink()
+
+
+def _put(slug: str, name: str, text: str) -> None:
+    """A file of the run, whole or not at all (as Run._save), so `vshort` never reads half of it. replace() swaps a link
+    for the new file instead of writing through it to somewhere outside the folder."""
+    p = queue.run_path(slug) / name
+    tmp = p.with_name(f".{name}.{os.getpid()}.{threading.get_ident()}.tmp")
+    tmp.write_text(text, encoding="utf-8")
+    tmp.replace(p)
+
+
+def vshort(args: list[str]) -> subprocess.CompletedProcess:
+    """One `vshort` command in a process of its own, as Tai would type it."""
+    return subprocess.run([sys.executable, "-m", "vshort.cli", *args], cwd=ROOT, capture_output=True, text=True, timeout=120)
+
+
+def _log(line: str) -> None:
+    try:
+        f = queue.runs_dir() / "web.log"
+        f.parent.mkdir(parents=True, exist_ok=True)
+        with open(f, "a", encoding="utf-8") as log:
+            log.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {line}\n")
+    except OSError:  # the log is the last place to complain about a disk that does not work
+        pass
+
+
+def start(kind: str, slug: str, item: dict | None) -> None:
+    """Ask `vshort auto` to start one video in the background (it returns at once). It may refuse, e.g. the folder
+    appeared meanwhile: then the item is dropped and one line goes to web.log."""
+    args = (["auto", slug, "--topic", item["topic"], *(["--auto"] if item["auto"] else [])] if kind == "new"
+            else ["auto", str(queue.run_path(slug))])
+    try:
+        cp = vshort(args)
+        why = None if cp.returncode == 0 else (cp.stderr or cp.stdout)
+    except (OSError, subprocess.SubprocessError) as e:  # TimeoutExpired is one
+        why = str(e)
+    if why is not None:
+        # ponytail: item hỏng bị bỏ, chỉ ghi log; hiện lên trang nếu thấy xảy ra
+        _log(f"không bắt đầu được {kind} {slug}: {' '.join(why.split())[:300]}")
+
+
+def tick() -> None:
+    """One look at the queue: start what may start now, as many as max_running leaves room for."""
+    with LOCK:
+        q = queue.load_queue()
+        todo = queue.next_to_start(q, queue.rows(q), config()["web_max_running"])
+        try:
+            for kind, slug in todo:
+                item = next(i for i in q.new if i["slug"] == slug) if kind == "new" else None
+                start(kind, slug, item)
+                if item:
+                    q.new.remove(item)
+                else:
+                    q.resume.remove(slug)
+        finally:  # whatever was started must not be started again next time
+            if todo:
+                queue.save_queue(q)
+
+
+async def _loop() -> None:
+    last = None
+    while True:
+        await anyio.sleep(TICK)
+        try:
+            await anyio.to_thread.run_sync(tick)
+            last = None
+        except Exception as e:  # one bad pass must not end the loop; the same message is not logged every 5 seconds
+            if repr(e) != last:
+                _log(f"tick lỗi: {e!r}")
+            last = repr(e)
+
+
+@asynccontextmanager
+async def _lifespan(app: Starlette):
+    async with anyio.create_task_group() as tg:
+        tg.start_soon(_loop)
+        yield
+        tg.cancel_scope.cancel()
+
+
+def _post(fn, *, run: bool = False):
+    """A POST route. In this order: the access code (403); for a video's route, that it has started (404) and that no
+    `vshort auto` holds it (409); the JSON object body, which may be left out (400). Then `fn(body)`, or
+    `fn(slug, body)` for a video, in the threadpool."""
+    def checked(slug, body):
+        if run and not _is_run(slug):
+            return _error("Không có video này", 404)
+        if run and _locked(slug):
+            return _error("Video đang chạy, đợi nó dừng rồi sửa", 409)
+        if not isinstance(body, dict):
+            return _error(BAD_BODY, 400)
+        return fn(slug, body) if run else fn(body)
+
+    async def endpoint(request: Request) -> Response:
+        if not can_write(request):
+            return _error("Cần mã truy cập", 403)
+        raw = await request.body()
+        try:
+            body = json.loads(raw) if raw.strip() else {}
+        except ValueError:
+            body = None
+        return await run_in_threadpool(checked, request.path_params.get("slug"), body)
+
+    return endpoint
+
+
+def _requeue(slug: str) -> None:
+    with LOCK:
+        q = queue.load_queue()
+        queue.add_resume(q, slug)
+        queue.save_queue(q)
+
+
+def add_to_queue(body: dict) -> Response:
+    items, run_auto = body.get("items"), body.get("auto", False)
+    if not (isinstance(items, list) and all(isinstance(i, dict) for i in items) and isinstance(run_auto, bool)):
+        return _error(BAD_BODY, 400)
+    with LOCK:
+        q = queue.load_queue()
+        errors = queue.add_topics(q, items, run_auto)
+        if not any(errors):
+            queue.save_queue(q)
+    return JSONResponse({"errors": errors}, 400 if any(errors) else 200)
+
+
+def remove_from_queue(body: dict) -> Response:
+    slug = body.get("slug")
+    if not isinstance(slug, str):
+        return _error(BAD_BODY, 400)
+    with LOCK:
+        q = queue.load_queue()
+        n = len(q.new)
+        q.new = [i for i in q.new if i["slug"] != slug]
+        if len(q.new) == n:
+            return _error("Chủ đề này không còn trong hàng đợi (có thể đã bắt đầu chạy)", 404)
+        queue.save_queue(q)
+    return Response(status_code=204)
+
+
+def resume_queue(body: dict) -> Response:
+    """Queue again the runs that stopped for the NotebookLM login, after Tai has logged in."""
+    with LOCK:
+        q = queue.load_queue()
+        for slug in queue.relogin_waiting(queue.rows(q)):
+            queue.add_resume(q, slug)
+        queue.save_queue(q)
+    return Response(status_code=204)
+
+
+def save_brief(slug: str, body: dict) -> Response:
+    """Save the Vietnamese brief; a cheap agent brings the English one in line with what changed."""
+    vi = body.get("vi")
+    if not isinstance(vi, str):
+        return _error(BAD_BODY, 400)
+    old = _text(slug, "brief.vi.md") or ""
+    if vi != old:  # unchanged is not written: a newer brief.vi.md would make brief.en.md look stale
+        _put(slug, "brief.vi.md", vi)
+        run = queue._Folder(queue.run_path(slug))
+        diff = "\n".join(difflib.unified_diff(old.splitlines(), vi.splitlines(), "brief.vi.md (cũ)", "brief.vi.md (mới)", lineterm=""))
+        try:
+            auto.run_claude(run, "brief_sync", "vs-researcher", BRIEF_SYNC.format(run=run.path, diff=diff), 600)
+        except auto.AgentError as e:
+            return _error(f"Đã lưu bản tiếng Việt, nhưng chưa sửa được bản tiếng Anh: {e}", 502)
+    return JSONResponse({"brief_en": _text(slug, "brief.en.md"), "brief_en_stale": _stale(slug)})
+
+
+def save_brief_en(slug: str, body: dict) -> Response:
+    en = body.get("en")
+    if not isinstance(en, str):
+        return _error(BAD_BODY, 400)
+    _put(slug, "brief.en.md", en)
+    return Response(status_code=204)
+
+
+def save_script(slug: str, body: dict) -> Response:
+    rows = body.get("rows")
+    if not (isinstance(rows, list) and all(
+            isinstance(r, dict) and type(r.get("id")) is int and isinstance(r.get("phrases"), str) and isinstance(r.get("note", ""), str)
+            for r in rows)):
+        return _error(BAD_BODY, 400)
+    try:
+        want = sorted(r["id"] for r in _json(slug, "script.vi.json"))
+    except queue.BAD_FILE:
+        return _error("Chưa có bản dịch để sửa", 400)
+    if sorted(r["id"] for r in rows) != want:  # sorted lists, not sets: a repeated id is a mistake too
+        return _error("Các câu gửi lên không khớp bản dịch hiện có: thiếu, thừa hoặc trùng số câu", 400)
+    _put(slug, "script.vi.json", json.dumps([{"id": r["id"], "phrases": r["phrases"], **({"note": r["note"]} if r.get("note") else {})}
+                                             for r in rows], ensure_ascii=False, indent=1))
+    cp = vshort(["check", str(queue.run_path(slug))])
+    return JSONResponse({"ok": cp.returncode == 0, "problems": [ln.strip() for ln in cp.stderr.splitlines() if ln.strip()]})
+
+
+def answer_proposal(slug: str, body: dict) -> Response:
+    """Take the translator's proposal as the translation, or leave it; either way it is gone: `vshort approve` refuses while it exists."""
+    use = body.get("use")
+    if not isinstance(use, bool):
+        return _error(BAD_BODY, 400)
+    if use:
+        text = _text(slug, "script.proposed.json")
+        if text is None or _proposed(slug) is None:
+            return _error("Không có bản đề xuất, hoặc bản đề xuất hỏng", 400)
+        _put(slug, "script.vi.json", text)
+    (queue.run_path(slug) / "script.proposed.json").unlink(missing_ok=True)
+    return Response(status_code=204)
+
+
+def approve(slug: str, body: dict) -> Response:
+    what = body.get("what")
+    if what not in ("brief", "script"):
+        return _error(BAD_BODY, 400)
+    cp = vshort(["approve", str(queue.run_path(slug)), what])
+    if cp.returncode != 0:
+        return _error((cp.stderr or cp.stdout).strip() or "Không duyệt được", 400)
+    _requeue(slug)
+    return Response(status_code=204)
+
+
+def retry(slug: str, body: dict) -> Response:
+    if (_row(slug) or {}).get("state") not in ("error", "dead"):
+        return _error("Chỉ chạy lại được video đang lỗi hoặc đã dừng giữa chừng", 400)
+    _requeue(slug)
+    return Response(status_code=204)
+
+
 def _http_error(request: Request, exc: HTTPException) -> JSONResponse:
     """Starlette's own 404 and 405 are English text."""
     return _error({404: "Không có trang này", 405: "Không dùng được cách gọi này"}.get(exc.status_code, "Có lỗi"), exc.status_code)
@@ -155,11 +403,20 @@ ROUTES = [
     Route("/api/runs/{slug}", run_detail),
     Route("/files/{slug}/{name}", video),
     Route("/api/login", login, methods=["POST"]),
+    Route("/api/queue", _post(add_to_queue), methods=["POST"]),
+    Route("/api/queue/remove", _post(remove_from_queue), methods=["POST"]),
+    Route("/api/resume", _post(resume_queue), methods=["POST"]),
+    Route("/api/runs/{slug}/brief", _post(save_brief, run=True), methods=["POST"]),
+    Route("/api/runs/{slug}/brief_en", _post(save_brief_en, run=True), methods=["POST"]),
+    Route("/api/runs/{slug}/script", _post(save_script, run=True), methods=["POST"]),
+    Route("/api/runs/{slug}/proposal", _post(answer_proposal, run=True), methods=["POST"]),
+    Route("/api/runs/{slug}/approve", _post(approve, run=True), methods=["POST"]),
+    Route("/api/runs/{slug}/retry", _post(retry, run=True), methods=["POST"]),
 ]
 # last, and only when built: StaticFiles on a missing folder answers 500 to everything it is asked
 STATIC = [Mount("/", StaticFiles(directory=DIST, html=True))] if DIST.is_dir() else []
 
-app = Starlette(routes=ROUTES + STATIC, exception_handlers={HTTPException: _http_error, Exception: _crash})
+app = Starlette(routes=ROUTES + STATIC, lifespan=_lifespan, exception_handlers={HTTPException: _http_error, Exception: _crash})
 
 
 def main() -> None:
