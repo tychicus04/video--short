@@ -210,6 +210,11 @@ def _flow(run: Run) -> int:
     from vshort.cli import FAILED, OK, WAIT_BRIEF, WAIT_SCRIPT
     meta, p = run.read("run.json"), run.path
     if not run.done("research"):
+        # Fail before the researcher agent is paid for, not at the first NotebookLM call after it.
+        # ponytail: this command once hung for over 2 minutes on the Mac; if it hangs on the server, add a timeout to run_notebooklm.
+        if code := notebooklm(["auth", "check", "--test"]):
+            from vshort.cli import AUTH, RELOGIN
+            raise Stop(code, RELOGIN if code == AUTH else "Không kiểm được phiên NotebookLM; xem auto.log")
         run_claude(run, "research", "vs-researcher", RESEARCH.format(topic=meta["topic"], slug=meta["slug"], run=p),
                    TIMEOUT["vs-researcher"])
         nb = run.file("notebook.txt").read_text().strip() if run.file("notebook.txt").exists() else ""

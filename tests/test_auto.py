@@ -223,8 +223,17 @@ def test_stops_for_brief_then_for_translation(flow):
     assert auto.get_state(run)["state"] == "wait_script"
     table = run.file("translation.md").read_text()
     assert "Hello there." in table and "Xin chào" in table and "ngắn hơn" in table and "|" in table
-    assert fk.nb == [["source", "add"]]
+    assert fk.nb == [["auth", "check"], ["source", "add"]]
     assert fk.cmds[:4] == ["fetch", "detect", "text", "check"]
+
+
+def test_expired_notebooklm_stops_before_research(flow, monkeypatch):
+    from vshort.cli import RELOGIN
+    run, fk = flow
+    monkeypatch.setattr(auto, "notebooklm", lambda args: fk.nb.append(args[:2]) or (4 if args[:2] == ["auth", "check"] else 0))
+    assert auto.run_auto(run) == 4
+    st = auto.get_state(run)
+    assert st["state"] == "error" and st["message"] == RELOGIN and not fk.agents
 
 
 def test_rerun_does_not_repeat_finished_steps(flow):
