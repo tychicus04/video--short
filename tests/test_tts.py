@@ -154,6 +154,16 @@ def test_uneven_speed_does_not_pull_cuts_onto_commas(tmp_path):
         assert abs(c.duration - (speech + 0.1)) < 0.06
 
 
+def test_long_sentence_pauses_outweigh_a_miscounted_short_line(tmp_path):
+    # the style prompt makes Gemini pause ~2 s between sentences; "Node-RED" counts 5 syllables but is said in 2
+    lines = [(1, "a b c d e f g h"), (2, "i j k l, m n o p"), (3, "hoặc gỡ Node-RED"), (4, "q r s t u v w x")]
+    audio = [("gap", 0.3), ("tone", 1.7), ("gap", 2.0), ("tone", 0.8), ("gap", 0.3), ("tone", 0.9), ("gap", 2.0),
+             ("tone", 0.6), ("gap", 2.0), ("tone", 1.7), ("gap", 0.3)]
+    clips = synth_script(lines, tmp_path, lambda text: _speech_wav(audio), tag="t")
+    for c, speech in zip(clips, [1.7, 2.0, 0.6, 1.7]):
+        assert abs(c.duration - (speech + 0.1)) < 0.06
+
+
 def test_implausible_split_is_refused(tmp_path):
     lines = [(1, "a b c d e f"), (2, "g h i j k l"), (3, "m n o p q r")]
     audio = [("gap", 0.3), ("tone", 0.5), ("gap", 0.6), ("tone", 3.0), ("gap", 0.6), ("tone", 0.5), ("gap", 0.3)]

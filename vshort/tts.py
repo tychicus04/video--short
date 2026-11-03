@@ -178,11 +178,16 @@ def _sentence_spans(a: np.ndarray, rate: int, weights: list[int]) -> list[tuple[
             j = back[k][j]
         chosen.reverse()
     edges = [s0] + [x for g in chosen for x in g] + [s1]
+    got = [edges[2 * k + 1] - edges[2 * k] for k in range(n)]
+    share = sum(got) / sum(weights)  # the speech actually heard: the style prompt stretches sentence pauses to ~2 s
+    # sentence pauses far longer than any left inside a sentence leave no doubt where the cuts go; then only a
+    # gross mismatch counts, as syllables() misjudges short lines ("Node-RED" counts 5, "V4.3.4.1" 5, said in 2 and 8)
+    others = [g[1] - g[0] for g in gaps if g not in chosen]
+    tol = 0.75 if chosen and others and min(g[1] - g[0] for g in chosen) >= 2 * max(others) else 0.45
     for k in range(n):  # a cut inside a sentence leaves pieces far off their syllable share
-        got = edges[2 * k + 1] - edges[2 * k]
-        if abs(got - expected[k]) > 0.45 * expected[k]:
-            raise ValueError(f"Không tách chắc chắn giọng đọc thành từng câu: câu thứ {k + 1} dài {got / 50:.1f}s, "
-                             f"dự kiến khoảng {expected[k] / 50:.1f}s")
+        if abs(got[k] - weights[k] * share) > tol * weights[k] * share:
+            raise ValueError(f"Không tách chắc chắn giọng đọc thành từng câu: câu thứ {k + 1} dài {got[k] / 50:.1f}s, "
+                             f"dự kiến khoảng {weights[k] * share / 50:.1f}s")
     pad = hop * 5 // 2  # 0.05 s
     return [(max(edges[2 * k] * hop - pad, 0), min(edges[2 * k + 1] * hop + pad, len(a))) for k in range(n)]
 
