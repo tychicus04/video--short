@@ -3,8 +3,11 @@ Description=vshort web control panel (port 8770)
 
 [Service]
 WorkingDirectory=%h/video-pipeline
-Environment=PATH=%h/.local/bin:%h/.nvm/versions/node/v24.19.0/bin:/usr/local/bin:/usr/bin:/bin
-ExecStart=%h/.local/bin/uv run python -m vshort.web
+# .venv/bin first, as `uv run` would: agents call a bare `vshort` from Bash
+Environment=PATH=%h/video-pipeline/.venv/bin:%h/.local/bin:%h/.nvm/versions/node/v24.19.0/bin:/usr/local/bin:/usr/bin:/bin
+# the venv's python itself, not `uv run`: with KillMode=process a stop that overruns would SIGKILL only uv and orphan
+# the server on :8770; run `uv sync` after each pull
+ExecStart=%h/video-pipeline/.venv/bin/python -m vshort.web
 Restart=on-failure
 RestartSec=5
 # `vshort auto --foreground` children run inside this unit's cgroup; the default KillMode would stop them (and their
