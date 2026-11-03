@@ -489,7 +489,10 @@ def _cams(doc: dict, kept: list[int], span: dict, touched: dict[int, set[str]], 
             continue
         s, e = span[k]
         moments = [s + (e - s) * j / max(2, round((e - s) / 0.1)) for j in range(max(2, round((e - s) / 0.1)) + 1)]
-        ids = set(touched[k]) | {c for i in touched[k] for t in (s, e) for c in _carried(i, acts, t)}
+        actor = doc.get("actor")  # the attacker stays in frame once he is on the canvas, even standing still
+        drawn = actor in by_id and min((a.t0 for a in acts if a.thing == actor and a.do == "draw"), default=math.inf) <= e
+        ids = set(touched[k]) | ({actor} if drawn else set())
+        ids |= {c for i in set(ids) for t in (s, e) for c in _carried(i, acts, t)}
         got = []
         for i in ids & by_id.keys():
             th = by_id[i]

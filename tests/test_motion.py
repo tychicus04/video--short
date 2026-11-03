@@ -430,3 +430,16 @@ def test_carried_things_fade_and_wake_with_their_carrier(design, tmp_path):
     d["beats"][0]["acts"].append({"do": "attach", "thing": "k", "on": "atk", "offset": [50, 20], "at": 0})
     sc = motion.timed(d, *motion.estimated(d), tmp_path)
     assert not [a for a in sc.acts if a.thing == "k" and a.do == "dim"]
+
+
+
+def test_the_camera_keeps_the_actor_in_frame(design, tmp_path):
+    # acceptance 03/11: in a beat where the attacker stands still the camera zoomed past him and cut him in half
+    d = json.loads(json.dumps(design))
+    d["beats"][2]["acts"] = [{"do": "red", "thing": "srv", "at": 0.2}]  # beat 3 acts only on the server
+    sc = motion.timed(d, *motion.estimated(d), tmp_path)
+    atk = next(th for th in sc.things if th["id"] == "atk")
+    x0, y0, x1, y1 = kit.bbox(kit.at_pos(atk, kit._position(atk, sc.acts, 7.0)))
+    v = sc.view(7.0)
+    (sx0, sy0), (sx1, sy1) = kit.screen(v, x0, y0), kit.screen(v, x1, y1)
+    assert sx0 >= 0 and sx1 <= kit.W and sy0 >= 0 and sy1 <= kit.H
