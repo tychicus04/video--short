@@ -148,3 +148,22 @@ def test_shape_prop_moves_by_its_centre():
           "strokes": [[(100, 100), (200, 200)], [(100, 200), (200, 100)]]}
     img = draw([th], [Act("draw", "m", 0, 0.8), Act("move", "m", 1.0, 2.0, to=(400, 400))], 3.0)
     assert _ink(img, (350, 350, 450, 450)) > 100 and _ink(img, (100, 100, 200, 200)) == 0
+
+
+ARM = {"id": "b", "kind": "shape", "shape": "barie", "box": [100, 100, 300, 300], "strokes": [[(100, 200), (300, 200)]],
+       "hinge": {"strokes": [0], "pivot": (100, 200), "turn": -80, "squash": None}}
+
+
+def test_open_turns_the_hinged_strokes():
+    acts = [Act("draw", "b", 0, 0.8), Act("open", "b", 1.0, 1.8)]
+    shut, opened = draw([ARM], acts, 0.9), draw([ARM], acts, 2.5)
+    assert _ink(shut, (260, 190, 300, 210)) > 0 and _ink(opened, (260, 190, 300, 210)) == 0
+    assert _ink(opened, (90, 0, 140, 190)) > 0
+    closed = draw([ARM], acts + [Act("close", "b", 3.0, 3.8)], 4.5)
+    assert _ink(closed, (260, 190, 300, 210)) > 0
+
+
+def test_squash_folds_a_door_towards_its_hinge():
+    door = ARM | {"hinge": {"strokes": [0], "pivot": (100, 200), "turn": None, "squash": 0.2}}
+    opened = draw([door], [Act("draw", "b", 0, 0.8), Act("open", "b", 1.0, 1.8)], 2.5)
+    assert _ink(opened, (100, 190, 140, 210)) > 0 and _ink(opened, (200, 190, 300, 210)) == 0

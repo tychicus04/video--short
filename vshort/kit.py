@@ -18,6 +18,7 @@ SX, SY = (SAFE[0] + SAFE[2]) / 2, (SAFE[1] + SAFE[3]) / 2  # the camera's centre
 FULL = (SX, SY, 1.0)  # (cx, cy, zoom): the whole canvas, drawn as it is
 LABEL_EM, SMALL_EM, MIN_LABEL_EM, MAX_LABEL = 44, 34, 32, 20
 DRAW, TURN, HIDE, MOVE = 0.8, 0.6, 0.4, 1.2  # seconds: draw on, turn red, erase, default move/bounce
+OPEN = 0.8  # seconds: a hinged part opens or closes
 DIM = 0.55  # how far a thing the voice has moved on from fades towards the paper
 BOXED = {"phone", "computer", "server", "box", "wall", "shape"}  # take `box`
 POINTED = {"person", "icon", "dot", "text", "crack", "figure", "check", "cross"}  # take `xy`
@@ -221,7 +222,24 @@ def at_pos(thing: dict, xy) -> dict:
     out = thing | {"box": [x0 + dx, y0 + dy, x1 + dx, y1 + dy]}
     if "strokes" in thing:
         out["strokes"] = [[(px + dx, py + dy) for px, py in s] for s in thing["strokes"]]
+    if thing.get("hinge"):
+        px, py = thing["hinge"]["pivot"]
+        out["hinge"] = thing["hinge"] | {"pivot": (px + dx, py + dy)}
     return out
+
+
+def _hinged(strokes: list[tuple[list, int, int]], hinge: dict, level: float) -> list[tuple[list, int, int]]:
+    """The strokes with the hinged ones opened `level` of the way: turned about the pivot or folded towards it."""
+    px, py = hinge["pivot"]
+    if hinge.get("turn") is not None:
+        a = math.radians(hinge["turn"] * level)
+        c, s = math.cos(a), math.sin(a)
+        move = lambda x, y: (px + (x - px) * c - (y - py) * s, py + (x - px) * s + (y - py) * c)  # noqa: E731
+    else:
+        k = 1 - (1 - hinge["squash"]) * level
+        move = lambda x, y: (px + (x - px) * k, y)  # noqa: E731
+    return [([move(*p) for p in pts], w, dash) if n in hinge["strokes"] else (pts, w, dash)
+            for n, (pts, w, dash) in enumerate(strokes)]
 
 
 def _shape(thing: dict) -> list[tuple[list, int, int]]:
@@ -386,6 +404,14 @@ def _shown(thing: dict, acts: list[Act], t: float) -> float:
     return on
 
 
+def _opened(mine: list[Act], t: float) -> float:
+    """How far the thing's hinged part is open at t (0 to 1): open and close acts in order."""
+    level = 0.0
+    for a in sorted((a for a in mine if a.do in ("open", "close") and a.t0 <= t), key=lambda a: a.t0):
+        level += ((1.0 if a.do == "open" else 0.0) - level) * ease((t - a.t0) / max(a.t1 - a.t0, 1e-6))
+    return level
+
+
 def _dimmed(mine: list[Act], t: float) -> float:
     """How far the thing has faded towards the paper at t (0 to DIM): dim and undim acts in order."""
     level = 0.0
@@ -429,14 +455,20 @@ def _draw_thing(img: Image.Image, d: ImageDraw.ImageDraw, thing: dict, acts: lis
                 spread = abs(math.sin(math.pi * STEP_HZ * t)) if math.hypot(x - px, y - py) > 0.5 else 0.0
                 strokes, base = [(s, 4, 0) for s in _figure(x, y - BOB * spread, spread, thing.get("role"))], color
             else:
-                strokes, base = _shape(at_pos(thing, (x, y))), outline
+                moved = at_pos(thing, (x, y))
+                strokes, base = _shape(moved), outline
+                if moved.get("hinge") and (level := _opened(mine, t)):
+                    strokes = _hinged(strokes, moved["hinge"], level)
             for k, (pts, w, dash) in enumerate(strokes):
                 _stroke(d, pts, f, base, w, seed + k, dash, view)
                 if r:
                     _stroke(d, pts, r, red, w + 2, seed + k, dash, view)
         lx, ly = _label_at(at_pos(thing, (x, y)) if kind == "shape" else thing, (x, y))
     else:
-        for k, (pts, w, dash) in enumerate(_shape(thing)):
+        strokes = _shape(thing)
+        if thing.get("hinge") and (level := _opened(mine, t)):
+            strokes = _hinged(strokes, thing["hinge"], level)
+        for k, (pts, w, dash) in enumerate(strokes):
             _stroke(d, pts, f, outline, w, seed + k, dash, view)
             if r:
                 _stroke(d, pts, r, red, w + 2, seed + k, dash, view)

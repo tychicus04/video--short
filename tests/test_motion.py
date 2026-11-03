@@ -260,3 +260,16 @@ def test_figure_can_be_the_actor(design, tmp_path):
     assert motion.design_problems(d, WORDS, tmp_path) == []
     d["things"][0]["role"] = "wizard"
     assert any("role" in p for p in motion.design_problems(d, WORDS, tmp_path))
+
+
+def test_open_needs_a_hinged_shape(design, tmp_path):
+    d = json.loads(json.dumps(design))
+    d["beats"][2]["acts"].append({"do": "open", "thing": "mem", "at": 0.5})
+    assert any("hinge" in p for p in motion.design_problems(d, WORDS, tmp_path))
+    (tmp_path / "shapes" / "barie-thu.json").write_text(json.dumps(
+        {"name": "barie", "strokes": [[[0, 50], [100, 50]], [[0, 40], [0, 100]]],
+         "hinge": {"strokes": [0], "pivot": [0, 50], "turn": -80}}))
+    d["things"][2]["shape"] = "barie-thu"
+    assert motion.design_problems(d, WORDS, tmp_path) == []
+    sc = motion.timed(d, *motion.estimated(d), tmp_path)
+    assert next(th for th in sc.things if th["id"] == "mem")["hinge"]["turn"] == -80

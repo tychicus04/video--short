@@ -37,7 +37,29 @@ def problems(doc, slug: str) -> list[str]:
             probs.append(f"{what}: nét {n} phải có 2–{MAX_POINTS} điểm")
         elif not all(map(_point, s)):
             probs.append(f"{what}: nét {n} có điểm ngoài ô 0–100 (mỗi điểm là [x, y])")
+    if "hinge" in doc and not _hinge_ok(doc["hinge"], len(strokes)):
+        probs.append(f"{what}: hinge phải là {{\"strokes\": [chỉ số nét, không trùng], \"pivot\": [x, y] trong ô 0–100}} "
+                     "cùng đúng một trong \"turn\" (độ, −180…180, khác 0) hoặc \"squash\" (0,05…0,95)")
     return probs
+
+
+def _num(v) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def _hinge_ok(h, n: int) -> bool:
+    """The strokes that open (turn about the pivot, or fold towards it) when the shape opens."""
+    if not isinstance(h, dict) or ("turn" in h) == ("squash" in h):
+        return False
+    idx = h.get("strokes")
+    if not (isinstance(idx, list) and idx and len(set(map(str, idx))) == len(idx)
+            and all(isinstance(i, int) and not isinstance(i, bool) and 0 <= i < n for i in idx)):
+        return False
+    if "turn" in h:
+        ok = _num(h["turn"]) and -180 <= h["turn"] <= 180 and h["turn"] != 0
+    else:
+        ok = _num(h["squash"]) and 0.05 <= h["squash"] <= 0.95
+    return ok and _point(h.get("pivot"))
 
 
 def _read(path: Path):
@@ -71,15 +93,31 @@ def check_run(run_dir: Path) -> list[str]:
     return probs
 
 
-def strokes_in_box(doc: dict, box) -> list[list[tuple[float, float]]]:
-    """The strokes scaled into box, aspect kept, centred."""
+def _fit(doc: dict, box) -> tuple[float, float, float]:
+    """Scale and offset that put the strokes into box, aspect kept, centred: cell (x, y) → (ox + k x, oy + k y)."""
     xs = [p[0] for s in doc["strokes"] for p in s]
     ys = [p[1] for s in doc["strokes"] for p in s]
     x0, y0, x1, y1 = box
     k = min((x1 - x0) / max(max(xs) - min(xs), 1e-9), (y1 - y0) / max(max(ys) - min(ys), 1e-9))
     ox = x0 + ((x1 - x0) - k * (max(xs) - min(xs))) / 2 - k * min(xs)
     oy = y0 + ((y1 - y0) - k * (max(ys) - min(ys))) / 2 - k * min(ys)
+    return k, ox, oy
+
+
+def strokes_in_box(doc: dict, box) -> list[list[tuple[float, float]]]:
+    """The strokes scaled into box, aspect kept, centred."""
+    k, ox, oy = _fit(doc, box)
     return [[(ox + k * x, oy + k * y) for x, y in s] for s in doc["strokes"]]
+
+
+def hinge_in_box(doc: dict, box) -> dict | None:
+    """The shape's hinge with its pivot where strokes_in_box puts it; None when the shape has none."""
+    h = doc.get("hinge")
+    if h is None:
+        return None
+    k, ox, oy = _fit(doc, box)
+    return {"strokes": list(h["strokes"]), "pivot": (ox + k * h["pivot"][0], oy + k * h["pivot"][1]),
+            "turn": h.get("turn"), "squash": h.get("squash")}
 
 
 def sheet(run_dir: Path) -> Image.Image:

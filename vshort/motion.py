@@ -23,8 +23,9 @@ BEAT_EST = 3.0  # s per beat: the timing of a design, before any line is spoken
 SYL = 0.2  # s per syllable: the voice before the timeline exists
 MIN_ACT = 0.3  # shortest action, even at the very end of a line
 LEAD_IN = 0.35  # what opens the canvas starts drawing in the crossfade into it (half the gap + half the fade): no blank page
-ACTS = ("move", "bounce", "red", "pulse", "hide", "attach")
-DUR = {"draw": kit.DRAW, "red": kit.TURN, "hide": kit.HIDE, "move": kit.MOVE, "bounce": kit.MOVE, "attach": kit.MOVE}
+ACTS = ("move", "bounce", "red", "pulse", "hide", "attach", "open", "close")
+DUR = {"draw": kit.DRAW, "red": kit.TURN, "hide": kit.HIDE, "move": kit.MOVE, "bounce": kit.MOVE, "attach": kit.MOVE,
+       "open": kit.OPEN, "close": kit.OPEN}
 MOVERS = ", ".join(sorted(kit.MOVERS))
 MARKS = ("crack", "check", "cross")  # small marks: no label, not counted as things in view
 KINDS = kit.BOXED | kit.POINTED | {"path"}
@@ -155,7 +156,7 @@ def _thing_problems(th, said: set[str], run_dir: Path | None) -> list[str]:
     return probs + _at_problems(what, th)
 
 
-def _act_problems(m: int, a, things: dict[str, dict], said: set[str]) -> list[str]:
+def _act_problems(m: int, a, things: dict[str, dict], said: set[str], hinged: frozenset | set = frozenset()) -> list[str]:
     if not isinstance(a, dict):
         return [f"act {m}: phải là object"]
     do, tid = a.get("do"), a.get("thing")
@@ -177,6 +178,8 @@ def _act_problems(m: int, a, things: dict[str, dict], said: set[str]) -> list[st
         probs.append(f"{what}: on và offset chỉ dùng với attach")
     if do == "pulse" and th["kind"] != "dot":
         probs.append(f"{what}: chỉ dot mới pulse")
+    if do in ("open", "close") and tid not in hinged:
+        probs.append(f"{what}: {tid!r} không có phần mở/đóng (hinge trong file hình thư viện)")
     if "say" in a:
         if do != "red" or th["kind"] != "box":
             probs.append(f"{what}: say chỉ dùng với red trên một box")
@@ -326,9 +329,10 @@ def design_problems(doc, said: set[str], run_dir: Path | None) -> list[str]:
             probs.append(f"motion.json nhịp {k}: view phải là [x0, y0, x1, y1] trong {AREA}")
     if probs:
         return probs
+    hinged = {i for i, th in by_id.items() if th.get("kind") == "shape" and "hinge" in (shapes.find(th["shape"], run_dir) or {})}
     for k, b in enumerate(beats, 1):
         for m, a in enumerate(b.get("acts", []), 1):
-            probs += [f"motion.json nhịp {k}: {p}" for p in _act_problems(m, a, by_id, said)]
+            probs += [f"motion.json nhịp {k}: {p}" for p in _act_problems(m, a, by_id, said, hinged)]
     if probs:
         return probs
     probs += _attach_loops(beats)
@@ -367,7 +371,10 @@ def timed(doc: dict, starts: list[float | None], end: float, run_dir: Path | Non
         if k == kept[0] and not at:
             t0 -= LEAD_IN
         if th["kind"] == "shape":
-            th = th | {"strokes": shapes.strokes_in_box(shapes.find(th["shape"], run_dir), th["box"])}
+            doc_ = shapes.find(th["shape"], run_dir)
+            th = th | {"strokes": shapes.strokes_in_box(doc_, th["box"])}
+            if hinge := shapes.hinge_in_box(doc_, th["box"]):
+                th["hinge"] = hinge
         things.append(th)
         acts.append(kit.Act("draw", th["id"], t0, t1))
         home[th["id"]] = k

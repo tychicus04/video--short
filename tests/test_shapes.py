@@ -60,3 +60,26 @@ def test_sheet_names_fit_their_cell(tmp_path):
     under = a[shapes.CELL:, :]
     cols = np.where((under < 100).any(axis=0))[0]
     assert cols.min() > 4 and cols.max() < shapes.CELL - 4
+
+
+BARIE = {"name": "barie", "strokes": [[[0, 50], [100, 50]], [[0, 40], [0, 100]]],
+         "hinge": {"strokes": [0], "pivot": [0, 50], "turn": -80}}
+
+
+def test_hinge_rules():
+    assert shapes.problems(BARIE, "barie") == []
+    assert shapes.problems(BARIE | {"hinge": {"strokes": [0], "pivot": [0, 50], "squash": 0.2}}, "cua") == []
+    bad = [{"strokes": [99], "pivot": [0, 50], "turn": -80},
+           {"strokes": [0], "pivot": [0, 50], "turn": -80, "squash": 0.2},
+           {"strokes": [0], "pivot": [120, 0], "turn": -80},
+           {"strokes": [0, 0], "pivot": [0, 50], "turn": -80},
+           {"strokes": [0], "pivot": [0, 50], "squash": 1.5}]
+    for h in bad:
+        assert any("hinge" in p for p in shapes.problems(BARIE | {"hinge": h}, "barie")), h
+
+
+def test_hinge_in_box_moves_the_pivot_with_the_strokes():
+    doc = {"name": "barie", "strokes": [[[0, 50], [100, 50]]], "hinge": {"strokes": [0], "pivot": [0, 50], "turn": -80}}
+    h = shapes.hinge_in_box(doc, (100, 100, 300, 300))
+    assert h["pivot"] == (100.0, 200.0) and h["strokes"] == [0] and h["turn"] == -80
+    assert shapes.hinge_in_box({"name": "x", "strokes": [[[0, 0], [9, 9]]]}, (0, 0, 10, 10)) is None
