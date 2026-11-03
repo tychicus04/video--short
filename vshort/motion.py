@@ -240,8 +240,7 @@ def _actor_problems(doc: dict, things: dict[str, dict]) -> list[str]:
     th = things.get(actor) if isinstance(actor, str) else None
     if th is None or th["kind"] not in ("dot", "figure"):
         return [f"motion.json: actor {actor!r} phải là id của một thing kind dot hoặc figure (kẻ tấn công đi suốt đoạn)"]
-    # beat 1 may tell how it should work (step 0 of the brief): the attacker may come in at beat 2
-    probs = [] if th["beat"] <= 2 else [f"motion.json: actor {actor!r} phải được vẽ ở nhịp 1 hoặc 2"]
+    probs = []  # it comes in when the voice brings it in (beat 1 may be step 0, how it should work), then stays
     for k, b in enumerate(doc["beats"], 1):
         for a in b.get("acts", []):
             if a["thing"] == actor and (a["do"] == "hide" or a.get("vanish")):

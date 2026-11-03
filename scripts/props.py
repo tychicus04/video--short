@@ -55,6 +55,8 @@ PROPS = {
     "cua": ("cửa", [rect(0, 0, 60, 100), rect(6, 6, 54, 100), circle(46, 55, 3, 12)],
             {"strokes": [1, 2], "pivot": [6, 50], "squash": 0.2}),
     "toa-nha": ("tòa nhà", [line(0, 18, 50, 0, 100, 18), rect(4, 18, 96, 64), rect(44, 42, 56, 64)], None),
+    # no door: room for floors (boxes) inside, e.g. "máy ảo" over "máy chủ host" (reviewer 03/11: the door cut a label)
+    "toa-nha-tang": ("tòa nhà nhiều tầng", [line(0, 16, 50, 0, 100, 16), rect(4, 16, 96, 72)], None),
     "phong": ("phòng", [rect(0, 0, 100, 56), rect(10, 12, 38, 56), rect(52, 12, 88, 32)], None),
     "chot-bao-ve": ("chốt bảo vệ", [line(0, 18, 50, 0, 100, 18), rect(8, 18, 92, 100), rect(20, 30, 80, 62)], None),
     "ket-sat": ("két sắt", [
@@ -103,12 +105,13 @@ def opened_row(docs: dict[str, dict]) -> Image.Image:
 def main() -> int:
     docs = {slug: doc(slug) for slug in PROPS}
     bad = [p for slug, d in docs.items() for p in shapes.problems(d, slug)]
-    there = [slug for slug in docs if (shapes.LIBRARY / f"{slug}.json").exists()]
-    if bad or there:
-        print("\n".join(bad + [f"{s}.json đã có trong thư viện: không ghi đè" for s in there]))
+    changed = [s for s, d in docs.items() if (f := shapes.LIBRARY / f"{s}.json").exists() and json.loads(f.read_text()) != d]
+    if bad or changed:  # the library only grows: a prop drawn differently gets a new name
+        print("\n".join(bad + [f"{s}.json đã có trong thư viện với nét khác: đặt tên mới, không sửa" for s in changed]))
         return 1
     for slug, d in docs.items():
-        (shapes.LIBRARY / f"{slug}.json").write_text(json.dumps(d, ensure_ascii=False) + "\n", encoding="utf-8")
+        if not (shapes.LIBRARY / f"{slug}.json").exists():
+            (shapes.LIBRARY / f"{slug}.json").write_text(json.dumps(d, ensure_ascii=False) + "\n", encoding="utf-8")
     with tempfile.TemporaryDirectory() as tmp:
         (Path(tmp) / "shapes").mkdir()
         for slug, d in docs.items():

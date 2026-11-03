@@ -84,6 +84,19 @@ def test_the_message_icon_has_no_stroke_across_the_bubble():
     assert _ink(draw([msg], [Act("draw", "m", 0, 0.8)], 1.0), (330, 455, 390, 495)) == 0
 
 
+def test_a_path_takes_its_colour():  # a red trail of the attacker's walk; a path without colour stays ink
+    red = {"id": "w", "kind": "path", "points": [[100, 600], [600, 600]], "color": "red"}
+    assert _red(draw([red], [Act("draw", "w", 0, 0.8)], 1.0), (100, 590, 600, 610))
+    assert not _red(draw([red | {"color": "ink"}], [Act("draw", "w", 0, 0.8)], 1.0), (100, 590, 600, 610))
+
+
+def test_the_key_icon_lies_flat_with_teeth():
+    # reviewer 03/11: the old key (ring + diagonal shaft) read as a magnifier at phone size
+    ring, shaft, *teeth = kit._icon("key", 360, 500)
+    assert ring[0] == ring[-1] and shaft[0][1] == shaft[-1][1] and len(teeth) >= 2
+    assert all(t[0][0] == t[-1][0] for t in teeth)  # each tooth hangs straight down from the shaft
+
+
 def test_a_shape_draws_its_strokes():
     th = {"id": "m", "kind": "shape", "shape": "x", "box": [200, 300, 500, 600], "label": "bộ nhớ",
           "strokes": [[(200, 300), (500, 600)], [(200, 600), (500, 300)]]}

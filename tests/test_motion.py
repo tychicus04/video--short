@@ -34,9 +34,11 @@ def test_design_ok_and_actor_rules(design, tmp_path):
     assert motion.design_problems(design, WORDS, tmp_path) == []
     bad = design | {"beats": design["beats"] + [{"idea": "x", "acts": [{"do": "hide", "thing": "atk", "at": 0}]}]}
     assert any("actor" in p for p in motion.design_problems(bad, WORDS, tmp_path))
-    late = json.loads(json.dumps(design))
+    late = json.loads(json.dumps(design))  # the attacker comes in when the voice brings him in (reviewer 03/11)
     late["things"][0]["beat"] = 3
-    assert any("actor" in p for p in motion.design_problems(late, WORDS, tmp_path))
+    late["beats"][0]["acts"], late["beats"][1]["acts"] = [{"do": "red", "thing": "srv", "at": 0.6}], []
+    late["beats"][2]["acts"] = [{"do": "move", "thing": "atk", "to": [520, 680], "at": 0.3}]
+    assert not any("actor" in p for p in motion.design_problems(late, WORDS, tmp_path))
 
 
 def test_the_actor_may_enter_after_the_normal_beat(design, tmp_path):

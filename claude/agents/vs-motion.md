@@ -68,8 +68,9 @@ mới** (mục dưới). Hộp có nhãn (`box`) chỉ dành cho một lớp hay
  ]}
 ```
 
-- `actor`: id của **một `dot`** hoặc **một `figure`** (kẻ tấn công) vẽ ở nhịp 1 hoặc 2 (nhịp 1 là cảnh "bình thường" thì hắn vào ở
-  nhịp 2) — đi suốt đoạn. Không `hide`, không `move` có `vanish` trên nó.
+- `actor`: id của **một `dot`** hoặc **một `figure`** (kẻ tấn công), vẽ ra ở nhịp lời bắt đầu nói tới hắn (không sớm hơn), rồi đi suốt
+  phần còn lại của đoạn. Không `hide`, không `move` có `vanish` trên nó. Hắn đi theo các `path` (vẽ đỏ) để cuối đoạn còn **vệt đường đi**
+  nối các bước.
 - **Thing**: `id` (không trùng), `kind`, `beat` (nhịp nó bắt đầu vẽ ra, đếm từ 1), tùy chọn `at` (0–1: vị trí trong nhịp, mặc định 0),
   `label`, `color`.
   - `phone`, `computer`, `server`, `box`, `wall`, `shape`: `box` `[x0, y0, x1, y1]`. Nhãn nằm trên khung, riêng `box` nhãn nằm giữa hộp.

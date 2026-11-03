@@ -1,7 +1,7 @@
 from vshort import shapes
 
 PROPS = ["the-nhan-vien", "may-quet", "bang-ten", "barie", "cua", "toa-nha", "phong", "chot-bao-ve", "ket-sat",
-         "hom-thu", "kien-hang", "xe-giao-hang", "camera-an-ninh", "hang-rao", "cau-thang"]
+         "hom-thu", "kien-hang", "xe-giao-hang", "camera-an-ninh", "hang-rao", "cau-thang", "toa-nha-tang"]
 
 
 def test_props_are_in_the_library_and_valid():

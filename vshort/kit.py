@@ -306,8 +306,10 @@ def _shape(thing: dict) -> list[tuple[list, int, int]]:
 
 
 def _icon(name: str, x: float, y: float) -> list[list]:
-    if name == "key":
-        return [_rrect(x - 40, y - 40, x, y, 18), [(x - 6, y - 10), (x + 40, y + 36), (x + 26, y + 48), (x + 14, y + 36)]]
+    if name == "key":  # ring, flat shaft, two teeth: lying flat it reads as a key, not a magnifier
+        ring = [(x - 26 + 16 * math.cos(a), y + 16 * math.sin(a)) for a in np.linspace(0, 2 * math.pi, 21)]
+        ring[-1] = ring[0]
+        return [ring, [(x - 10, y), (x + 46, y)], [(x + 32, y), (x + 32, y + 14)], [(x + 44, y), (x + 44, y + 18)]]
     if name == "message":
         return [_rrect(x - 48, y - 40, x + 48, y + 22, 14), [(x - 18, y + 22), (x - 34, y + 48), (x - 4, y + 22)]]
     if name == "wallet":
@@ -464,7 +466,7 @@ def _draw_thing(img: Image.Image, d: ImageDraw.ImageDraw, thing: dict, acts: lis
     fade = (lambda c: tuple(round(v + (p - v) * dim) for v, p in zip(c, PAPER))) if dim else (lambda c: c)
     ink, red, gray, blue = map(fade, (INK, RED, GRAY, BLUE))
     color = fade(_color(thing))
-    outline = blue if kind == "wall" else red if kind == "crack" else color if kind in ("check", "cross") else ink
+    outline = blue if kind == "wall" else red if kind == "crack" else color if kind in ("check", "cross", "path") else ink
     if kind in MOVERS:
         x, y = _position(thing, acts, t, by_id)
         if kind == "dot":
