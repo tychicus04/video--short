@@ -30,11 +30,12 @@ def keys(spans: list[tuple[float, float]], boxes: list, lead: float) -> list[tup
     creeping DRIFT closer while it holds, a MOVE_S glide at each beat start, and the last beat pulled back to FULL
     before the canvas ends."""
     views = [kit.FULL if b is None else view(b) for b in boxes]
-    out = [(spans[0][0] - lead, *views[0])]
-    for (s, e), prev, v in zip(spans[1:], views, views[1:]):
-        out += [(s, *drifted(prev)), (min(s + MOVE_S, e), *v)]
     s, e = spans[-1]
-    t_out = max(s + MOVE_S, s + 0.5 * (e - s), e - OUT_LEAD)
+    t_out = max(s, min(max(s + MOVE_S, s + 0.5 * (e - s), e - OUT_LEAD), e - OUT_S))
+    out = [(spans[0][0] - lead, *views[0])]
+    for n, ((s, e), prev, v) in enumerate(zip(spans[1:], views, views[1:]), 1):
+        end = min(s + MOVE_S, e, t_out) if n == len(spans) - 1 else min(s + MOVE_S, e)
+        out += [(s, *drifted(prev)), (end, *v)]
     return out + [(t_out, *drifted(views[-1])), (t_out + OUT_S, *kit.FULL)]
 
 

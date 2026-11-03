@@ -325,9 +325,10 @@ def brief_words(brief_md: str) -> set[str]:
     return set(_words(brief_md))
 
 
-def design_problems(doc, said: set[str], run_dir: Path | None) -> list[str]:
+def design_problems(doc, said: set[str], run_dir: Path | None, style: bool = True) -> list[str]:
     """Every problem of the canvas in motion.json, one line each; [] when it is safe to draw. `said`: the words a
-    label may use besides COMMON."""
+    label may use besides COMMON. `style=False` leaves out the rules of taste (dead time), which agents fix but which
+    must not stop an old canvas from being rendered."""
     if not isinstance(doc, dict):
         return ["motion.json phải là một object JSON (hoặc null khi không có hình động)"]
     if "scenes" in doc:
@@ -374,7 +375,7 @@ def design_problems(doc, said: set[str], run_dir: Path | None) -> list[str]:
     if probs:
         return probs
     sc = timed(doc, *estimated(doc), run_dir)
-    return _order_problems(sc) + _quiet_problems(sc, estimated(doc)[1])
+    return _order_problems(sc) + (_quiet_problems(sc, estimated(doc)[1]) if style else [])
 
 
 def estimated(doc: dict) -> tuple[list[float], float]:
@@ -433,9 +434,10 @@ def timed(doc: dict, starts: list[float | None], end: float, run_dir: Path | Non
     for k in kept[1:]:
         s = span[k][0]
         for i, h in home.items():
-            if i == doc.get("actor") or h >= k or gone.get(i, math.inf) <= s:
+            holder = _holder(i, acts, s)
+            if doc.get("actor") in (i, holder) or h >= k or gone.get(i, math.inf) <= s:
                 continue
-            if (i in touched[k]) == (i in dim):
+            if (i in touched[k] or holder in touched[k]) == (i in dim):
                 acts.append(kit.Act("undim" if i in dim else "dim", i, s, s + kit.TURN))
                 dim ^= {i}
     for th in things:  # a means line goes plain as the next kept beat starts
@@ -444,6 +446,18 @@ def timed(doc: dict, starts: list[float | None], end: float, run_dir: Path | Non
             s = span[later[0]][0]
             acts.append(kit.Act("plain", th["id"], s, s + kit.TURN))
     return Scene(list(doc.get("lines", [])), things, acts, _cams(doc, kept, span, touched, things, acts))
+
+
+def _holder(thing: str, acts: list[kit.Act], t: float) -> str | None:
+    """Who carries the thing at t, at the end of a chain of attaches (a card on a figure on a truck: the truck)."""
+    seen, holder = {thing}, None
+    while True:
+        last = max((a for a in acts if a.thing == thing and a.do in ("move", "bounce", "attach") and a.t0 <= t),
+                   key=lambda a: a.t0, default=None)
+        if last is None or last.do != "attach" or last.on in seen:
+            return holder
+        thing = holder = last.on
+        seen.add(thing)
 
 
 def _carried(carrier: str, acts: list[kit.Act], t: float) -> set[str]:
@@ -474,11 +488,13 @@ def _cams(doc: dict, kept: list[int], span: dict, touched: dict[int, set[str]], 
             boxes.append(tuple(doc["beats"][k]["view"]))
             continue
         s, e = span[k]
+        moments = [s + (e - s) * j / max(2, round((e - s) / 0.1)) for j in range(max(2, round((e - s) / 0.1)) + 1)]
+        ids = set(touched[k]) | {c for i in touched[k] for t in (s, e) for c in _carried(i, acts, t)}
         got = []
-        for i in touched[k] & by_id.keys():
+        for i in ids & by_id.keys():
             th = by_id[i]
-            if th["kind"] in kit.MOVERS:
-                got += [kit.bbox(kit.at_pos(th, kit._position(th, acts, t, by_id))) for t in (s, e)]
+            if th["kind"] in kit.MOVERS:  # where it is all through the beat: a bounce or a walk may go far mid-beat
+                got += [kit.bbox(kit.at_pos(th, kit._position(th, acts, t, by_id))) for t in moments]
             else:
                 got.append(kit.bbox(th))
         boxes.append((min(b[0] for b in got), min(b[1] for b in got), max(b[2] for b in got), max(b[3] for b in got))
@@ -584,7 +600,8 @@ def _starts(bind: dict, placements: list[Placement], script: list[dict]) -> tupl
     return [s if s is None or s == first else max(s - LEAD_WORD, first) for s in starts], last.start + last.dur
 
 
-def bind_problems(doc, bind, script: list[dict], run_dir: Path | None, visuals: list | None = None) -> list[str]:
+def bind_problems(doc, bind, script: list[dict], run_dir: Path | None, visuals: list | None = None,
+                  style: bool = True) -> list[str]:
     """Every problem of motion.bind.json against the canvas (assumed to pass design_problems) and the script."""
     if not isinstance(bind, dict):
         return ["motion.bind.json phải là một object JSON"]
@@ -625,11 +642,11 @@ def bind_problems(doc, bind, script: list[dict], run_dir: Path | None, visuals: 
         probs.append("motion.bind.json: mốc các nhịp giữ lại phải tăng dần theo lời đọc; bỏ (null) nhịp đọc lệch thứ tự")
     said = {w for i in want for w in _words(text[i])}
     doc = bound(doc, bind)
-    probs += design_problems(doc, said, run_dir)  # the labels again, now against the words of the voice
+    probs += design_problems(doc, said, run_dir, style)  # the labels again, now against the words of the voice
     if not probs:
         starts, end = _starts(bind, estimate(script), script)
         sc = timed(doc, starts, end, run_dir)
-        probs += _order_problems(sc) + _quiet_problems(sc, end)
+        probs += _order_problems(sc) + (_quiet_problems(sc, end) if style else [])
     if visuals is not None:
         probs += clashes(visuals, set(want))
     return probs

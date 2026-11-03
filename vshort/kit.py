@@ -99,7 +99,7 @@ def _stroke(d: ImageDraw.ImageDraw, pts, p: float, color, width: int, seed: int,
     q, cum = q[keep], cum[keep]
     if view != FULL:
         q = (q - view[:2]) * view[2] + (SX, SY)
-        width, dash = width * view[2], dash * view[2]
+        width = width * view[2]
     q, width = q * SS, round(width * SS)
     if len(q) < 2:
         return
@@ -405,7 +405,7 @@ def _position(thing: dict, acts: list[Act], t: float, by_id: dict[str, dict] | N
             pos = _along(a.path, ease(u))
         else:
             e, (fx, fy), (tx, ty) = ease(u), pos, a.to
-            arc = min(120, 0.25 * math.hypot(tx - fx, ty - fy)) * math.sin(math.pi * e)
+            arc = min(120, 0.25 * math.hypot(tx - fx, ty - fy)) * math.sin(math.pi * e) if thing["kind"] in ("dot", "icon") else 0
             pos = (fx + (tx - fx) * e, max(fy + (ty - fy) * e - arc, SAFE[1] + _top(thing)))  # arc stays in SAFE
     return carried(t) if held else pos
 

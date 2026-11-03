@@ -390,3 +390,43 @@ def test_hiding_a_carrier_hides_what_it_carries(design, tmp_path):
     sc = motion.timed(d, *motion.estimated(d), tmp_path)
     hides = {a.thing: a.t0 for a in sc.acts if a.do == "hide"}
     assert hides == {"f": 4.8, "k": 4.8}
+
+
+
+# --- final review fixes (03/11)
+
+def test_quiet_is_a_style_rule_not_a_render_gate(design, tmp_path):
+    # C1: an old canvas with a quiet stretch still renders; only `vshort motion` (agents) reports it
+    d = json.loads(json.dumps(design))
+    d["beats"][1]["acts"] = []
+    assert any("không có gì chuyển động" in p for p in motion.bind_problems(d, BIND, SCRIPT, tmp_path))
+    assert motion.bind_problems(d, BIND, SCRIPT, tmp_path, style=False) == []
+    assert motion.design_problems(d, WORDS, tmp_path, style=False) == []
+
+
+def test_camera_frames_a_mover_all_through_its_beat(design, tmp_path):
+    # I1: a bounce mid-beat goes far from where the beat starts and ends; the camera must still hold it
+    d = json.loads(json.dumps(design))
+    d["things"] = [th for th in d["things"] if th["id"] != "mem"]
+    d["beats"][1]["acts"] = [{"do": "bounce", "thing": "atk", "to": [520, 900], "at": 0.3, "dur": 1.2}]
+    sc = motion.timed(d, *motion.estimated(d), tmp_path)
+    for t in [3.9 + 0.05 * k for k in range(25)]:
+        x, y = kit._position(next(th for th in sc.things if th["id"] == "atk"), sc.acts, t)
+        sx, sy = kit.screen(sc.view(t), x, y)
+        assert kit.SAFE[1] - 1 <= sy <= kit.SAFE[3] + 1, (t, sy)
+
+
+def test_a_short_last_beat_still_ends_on_the_full_canvas(design, tmp_path):
+    # I2: the pull back must finish before the canvas ends, however short the last beat
+    starts, _ = motion.estimated(design)
+    sc = motion.timed(design, starts, starts[-1] + 1.5, tmp_path)
+    assert sc.view(starts[-1] + 1.5) == kit.FULL
+
+
+def test_carried_things_fade_and_wake_with_their_carrier(design, tmp_path):
+    # I5: a key in the attacker's hand never fades while he stays bright
+    d = json.loads(json.dumps(design))
+    d["things"].append({"id": "k", "kind": "icon", "icon": "key", "xy": [170, 320], "beat": 1})
+    d["beats"][0]["acts"].append({"do": "attach", "thing": "k", "on": "atk", "offset": [50, 20], "at": 0})
+    sc = motion.timed(d, *motion.estimated(d), tmp_path)
+    assert not [a for a in sc.acts if a.thing == "k" and a.do == "dim"]

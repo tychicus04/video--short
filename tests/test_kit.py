@@ -203,3 +203,23 @@ def test_pen_tip_shows_only_while_drawing():
     acts = [Act("draw", "l", 0.0, 1.0)]
     assert _ink(draw([line], acts, 0.5), (345, 560, 385, 595)) > 0
     assert _ink(draw([line], acts, 1.5), (345, 560, 385, 595)) == 0
+
+
+
+def test_a_figure_walks_level_not_through_the_air():
+    # I4: only dots and icons fly in an arc; a figure walking sideways stays on the ground
+    acts = [Act("move", "f", 0.0, 2.0, to=(600, 300))]
+    assert kit._position(FIG, acts, 1.0)[1] == 300
+
+
+def test_dashes_keep_their_count_through_the_camera():
+    # I3: dash length is measured on the canvas, so zooming must not change how many dashes an edge has
+    wall = {"id": "w", "kind": "wall", "box": [200, 500, 520, 560]}
+    acts = [Act("draw", "w", 0, 0.8)]
+
+    def runs(img, y):  # dashes crossing the band around row y (the pencil wobbles a little)
+        band = (np.asarray(img.convert("L"))[y - 4:y + 5] < 180).any(axis=0)
+        return int(np.sum(band[1:] & ~band[:-1]))
+    flat = runs(draw([wall], acts, 1.0), 500)
+    near = runs(draw([wall], acts, 1.0, view=(360.0, 530.0, 2.0)), 573 + (500 - 530) * 2)
+    assert flat > 4 and abs(flat - near) <= 1

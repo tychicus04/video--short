@@ -428,7 +428,7 @@ def cmd_render(a) -> int:
         if bind is None:
             _err("thiếu motion.bind.json (chạy lại `vshort motion`)")
             return BAD_INPUT
-        if probs := shapes.check_run(run.path) + motion.bind_problems(doc, bind, script, run.path):
+        if probs := shapes.check_run(run.path) + motion.bind_problems(doc, bind, script, run.path, style=False):
             for p in probs:
                 _err(p)
             _err("motion.json không còn khớp kịch bản (chạy lại `vshort motion`)")
