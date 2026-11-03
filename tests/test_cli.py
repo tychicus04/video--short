@@ -664,6 +664,7 @@ def test_auto_launch_detaches_and_refuses_while_running(tmp_path, monkeypatch, c
     assert auto.get_state(Run(run))["state"] == "running" and (run / "auto.log").exists()
     assert "4242" in capsys.readouterr().out
     (run / "auto.lock").write_text(str(os.getpid()))  # the background run is still going
+    monkeypatch.setattr(auto, "_started", lambda pid: 0.0)  # FakePopen also replaces the Popen that `ps` needs
     assert main(["auto", str(run)]) == 2 and "đang chạy" in capsys.readouterr().err
     assert len(launched) == 1
 

@@ -82,6 +82,24 @@ def test_lock_refuses_second_and_takes_dead_lock(tmp_path):
     assert not run.file("auto.lock").exists()
 
 
+def test_a_pid_that_started_after_its_file_is_not_our_run(tmp_path):
+    import os, time
+    run = _run(tmp_path)
+    run.file("auto.lock").write_text(str(os.getpid()))
+    assert auto.locked_by(run) == os.getpid()            # this process was running when the lock was written
+    old = time.time() - 10 * 365 * 86400
+    os.utime(run.file("auto.lock"), (old, old))          # lock written long before this process started: pid reused
+    assert auto.locked_by(run) is None
+    auto.set_state(run, "running", pid=os.getpid())
+    os.utime(run.file("auto.json"), (old, old))
+    run.file("auto.lock").unlink()
+    assert not auto.alive_run(run)
+
+
+def test_started_is_none_for_no_such_process():
+    assert auto._started(999999) is None and auto._started(0) is None
+
+
 def test_state_round_trips(tmp_path):
     run = _run(tmp_path)
     assert auto.get_state(run)["state"] == "none"
@@ -205,8 +223,17 @@ def test_stops_for_brief_then_for_translation(flow):
     assert auto.get_state(run)["state"] == "wait_script"
     table = run.file("translation.md").read_text()
     assert "Hello there." in table and "Xin chào" in table and "ngắn hơn" in table and "|" in table
-    assert fk.nb == [["source", "add"]]
+    assert fk.nb == [["auth", "check"], ["source", "add"]]
     assert fk.cmds[:4] == ["fetch", "detect", "text", "check"]
+
+
+def test_expired_notebooklm_stops_before_research(flow, monkeypatch):
+    from vshort.cli import RELOGIN
+    run, fk = flow
+    monkeypatch.setattr(auto, "notebooklm", lambda args: fk.nb.append(args[:2]) or (4 if args[:2] == ["auth", "check"] else 0))
+    assert auto.run_auto(run) == 4
+    st = auto.get_state(run)
+    assert st["state"] == "error" and st["message"] == RELOGIN and not fk.agents
 
 
 def test_rerun_does_not_repeat_finished_steps(flow):
