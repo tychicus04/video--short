@@ -6,6 +6,10 @@ WorkingDirectory=%h/video-pipeline
 Environment=PATH=%h/.local/bin:%h/.nvm/versions/node/v24.19.0/bin:/usr/local/bin:/usr/bin:/bin
 ExecStart=%h/.local/bin/uv run python -m vshort.web
 Restart=on-failure
+RestartSec=5
+# `vshort auto --foreground` children run inside this unit's cgroup; the default KillMode would stop them (and their
+# `claude -p` agents) on every restart.
+KillMode=process
 
 [Install]
 WantedBy=default.target
