@@ -76,24 +76,32 @@ def set_state(run: Run, state: str, message: str = "", round: int | None = None,
 
 
 def alive_run(run: Run) -> bool:
-    return bool(locked_by(run)) or _alive(get_state(run)["pid"])
+    state = run.file("auto.json")
+    return bool(locked_by(run)) or (state.exists() and _alive(get_state(run)["pid"], state.stat().st_mtime))
 
 
-def _alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:  # someone else's process: alive
-        return True
-    return True
+def _started(pid: int) -> float | None:
+    """When process `pid` started (epoch seconds), or None if there is no such process. Same on macOS and Linux."""
+    if pid <= 0:
+        return None
+    cp = subprocess.run(["ps", "-o", "lstart=", "-p", str(pid)], capture_output=True, text=True,
+                        env=os.environ | {"LC_ALL": "C"})
+    return time.mktime(time.strptime(cp.stdout.strip(), "%a %b %d %H:%M:%S %Y")) if cp.stdout.strip() else None
+
+
+def _alive(pid: int, since: float) -> bool:
+    """`pid` is running and started no later than `since` (the mtime of the file that names it). After a reboot the old
+    pid may belong to some other process; that one started after the file was written. `lstart` is whole seconds, the
+    file is always written after its process started (by itself, or by `cmd_auto` after Popen), hence the +1."""
+    start = _started(pid)
+    return start is not None and start <= since + 1
 
 
 def locked_by(run: Run) -> int | None:
     """The pid of the live `vshort auto` working on this run, if any (a dead one's lock doesn't count)."""
     lock = run.file("auto.lock")
     pid = lock.read_text().strip() if lock.exists() else ""
-    return int(pid) if pid.isdigit() and _alive(int(pid)) else None
+    return int(pid) if pid.isdigit() and _alive(int(pid), lock.stat().st_mtime) else None
 
 
 def acquire_lock(run: Run) -> bool:

@@ -82,6 +82,24 @@ def test_lock_refuses_second_and_takes_dead_lock(tmp_path):
     assert not run.file("auto.lock").exists()
 
 
+def test_a_pid_that_started_after_its_file_is_not_our_run(tmp_path):
+    import os, time
+    run = _run(tmp_path)
+    run.file("auto.lock").write_text(str(os.getpid()))
+    assert auto.locked_by(run) == os.getpid()            # this process was running when the lock was written
+    old = time.time() - 10 * 365 * 86400
+    os.utime(run.file("auto.lock"), (old, old))          # lock written long before this process started: pid reused
+    assert auto.locked_by(run) is None
+    auto.set_state(run, "running", pid=os.getpid())
+    os.utime(run.file("auto.json"), (old, old))
+    run.file("auto.lock").unlink()
+    assert not auto.alive_run(run)
+
+
+def test_started_is_none_for_no_such_process():
+    assert auto._started(999999) is None and auto._started(0) is None
+
+
 def test_state_round_trips(tmp_path):
     run = _run(tmp_path)
     assert auto.get_state(run)["state"] == "none"
