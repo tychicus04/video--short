@@ -92,9 +92,11 @@ def _started(pid: int) -> float | None:
 def _alive(pid: int, since: float) -> bool:
     """`pid` is running and started no later than `since` (the mtime of the file that names it). After a reboot the old
     pid may belong to some other process; that one started after the file was written. `lstart` is whole seconds, the
-    file is always written after its process started (by itself, or by `cmd_auto` after Popen), hence the +1."""
+    file is always written after its process started (by itself, or by `cmd_auto` after Popen), hence some slack. 30 s,
+    not 1: right after boot the clock can step forward (chrony makestep) between the process starting and the file being
+    written, and a live run must not look dead and lose its lock. A reused pid starts hours later, never within 30 s."""
     start = _started(pid)
-    return start is not None and start <= since + 1
+    return start is not None and start <= since + 30
 
 
 def locked_by(run: Run) -> int | None:
