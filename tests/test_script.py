@@ -19,10 +19,25 @@ def test_sentence_ends_inside_closing_quote():
     fr = [Fragment(0, 0, 1, 0, 0, '"Quantum-safe,'), Fragment(1, 1, 2, 0, 0, 'no rebuild."'), Fragment(2, 2, 3, 0, 0, "We use it.")]
     assert [x.en for x in group_sentences(fr)] == ['"Quantum-safe, no rebuild."', "We use it."]
 
+
+def test_number_cut_across_captions_is_not_a_sentence_end():
+    fr = [Fragment(0, 0, 1, 0, 0, "draining 2."), Fragment(1, 1, 2, 0, 0, "7 million dollars."),
+          Fragment(2, 2, 3, 0, 0, "Since 2026."), Fragment(3, 3, 4, 0, 0, "3 firms left.")]
+    assert [x.en for x in group_sentences(fr)] == ["draining 2.7 million dollars.", "Since 2026.", "3 firms left."]
+
+
 def test_syllables():
     assert syllables("Đó là tấn công | *Zero-click.*") == 7
     assert syllables("Anthropic: AI viết exploit root Linux") == 11
-    assert syllables("CVE-2026-98432, người dùng") == 3 + 8 + 10 + 2
+    assert syllables("CVE-2026-98432, người dùng") == 3 + 7 + 9 + 2
+
+
+def test_syllables_reads_numbers_aloud():
+    # bảy trăm | hai nghìn không trăm hai mươi sáu | hai mươi chín | mười | một trăm linh năm | một nghìn
+    assert [syllables(n) for n in ["700", "2026", "29", "10", "105", "1000", "0"]] == [2, 7, 3, 1, 4, 2, 1]
+    assert syllables("từ hơn 700 ví") == 5
+    assert syllables("2,7 triệu") == 4  # hai phẩy bảy triệu
+    assert syllables("5.500 ví") == 5  # năm nghìn năm trăm ví
 
 
 def test_check_script_reports_problems():

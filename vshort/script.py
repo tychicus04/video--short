@@ -31,11 +31,17 @@ def merge_text(frags: list[Fragment], texts: dict[int, str]) -> list[Fragment]:
 
 
 def group_sentences(frags: list[Fragment]) -> list[Sentence]:
-    sents, words, start = [], [], None
-    for f in frags:
+    sents, words, start, glue = [], [], None, False
+    for f, nxt in zip(frags, [*frags[1:], None]):
         start = f.start if start is None else start
-        words.append(f.text)
-        if f.text.rstrip().rstrip("\"”’)").endswith((".", "?", "!", "…")):  # '…needed."' ends a sentence too
+        if glue:
+            words[-1] = words[-1].rstrip() + f.text
+        else:
+            words.append(f.text)
+        # "draining 2." + "7 million": one number cut across two captions, not a sentence end
+        # ponytail: short number + "." + caption opening on a digit; "in 2026." + "3 firms" still splits
+        glue = bool(nxt and re.search(r"(?<!\d)\d{1,3}\.$", f.text.rstrip()) and nxt.text[:1].isdigit())
+        if not glue and f.text.rstrip().rstrip("\"”’)").endswith((".", "?", "!", "…")):  # '…needed."' ends a sentence too
             sents.append(Sentence(len(sents) + 1, start, f.end, " ".join(words)))
             words, start = [], None
     if words:
@@ -45,12 +51,37 @@ def group_sentences(frags: list[Fragment]) -> list[Sentence]:
     return sents
 
 
-def syllables(text: str) -> int:
-    """Spoken syllables: a Vietnamese word is one vowel cluster, but "Anthropic" is three, "CVE" three, "2026" about eight."""
+def _number(digits: str) -> int:
+    """Syllables of an integer read aloud: 700 "bảy trăm" is 2, 2026 "hai nghìn không trăm hai mươi sáu" is 7."""
+    groups = [int(g) for g in f"{int(digits):,}".split(",")]
+    if groups == [0]:
+        return 1  # "không"
     n = 0
-    for part in re.findall(r"\d+|[^\W\d_]+", text):
-        if part.isdigit():
-            n += 2 * len(part)  # ponytail: ~2 per digit ("hai nghìn không trăm hai mươi sáu"), not a number reader
+    for i, g in enumerate(groups):
+        if not g:
+            continue
+        hundreds, tens, ones = g // 100, g // 10 % 10, g % 10
+        inner = hundreds or i > 0  # "không trăm" inside a number
+        if inner:
+            n += 2  # "bảy trăm"
+        if tens > 1:
+            n += 2  # "hai mươi"
+        elif tens == 1:
+            n += 1  # "mười"
+        elif ones and inner:
+            n += 1  # "linh"
+        n += ones > 0
+        n += i < len(groups) - 1  # "nghìn", "triệu", "tỷ"
+    return n
+
+
+def syllables(text: str) -> int:
+    """Spoken syllables: a Vietnamese word is one vowel cluster, but "Anthropic" is three, "CVE" three, "2026" seven."""
+    n = 0
+    for part in re.findall(r"\d+(?:\.\d{3})*(?:,\d+)?|[^\W\d_]+", text):
+        if part[0].isdigit():
+            whole, _, frac = part.replace(".", "").partition(",")  # "5.500" thousands, "2,7" decimal
+            n += _number(whole) + (1 + _number(frac) if frac else 0)  # "phẩy"
         elif part.isascii() and part.isupper():
             n += len(part)  # spelled out
         else:
