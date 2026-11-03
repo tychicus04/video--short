@@ -11,8 +11,8 @@
   {"id": "down", "kind": "path", "points": [[520, 525], [520, 790]], "beat": 2, "at": 0.5},
   {"id": "kernel", "kind": "box", "box": [100, 720, 620, 860], "label": "Lõi (kernel)", "beat": 2, "at": 0.5},
   {"id": "hacker", "kind": "box", "box": [430, 900, 640, 1010], "label": "hacker", "beat": 3},
-  {"id": "out", "kind": "path", "points": [[250, 865], [250, 955], [425, 955]], "arrow": true, "beat": 3, "at": 0.2},
-  {"id": "key", "kind": "icon", "icon": "key", "xy": [250, 865], "label": "mật khẩu", "beat": 3, "at": 0.3}
+  {"id": "out", "kind": "path", "points": [[250, 925], [330, 955], [425, 955]], "arrow": true, "beat": 3, "at": 0.2},
+  {"id": "key", "kind": "icon", "icon": "key", "xy": [250, 925], "label": "mật khẩu", "beat": 3, "at": 0.3}
  ],
  "beats": [
   {"idea": "trang web hợp pháp mang mã độc, mã độc chạy ngay",

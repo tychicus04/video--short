@@ -24,7 +24,9 @@ Lời giao cho bạn nói bạn làm việc nào:
 
 Đọc trước ba ví dụ, chúng là chuẩn nhìn. `the-nhan-vien.json` + `.bind.json` (lời: `.script.json`, câu 3–8) là chuẩn của **ẩn dụ**: kỹ
 sư cắm chìa của mình, máy quét ✓; kẻ gian lấy bản sao thẻ (`attach`), kẹp sau thẻ mình, cắm chìa của hắn; máy quét ✓ thẻ đầu nhưng mũi
-tên so cả hai thẻ với danh sách (✗ thẻ hắn, ✓ thẻ kỹ sư); barie `open`; vào trong, máy ảo rồi máy chủ host chuyển đỏ. Hai ví dụ cũ: `~/video-pipeline/examples/motion/coruna.json` + `coruna.bind.json` (lời:
+tên so cả hai thẻ với danh sách (✗ thẻ hắn, ✓ thẻ kỹ sư); hắn đi tới cạnh tòa nhà, máy ảo rồi máy chủ host chuyển đỏ. Bố cục
+của nó là chuẩn **gọn**: ít thứ, mỗi thứ một chỗ riêng (người ở trên, máy quét và danh sách ở giữa, tòa nhà dưới phải), dấu và mũi
+tên nằm trong khoảng trống giữa hai thứ, không vệt đường đi dài. Hai ví dụ cũ: `~/video-pipeline/examples/motion/coruna.json` + `coruna.bind.json` (lời:
 `coruna.script.json`): trang web hợp pháp mang chấm đỏ "mã độc" → chấm đi theo đường vào Safari trong khung "sandbox", dội vào tường,
 tường nứt, chấm đi xuống "Lõi (kernel)" chuyển đỏ → mật khẩu bay theo mũi tên về "hacker". `goi-tin.json` + `goi-tin.bind.json`:
 gói tin chạy từ A sang B, kẻ nghe lén ở giữa, một bản chép đi theo mũi tên xuống hắn.
@@ -111,6 +113,10 @@ mới** (mục dưới). Hộp có nhãn (`box`) chỉ dành cho một lớp hay
 
 - Mỗi nhịp máy quay phóng vào vùng của nhịp (1×–2×), trôi chậm khi giữ, lướt sang nhịp sau, cuối đoạn lùi ra toàn khung: khung cuối ở 1×
   phải đọc được cả chuỗi. Mỗi nhịp sau nhịp đầu bắt đầu sớm 0,2 s so với chữ của nó (hình đi trước lời một chút).
+- **Không đè nhau** (code kiểm ở mỗi chỗ một thứ dừng lại: sau khi vẽ ra, đi tới, gắn, mở): nhãn không chạm nhãn, nhãn không nằm
+  lên hình khác, hai hình không đè một phần lên nhau. Được: một thứ nằm **gọn trong** thứ khác (ô "máy ảo" trong tòa nhà, ✓ trên bảng),
+  đồ người đang cầm nằm trên người đó, chấm và dấu nằm trên mép một thứ. Cắm chìa vào máy: `attach` chìa vào máy (`on` là cái máy),
+  không `move` chìa đè lên nó. Báo "đè lên" thì dời một trong hai, hoặc bỏ bớt một thứ.
 - **Không có quãng chết**: không quá 1,5 s mà không có gì đang vẽ ra, di chuyển, đổi màu, mở/đóng hay máy quay đang lướt (`pulse` và
   trôi chậm không tính). Nhịp dài thì chia thành nhiều hành động nhỏ, đổi trạng thái mỗi 1–2 s.
 - **Động từ → chuyển động**: lấy/sao chép → `attach` một bản sao; gửi/chuyển → `path` có `arrow` và thứ đó chạy theo; kiểm tra/so →

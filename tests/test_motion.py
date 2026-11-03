@@ -275,8 +275,8 @@ def test_figure_can_be_the_actor(design, tmp_path):
     d = json.loads(json.dumps(design))
     d["things"][0] = {"id": "atk", "kind": "figure", "role": "attacker", "xy": [160, 300], "label": "kẻ tấn công",
                       "beat": 1}
-    assert motion.design_problems(d, WORDS, tmp_path) == []
-    d["things"][0]["role"] = "wizard"
+    assert [p for p in motion.design_problems(d, WORDS, tmp_path) if "đè" not in p] == []
+    d["things"][0]["role"] = "wizard"  # (a figure walking into the server box trips the overlap rule: not this test)
     assert any("role" in p for p in motion.design_problems(d, WORDS, tmp_path))
 
 
@@ -443,3 +443,38 @@ def test_the_camera_keeps_the_actor_in_frame(design, tmp_path):
     v = sc.view(7.0)
     (sx0, sy0), (sx1, sy1) = kit.screen(v, x0, y0), kit.screen(v, x1, y1)
     assert sx0 >= 0 and sx1 <= kit.W and sy0 >= 0 and sy1 <= kit.H
+
+
+
+# --- Tai 03/11: "lộn xộn, ghi đè lên nhau" — code checks overlaps, not the agent's eye
+
+def _overlaps(d, tmp_path):
+    return [p for p in motion.design_problems(d, WORDS, tmp_path) if "đè" in p]
+
+
+def test_labels_that_overlap_are_reported(design, tmp_path):
+    assert _overlaps(design, tmp_path) == []
+    d = json.loads(json.dumps(design))
+    d["things"].append({"id": "t", "kind": "text", "xy": [520, 166], "label": "dữ liệu", "beat": 1})  # on srv's label
+    assert any("'t'" in p and "'srv'" in p for p in _overlaps(d, tmp_path))
+
+
+def test_a_thing_half_over_another_is_reported_but_nesting_is_fine(design, tmp_path):
+    d = json.loads(json.dumps(design))
+    d["things"].append({"id": "b", "kind": "box", "box": [560, 380, 660, 470], "label": "tệp", "beat": 1})  # half over srv
+    assert any("'b'" in p for p in _overlaps(d, tmp_path))
+    d["things"][-1]["box"] = [410, 210, 500, 280]  # inside srv, clear of atk
+    assert not any("'b'" in p for p in _overlaps(d, tmp_path))
+
+
+def test_what_someone_carries_may_sit_on_them(design, tmp_path):
+    d = json.loads(json.dumps(design))
+    d["things"].append({"id": "k", "kind": "icon", "icon": "key", "xy": [150, 330], "beat": 1})  # on atk's label
+    assert any("'k'" in p for p in _overlaps(d, tmp_path))
+    d["beats"][0]["acts"].append({"do": "attach", "thing": "k", "on": "atk", "offset": [10, 0], "at": 0})
+    assert not any("'k'" in p for p in _overlaps(d, tmp_path))
+
+
+def test_overlap_is_checked_where_things_come_to_rest_not_mid_move(design, tmp_path):
+    # atk flies across srv on its way to mem: only where it stops counts
+    assert _overlaps(design, tmp_path) == []

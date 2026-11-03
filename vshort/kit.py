@@ -341,6 +341,14 @@ def _screen(thing: dict) -> tuple[tuple, list[list], tuple, int]:
 
 def bbox(thing: dict) -> tuple[float, float, float, float]:
     """Extent of the thing including its label (a mover where it starts)."""
+    (x0, y0, x1, y1), labels = parts(thing)
+    for l, t, r, b in labels:
+        x0, y0, x1, y1 = min(x0, l), min(y0, t), max(x1, r), max(y1, b)
+    return float(x0), float(y0), float(x1), float(y1)
+
+
+def parts(thing: dict) -> tuple[tuple[float, float, float, float], list[tuple[float, float, float, float]]]:
+    """The thing's own extent and, apart, the extent of each line of its label (label, means)."""
     kind = thing["kind"]
     if kind in BOXED:
         x0, y0, x1, y1 = thing["box"]
@@ -353,14 +361,15 @@ def bbox(thing: dict) -> tuple[float, float, float, float]:
                            "crack": (30, 11, 11), "text": (0, 0, 0), "figure": (40, 112, 92),
                            "check": (26, 22, 22), "cross": (26, 22, 22)}[kind]
         x0, y0, x1, y1 = x - rx, y - top, x + rx, y + bottom
+    labels = []
     if thing.get("label") and kind not in ("path", "crack"):
         em = label_em(thing) or MIN_LABEL_EM
         (lx, ly), mxy = _label_layout(thing)
         lines = [((lx, ly), thing["label"], em)] + ([(mxy, "= " + thing["means"], SMALL_EM)] if mxy else [])
         for (cx, cy), text, size in lines:
             l, t, r, b = _font(size).getbbox(text, anchor="mm")
-            x0, y0, x1, y1 = min(x0, cx + l), min(y0, cy + t), max(x1, cx + r), max(y1, cy + b)
-    return float(x0), float(y0), float(x1), float(y1)
+            labels.append((cx + l, cy + t, cx + r, cy + b))
+    return (float(x0), float(y0), float(x1), float(y1)), labels
 
 
 def _anchor(thing: dict) -> tuple[float, float]:

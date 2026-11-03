@@ -7,8 +7,8 @@
    "id": "e",
    "kind": "figure",
    "xy": [
-    140,
-    240
+    160,
+    230
    ],
    "label": "kỹ sư",
    "color": "green",
@@ -19,21 +19,22 @@
    "kind": "shape",
    "shape": "the-nhan-vien",
    "box": [
-    112,
-    226,
-    168,
-    264
+    132,
+    221,
+    188,
+    259
    ],
    "color": "green",
-   "beat": 1
+   "beat": 1,
+   "at": 0
   },
   {
    "id": "ek",
    "kind": "icon",
    "icon": "key",
    "xy": [
-    210,
-    280
+    90,
+    270
    ],
    "beat": 1,
    "at": 0.05
@@ -42,7 +43,7 @@
    "id": "t1",
    "kind": "text",
    "xy": [
-    400,
+    380,
     140
    ],
    "label": "thẻ = chứng chỉ",
@@ -53,7 +54,7 @@
    "id": "t2",
    "kind": "text",
    "xy": [
-    400,
+    380,
     200
    ],
    "label": "chìa = khóa riêng",
@@ -65,10 +66,10 @@
    "kind": "shape",
    "shape": "may-quet",
    "box": [
-    250,
-    500,
-    330,
-    640
+    280,
+    450,
+    360,
+    590
    ],
    "label": "máy quét",
    "beat": 1,
@@ -78,62 +79,49 @@
    "id": "ok1",
    "kind": "check",
    "xy": [
-    372,
-    560
+    415,
+    470
    ],
    "beat": 1,
    "at": 0.75
-  },
-  {
-   "id": "br",
-   "kind": "shape",
-   "shape": "barie",
-   "box": [
-    60,
-    650,
-    220,
-    770
-   ],
-   "beat": 2,
-   "at": 0.15
   },
   {
    "id": "tn",
    "kind": "shape",
    "shape": "toa-nha-tang",
    "box": [
-    180,
-    840,
-    640,
-    1045
+    330,
+    720,
+    670,
+    965
    ],
    "label": "cụm LXD",
    "beat": 2,
-   "at": 0.25
+   "at": 0.1
   },
   {
    "id": "bt",
    "kind": "shape",
    "shape": "bang-ten",
    "box": [
-    430,
-    460,
-    650,
-    614
+    470,
+    450,
+    670,
+    590
    ],
-   "label": "danh sách tin cậy",
+   "label": "danh sách",
    "beat": 2,
-   "at": 0.4
+   "at": 0.25
   },
   {
    "id": "ok2",
    "kind": "check",
    "xy": [
-    618,
-    500
+    640,
+    486
    ],
    "beat": 2,
-   "at": 0.72
+   "at": 0.6
   },
   {
    "id": "a",
@@ -141,24 +129,10 @@
    "role": "attacker",
    "xy": [
     560,
-    240
+    220
    ],
    "label": "kẻ tấn công",
    "beat": 3
-  },
-  {
-   "id": "cp",
-   "kind": "shape",
-   "shape": "the-nhan-vien",
-   "box": [
-    112,
-    226,
-    168,
-    264
-   ],
-   "color": "green",
-   "beat": 3,
-   "at": 0.2
   },
   {
    "id": "ab",
@@ -166,29 +140,44 @@
    "shape": "the-nhan-vien",
    "box": [
     532,
-    226,
+    211,
     588,
-    264
+    249
    ],
    "color": "red",
-   "beat": 3
+   "beat": 3,
+   "at": 0
   },
   {
    "id": "ak",
    "kind": "icon",
    "icon": "key",
    "xy": [
-    630,
-    280
+    490,
+    260
    ],
    "beat": 3
+  },
+  {
+   "id": "cp",
+   "kind": "shape",
+   "shape": "the-nhan-vien",
+   "box": [
+    212,
+    226,
+    268,
+    264
+   ],
+   "color": "green",
+   "beat": 3,
+   "at": 0.2
   },
   {
    "id": "t3",
    "kind": "text",
    "xy": [
     360,
-    120
+    140
    ],
    "label": "bản sao thẻ",
    "beat": 3,
@@ -198,90 +187,44 @@
    "id": "nokey",
    "kind": "cross",
    "xy": [
-    198,
-    255
+    100,
+    270
    ],
    "beat": 3,
    "at": 0.7
   },
   {
-   "id": "walk1",
-   "kind": "path",
-   "points": [
-    [
-     560,
-     240
-    ],
-    [
-     400,
-     300
-    ],
-    [
-     160,
-     420
-    ],
-    [
-     190,
-     580
-    ]
+   "id": "t5",
+   "kind": "text",
+   "xy": [
+    360,
+    140
    ],
-   "color": "red",
-   "beat": 4,
-   "at": 0.2
-  },
-  {
-   "id": "walk2",
-   "kind": "path",
-   "points": [
-    [
-     190,
-     580
-    ],
-    [
-     150,
-     760
-    ]
-   ],
-   "color": "red",
+   "label": "đáng lẽ chỉ xét thẻ",
    "beat": 5,
-   "at": 0.84
+   "at": 0.05
   },
   {
    "id": "ok3",
    "kind": "check",
    "xy": [
-    372,
-    560
+    415,
+    470
    ],
    "beat": 5,
    "at": 0.3
-  },
-  {
-   "id": "t5",
-   "kind": "text",
-   "xy": [
-    210,
-    380
-   ],
-   "label": "đáng lẽ chỉ xét thẻ",
-   "beat": 5,
-   "at": 0.12
   },
   {
    "id": "p1",
    "kind": "path",
    "points": [
     [
-     336,
-     600
+     364,
+     540
     ],
     [
-     400,
-     600
-    ],
-    [
-     428,
-     585
+     466,
+     556
     ]
    ],
    "arrow": true,
@@ -293,8 +236,8 @@
    "id": "no",
    "kind": "cross",
    "xy": [
-    395,
-    640
+    415,
+    615
    ],
    "beat": 5,
    "at": 0.58
@@ -304,16 +247,12 @@
    "kind": "path",
    "points": [
     [
-     336,
-     520
+     364,
+     515
     ],
     [
-     390,
-     505
-    ],
-    [
-     428,
-     502
+     466,
+     486
     ]
    ],
    "arrow": true,
@@ -325,39 +264,39 @@
    "id": "vm",
    "kind": "box",
    "box": [
-    285,
-    905,
-    535,
-    962
+    345,
+    790,
+    655,
+    862
    ],
    "label": "máy ảo",
    "beat": 6,
-   "at": 0.15
+   "at": 0.1
   },
   {
    "id": "host",
    "kind": "box",
    "box": [
-    285,
-    975,
-    535,
-    1035
+    345,
+    876,
+    655,
+    952
    ],
    "label": "máy chủ host",
    "beat": 6,
-   "at": 0.3
+   "at": 0.25
   },
   {
    "id": "p3",
    "kind": "path",
    "points": [
     [
-     205,
-     790
+     258,
+     800
     ],
     [
-     300,
-     900
+     343,
+     826
     ]
    ],
    "arrow": true,
@@ -386,7 +325,7 @@
      "thing": "ek",
      "on": "e",
      "offset": [
-      70,
+      -70,
       40
      ],
      "at": 0.05,
@@ -396,20 +335,21 @@
      "do": "move",
      "thing": "e",
      "to": [
-      190,
+      210,
       580
      ],
-     "at": 0.3,
+     "at": 0.25,
      "dur": 1.6
     },
     {
-     "do": "move",
+     "do": "attach",
      "thing": "ek",
-     "to": [
-      318,
-      622
+     "on": "sc",
+     "offset": [
+      0,
+      -7
      ],
-     "at": 0.55,
+     "at": 0.6,
      "dur": 0.6
     },
     {
@@ -417,16 +357,16 @@
      "thing": "ek",
      "on": "e",
      "offset": [
-      70,
+      -70,
       40
      ],
-     "at": 0.85,
-     "dur": 0.5
+     "at": 0.9,
+     "dur": 0.4
     }
    ]
   },
   {
-   "idea": "cụm LXD mở cổng ra mạng; danh sách tin cậy có kỹ sư; kẻ tấn công đứng chờ",
+   "idea": "cụm LXD mở ra mạng; danh sách tin cậy có kỹ sư",
    "acts": [
     {
      "do": "hide",
@@ -447,11 +387,11 @@
      "do": "move",
      "thing": "e",
      "to": [
-      140,
-      240
+      160,
+      230
      ],
-     "at": 0.05,
-     "dur": 1.6
+     "at": 0.5,
+     "dur": 2.2
     }
    ]
   },
@@ -474,7 +414,7 @@
      "thing": "ak",
      "on": "a",
      "offset": [
-      70,
+      -70,
       40
      ],
      "at": 0,
@@ -485,7 +425,7 @@
      "thing": "cp",
      "on": "a",
      "offset": [
-      -62,
+      62,
       12
      ],
      "at": 0.35,
@@ -520,34 +460,32 @@
     {
      "do": "move",
      "thing": "a",
-     "path": "walk1",
-     "at": 0.25,
+     "to": [
+      210,
+      580
+     ],
+     "at": 0.2,
      "dur": 2.4
     },
     {
      "do": "hide",
      "thing": "e",
-     "at": 0.8
+     "at": 0.85
     }
    ]
   },
   {
    "idea": "máy quét chỉ xác nhận thẻ đầu, nhưng so cả hai thẻ với danh sách và cho hắn qua",
-   "view": [
-    60,
-    360,
-    660,
-    880
-   ],
    "acts": [
     {
-     "do": "move",
+     "do": "attach",
      "thing": "ak",
-     "to": [
-      318,
-      622
+     "on": "sc",
+     "offset": [
+      0,
+      -7
      ],
-     "at": 0.02,
+     "at": 0.12,
      "dur": 0.6
     },
     {
@@ -555,23 +493,21 @@
      "thing": "ak",
      "on": "a",
      "offset": [
-      70,
+      -70,
       40
      ],
-     "at": 0.25,
+     "at": 0.35,
      "dur": 0.5
-    },
-    {
-     "do": "open",
-     "thing": "br",
-     "at": 0.78
     },
     {
      "do": "move",
      "thing": "a",
-     "path": "walk2",
-     "at": 0.88,
-     "dur": 1.2
+     "to": [
+      210,
+      800
+     ],
+     "at": 0.82,
+     "dur": 1.3
     }
    ]
   },

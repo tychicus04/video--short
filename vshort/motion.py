@@ -3,6 +3,7 @@ exists — checked, timed, previewed as a sheet. Earlier beats fade back as the 
 through the whole canvas."""
 import json
 import math
+from itertools import combinations
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -320,6 +321,58 @@ def _quiet_problems(sc: Scene, end: float) -> list[str]:
     return probs
 
 
+def _meet(a, b, slack: float = 3) -> bool:
+    return min(a[2], b[2]) - max(a[0], b[0]) > slack and min(a[3], b[3]) - max(a[1], b[1]) > slack
+
+
+def _within(a, b, slack: float = 3) -> bool:
+    return a[0] >= b[0] - slack and a[1] >= b[1] - slack and a[2] <= b[2] + slack and a[3] <= b[3] + slack
+
+
+def _clash(bi, li, bj, lj, soft: bool = False) -> bool:
+    """Two things in each other's way: labels touching, a label on the other's drawing, or two drawings half over
+    each other. One drawing (or label) wholly inside another is nesting, not clutter: a room in a building. `soft`:
+    one is a dot or a mark (a packet on a machine's edge, a crack on a wall), whose drawing may sit on another's."""
+    if not soft and _meet(bi, bj) and not (_within(bi, bj) or _within(bj, bi)):
+        return True
+    return (any(_meet(l, m) for l in li for m in lj)
+            or any(_meet(l, bj) and not _within(l, bj) for l in li)
+            or any(_meet(m, bi) and not _within(m, bi) for m in lj))
+
+
+def _overlap_problems(sc: Scene) -> list[str]:
+    """Things that overlap where they come to rest (after each draw, move, attach or opening): code, not the agent's
+    eye, keeps the canvas clear. What someone carries may sit on them; a thing on its way somewhere is not checked."""
+    by_id = {th["id"]: th for th in sc.things}
+    drawn = {a.thing: a.t0 for a in sc.acts if a.do == "draw"}
+    gone: dict[str, float] = {}
+    for a in sc.acts:
+        if a.do == "hide" or (a.do == "move" and a.vanish):
+            gone[a.thing] = min(gone.get(a.thing, math.inf), a.t0)
+    found, probs = set(), []
+    for t in sorted({a.t1 + 0.01 for a in sc.acts if a.do in ("draw", "move", "attach", "open") and math.isfinite(a.t1)}):
+        here = []
+        for th in sc.things:
+            i = th["id"]
+            if th["kind"] == "path" or not drawn.get(i, math.inf) <= t < gone.get(i, math.inf):
+                continue
+            if th["kind"] in kit.MOVERS:
+                p = kit._position(th, sc.acts, t, by_id)
+                if math.dist(p, kit._position(th, sc.acts, t + 0.05, by_id)) > 0.5:
+                    continue  # still on its way
+                th = kit.at_pos(th, p)
+            body, labels = kit.parts(th)
+            here.append((i, body, labels, _holder(i, sc.acts, t), th["kind"] in ("dot", *MARKS)))
+        for (i, bi, li, hi, si), (j, bj, lj, hj, sj) in combinations(here, 2):
+            if (i, j) in found or j == hi or i == hj or (hi is not None and hi == hj):
+                continue
+            if _clash(bi, li, bj, lj, si or sj):
+                found.add((i, j))
+                probs.append(f"motion.json: lúc {t:.1f} s {i!r} đè lên {j!r} (hình hay nhãn chồng nhau): dời một trong hai "
+                             "ra, hoặc đặt hẳn cái nhỏ vào trong cái lớn")
+    return probs
+
+
 def brief_words(brief_md: str) -> set[str]:
     """The words of the brief: what a label may say before there is a Vietnamese script."""
     return set(_words(brief_md))
@@ -375,7 +428,7 @@ def design_problems(doc, said: set[str], run_dir: Path | None, style: bool = Tru
     if probs:
         return probs
     sc = timed(doc, *estimated(doc), run_dir)
-    return _order_problems(sc) + (_quiet_problems(sc, estimated(doc)[1]) if style else [])
+    return _order_problems(sc) + (_quiet_problems(sc, estimated(doc)[1]) + _overlap_problems(sc) if style else [])
 
 
 def estimated(doc: dict) -> tuple[list[float], float]:
@@ -649,7 +702,7 @@ def bind_problems(doc, bind, script: list[dict], run_dir: Path | None, visuals: 
     if not probs:
         starts, end = _starts(bind, estimate(script), script)
         sc = timed(doc, starts, end, run_dir)
-        probs += _order_problems(sc) + (_quiet_problems(sc, end) if style else [])
+        probs += _order_problems(sc) + (_quiet_problems(sc, end) + _overlap_problems(sc) if style else [])
     if visuals is not None:
         probs += clashes(visuals, set(want))
     return probs
