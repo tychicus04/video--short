@@ -24,6 +24,12 @@ def test_nothing_shows_before_its_draw_act():
     assert img.size == (W, H) and _ink(img, (0, 0, W, H)) == 0
 
 
+def test_view_moves_and_enlarges_the_ink():
+    acts = [Act("draw", "d", 0.0, 0.8)]
+    img = draw([DOT | {"xy": [250, 350]}], acts, 2.0, view=(250.0, 350.0, 2.0))
+    assert _ink(img, (330, 543, 390, 603)) > 0 and _ink(img, (240, 340, 260, 360)) == 0
+
+
 def test_draw_on_grows_then_holds():
     acts = [Act("draw", "p", 0.0, 0.8)]
     half, done, later = (_ink(draw([PHONE], acts, t), (0, 0, W, H)) for t in (0.4, 0.8, 3.0))

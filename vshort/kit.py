@@ -14,6 +14,8 @@ W, H, SS = 720, 1280, 2  # frames are drawn at SS x and reduced: smooth pencil l
 INK, RED, GREEN, BLUE, GRAY = (62, 62, 68), (196, 48, 40), (60, 140, 80), (70, 110, 160), (150, 150, 155)
 COLORS = {"ink": INK, "red": RED, "green": GREEN, "blue": BLUE}
 SAFE = (40, 96, 680, 1050)  # above the subtitle band, under the logo (top right, y 24–80)
+SX, SY = (SAFE[0] + SAFE[2]) / 2, (SAFE[1] + SAFE[3]) / 2  # the camera's centre on screen
+FULL = (SX, SY, 1.0)  # (cx, cy, zoom): the whole canvas, drawn as it is
 LABEL_EM, SMALL_EM, MIN_LABEL_EM, MAX_LABEL = 44, 34, 32, 20
 DRAW, TURN, HIDE, MOVE = 0.8, 0.6, 0.4, 1.2  # seconds: draw on, turn red, erase, default move/bounce
 DIM = 0.55  # how far a thing the voice has moved on from fades towards the paper
@@ -76,17 +78,28 @@ def _wobble(pts: tuple, seed: int) -> tuple[np.ndarray, np.ndarray]:
     return q, np.concatenate([[0], np.cumsum(np.hypot(*np.diff(q, axis=0).T))])
 
 
-def _stroke(d: ImageDraw.ImageDraw, pts, p: float, color, width: int, seed: int, dash: int = 0) -> None:
-    """The first fraction p of a wobbly polyline (by length), optionally dashed."""
+def screen(view, x: float, y: float) -> tuple[float, float]:
+    """Where canvas point (x, y) lands on the frame through the camera `view` = (cx, cy, zoom)."""
+    cx, cy, z = view
+    return (x - cx) * z + SX, (y - cy) * z + SY
+
+
+def _stroke(d: ImageDraw.ImageDraw, pts, p: float, color, width: int, seed: int, dash: int = 0, view=FULL) -> None:
+    """The first fraction p of a wobbly polyline (by length), optionally dashed; wobbled on the canvas, then seen
+    through the camera."""
     if p <= 0 or len(pts) < 2:
         return
     q, cum = _wobble(tuple(map(tuple, pts)), seed)
     keep = cum <= cum[-1] * p
-    q, cum = q[keep] * SS, cum[keep]
+    q, cum = q[keep], cum[keep]
+    if view != FULL:
+        q = (q - view[:2]) * view[2] + (SX, SY)
+        width, dash = width * view[2], dash * view[2]
+    q, width = q * SS, round(width * SS)
     if len(q) < 2:
         return
     if not dash:
-        d.line([tuple(v) for v in q], fill=color, width=width * SS, joint="curve")
+        d.line([tuple(v) for v in q], fill=color, width=width, joint="curve")
         return
     on = (cum // dash) % 2 == 0
     run: list[tuple] = []
@@ -95,10 +108,10 @@ def _stroke(d: ImageDraw.ImageDraw, pts, p: float, color, width: int, seed: int,
             run.append(tuple(v))
         elif run:
             if len(run) > 1:
-                d.line(run, fill=color, width=width * SS)
+                d.line(run, fill=color, width=width)
             run = []
     if len(run) > 1:
-        d.line(run, fill=color, width=width * SS)
+        d.line(run, fill=color, width=width)
 
 
 def _rrect(x0, y0, x1, y1, r) -> list[tuple[float, float]]:
@@ -118,10 +131,12 @@ def _along(pts, p: float) -> tuple[float, float]:
     return tuple(a[k] + (a[k + 1] - a[k]) * u)
 
 
-def _write(img: Image.Image, xy, text: str, em: int, p: float, color) -> None:
+def _write(img: Image.Image, xy, text: str, em: int, p: float, color, view=FULL) -> None:
     """Handwriting: the text wiped in from left to right, centred on xy (drawn on a small layer: fast)."""
     if p <= 0 or not text:
         return
+    if view != FULL:
+        xy, em = screen(view, *xy), max(1, round(em * view[2]))
     f = _font(em * SS)
     l, t, r, b = f.getbbox(text, anchor="mm")
     x, y = xy[0] * SS, xy[1] * SS
@@ -294,7 +309,7 @@ def _dimmed(mine: list[Act], t: float) -> float:
     return level
 
 
-def _draw_thing(img: Image.Image, d: ImageDraw.ImageDraw, thing: dict, acts: list[Act], t: float) -> None:
+def _draw_thing(img: Image.Image, d: ImageDraw.ImageDraw, thing: dict, acts: list[Act], t: float, view=FULL) -> None:
     f = _shown(thing, acts, t)
     if f <= 0:
         return
@@ -312,26 +327,28 @@ def _draw_thing(img: Image.Image, d: ImageDraw.ImageDraw, thing: dict, acts: lis
         if kind == "dot":
             glow = any(a.do == "pulse" and a.t0 <= t <= a.t1 for a in mine)
             fill = red if r else color
-            rad = DOT_R * f
+            sx, sy = screen(view, x, y)
+            z = view[2]
+            rad = DOT_R * f * z
             if glow:
-                g = (rad + 8 + 6 * (0.5 + 0.5 * math.sin(t * 5))) * SS
-                d.ellipse((x * SS - g, y * SS - g, x * SS + g, y * SS + g), outline=fill, width=2 * SS)
-            d.ellipse((x * SS - rad * SS, y * SS - rad * SS, x * SS + rad * SS, y * SS + rad * SS), fill=fill)
+                g = (rad + (8 + 6 * (0.5 + 0.5 * math.sin(t * 5))) * z) * SS
+                d.ellipse((sx * SS - g, sy * SS - g, sx * SS + g, sy * SS + g), outline=fill, width=round(2 * SS * z))
+            d.ellipse((sx * SS - rad * SS, sy * SS - rad * SS, sx * SS + rad * SS, sy * SS + rad * SS), fill=fill)
         else:
             for k, s in enumerate(_icon(thing["icon"], x, y - 15)):
-                _stroke(d, s, f, red if r else color, 5, seed + k)
+                _stroke(d, s, f, red if r else color, 5, seed + k, view=view)
         lx, ly = _label_at(thing, (x, y))
     else:
         for k, (pts, w, dash) in enumerate(_shape(thing)):
-            _stroke(d, pts, f, outline, w, seed + k, dash)
+            _stroke(d, pts, f, outline, w, seed + k, dash, view)
             if r:
-                _stroke(d, pts, r, red, w + 2, seed + k, dash)
+                _stroke(d, pts, r, red, w + 2, seed + k, dash, view)
         if thing.get("url"):
             bar, lines, uxy, uem = _screen(thing)
-            _stroke(d, _rrect(*bar, 14), f, ink, 3, seed + 50)
+            _stroke(d, _rrect(*bar, 14), f, ink, 3, seed + 50, view=view)
             for k, ln in enumerate(lines):
-                _stroke(d, ln, f, gray, 3, seed + 60 + k)
-            _write(img, uxy, thing["url"], uem, (f - 0.3) / 0.7, ink)
+                _stroke(d, ln, f, gray, 3, seed + 60 + k, view=view)
+            _write(img, uxy, thing["url"], uem, (f - 0.3) / 0.7, ink, view)
         if kind in ("path", "crack"):
             return
         lx, ly = _label_at(thing)
@@ -339,17 +356,18 @@ def _draw_thing(img: Image.Image, d: ImageDraw.ImageDraw, thing: dict, acts: lis
     say = next((a.say for a in reversed(reds) if a.say), "") if kind == "box" else ""
     if say:
         ly -= 0.55 * em
-    _write(img, (lx, ly), label, em, (f - 0.3) / 0.7, color)
+    _write(img, (lx, ly), label, em, (f - 0.3) / 0.7, color, view)
     if r:
-        _write(img, (lx, ly), label, em, r * 2, red)
+        _write(img, (lx, ly), label, em, r * 2, red, view)
     if say:
-        _write(img, (lx, ly + 1.1 * em), say, SMALL_EM, r * 2 - 0.4, red)
+        _write(img, (lx, ly + 1.1 * em), say, SMALL_EM, r * 2 - 0.4, red, view)
 
 
-def draw(things: list[dict], acts: list[Act], t: float) -> Image.Image:
-    """The W x H frame at time t: every thing in list order, later ones on top."""
+def draw(things: list[dict], acts: list[Act], t: float, view=FULL) -> Image.Image:
+    """The W x H frame at time t through the camera `view` (FULL: the whole canvas): every thing in list order, later
+    ones on top. The paper stays put; only the ink is moved and enlarged."""
     img = _paper().copy()
     d = ImageDraw.Draw(img)
     for thing in things:
-        _draw_thing(img, d, thing, acts, t)
+        _draw_thing(img, d, thing, acts, t, view)
     return img.reduce(SS)
