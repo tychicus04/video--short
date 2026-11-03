@@ -183,6 +183,20 @@ def _label_at(thing: dict, xy=None) -> tuple[float, float]:
             "figure": (x, y + 125)}.get(kind, (x, y))
 
 
+def _label_layout(thing: dict, xy=None) -> tuple[tuple[float, float], tuple[float, float] | None]:
+    """Centre of the label and of its means line ("= chứng chỉ") under it, None without one. A boxed thing's label
+    moves up so the means line stays clear of the box."""
+    lx, ly = _label_at(thing, xy)
+    if not thing.get("means"):
+        return (lx, ly), None
+    em = label_em(thing) or MIN_LABEL_EM
+    if thing["kind"] == "box":
+        ly -= 0.55 * em
+    elif thing["kind"] in BOXED:
+        ly -= 1.1 * SMALL_EM
+    return (lx, ly), (lx, ly + 1.1 * em)
+
+
 def _bezier(p0, p1, p2, p3, n: int = 12) -> list[tuple[float, float]]:
     return [tuple((1 - u) ** 3 * a + 3 * (1 - u) ** 2 * u * b + 3 * (1 - u) * u * u * c + u ** 3 * d
                   for a, b, c, d in zip(p0, p1, p2, p3)) for u in np.linspace(0, 1, n)]
@@ -339,9 +353,11 @@ def bbox(thing: dict) -> tuple[float, float, float, float]:
         x0, y0, x1, y1 = x - rx, y - top, x + rx, y + bottom
     if thing.get("label") and kind not in ("path", "crack"):
         em = label_em(thing) or MIN_LABEL_EM
-        lx, ly = _label_at(thing)
-        l, t, r, b = _font(em).getbbox(thing["label"], anchor="mm")
-        x0, y0, x1, y1 = min(x0, lx + l), min(y0, ly + t), max(x1, lx + r), max(y1, ly + b)
+        (lx, ly), mxy = _label_layout(thing)
+        lines = [((lx, ly), thing["label"], em)] + ([(mxy, "= " + thing["means"], SMALL_EM)] if mxy else [])
+        for (cx, cy), text, size in lines:
+            l, t, r, b = _font(size).getbbox(text, anchor="mm")
+            x0, y0, x1, y1 = min(x0, cx + l), min(y0, cy + t), max(x1, cx + r), max(y1, cy + b)
     return float(x0), float(y0), float(x1), float(y1)
 
 
@@ -404,6 +420,21 @@ def _shown(thing: dict, acts: list[Act], t: float) -> float:
     return on
 
 
+def _tip(d: ImageDraw.ImageDraw, pts, p: float, view, seed: int) -> None:
+    """A small pencil at the point the stroke has been drawn to (same wobble as the stroke: same seed)."""
+    q, cum = _wobble(tuple(map(tuple, pts)), seed)
+    x, y = q[cum <= cum[-1] * p][-1]
+    ux, uy = 0.5, -0.866  # 60 degrees up and to the right
+    for a, b, w in ((0, 6, 3), (6, 28, 6)):  # the point, then the shaft
+        seg = [screen(view, x + ux * k, y + uy * k) for k in (a, b)]
+        d.line([(sx * SS, sy * SS) for sx, sy in seg], fill=INK, width=round(w * SS * view[2]))
+
+
+def _plained(mine: list[Act], t: float) -> float:
+    """How far a means line has faded at t (0 to 1)."""
+    return max((ease((t - a.t0) / max(a.t1 - a.t0, 1e-6)) for a in mine if a.do == "plain" and a.t0 <= t), default=0.0)
+
+
 def _opened(mine: list[Act], t: float) -> float:
     """How far the thing's hinged part is open at t (0 to 1): open and close acts in order."""
     level = 0.0
@@ -447,8 +478,11 @@ def _draw_thing(img: Image.Image, d: ImageDraw.ImageDraw, thing: dict, acts: lis
                 d.ellipse((sx * SS - g, sy * SS - g, sx * SS + g, sy * SS + g), outline=fill, width=round(2 * SS * z))
             d.ellipse((sx * SS - rad * SS, sy * SS - rad * SS, sx * SS + rad * SS, sy * SS + rad * SS), fill=fill)
         elif kind == "icon":
-            for k, s in enumerate(_icon(thing["icon"], x, y - 15)):
+            lead = _icon(thing["icon"], x, y - 15)
+            for k, s in enumerate(lead):
                 _stroke(d, s, f, red if r else color, 5, seed + k, view=view)
+            if 0 < f < 1:
+                _tip(d, lead[0], f, view, seed)
         else:
             if kind == "figure":
                 px, py = _position(thing, acts, t - 0.05, by_id)
@@ -463,7 +497,9 @@ def _draw_thing(img: Image.Image, d: ImageDraw.ImageDraw, thing: dict, acts: lis
                 _stroke(d, pts, f, base, w, seed + k, dash, view)
                 if r:
                     _stroke(d, pts, r, red, w + 2, seed + k, dash, view)
-        lx, ly = _label_at(at_pos(thing, (x, y)) if kind == "shape" else thing, (x, y))
+            if 0 < f < 1 and strokes:
+                _tip(d, strokes[0][0], f, view, seed)
+        (lx, ly), mxy = _label_layout(at_pos(thing, (x, y)) if kind == "shape" else thing, (x, y))
     else:
         strokes = _shape(thing)
         if thing.get("hinge") and (level := _opened(mine, t)):
@@ -472,6 +508,8 @@ def _draw_thing(img: Image.Image, d: ImageDraw.ImageDraw, thing: dict, acts: lis
             _stroke(d, pts, f, outline, w, seed + k, dash, view)
             if r:
                 _stroke(d, pts, r, red, w + 2, seed + k, dash, view)
+        if 0 < f < 1 and strokes:
+            _tip(d, strokes[0][0], f, view, seed)
         if thing.get("url"):
             bar, lines, uxy, uem = _screen(thing)
             _stroke(d, _rrect(*bar, 14), f, ink, 3, seed + 50, view=view)
@@ -480,7 +518,7 @@ def _draw_thing(img: Image.Image, d: ImageDraw.ImageDraw, thing: dict, acts: lis
             _write(img, uxy, thing["url"], uem, (f - 0.3) / 0.7, ink, view)
         if kind in ("path", "crack"):
             return
-        lx, ly = _label_at(thing)
+        (lx, ly), mxy = _label_layout(thing)
     label, em = thing.get("label", ""), label_em(thing) or MIN_LABEL_EM
     say = next((a.say for a in reversed(reds) if a.say), "") if kind == "box" else ""
     if say:
@@ -490,6 +528,9 @@ def _draw_thing(img: Image.Image, d: ImageDraw.ImageDraw, thing: dict, acts: lis
         _write(img, (lx, ly), label, em, r * 2, red, view)
     if say:
         _write(img, (lx, ly + 1.1 * em), say, SMALL_EM, r * 2 - 0.4, red, view)
+    if mxy and (gone := _plained(mine, t)) < 1:
+        mc = tuple(round(v + (p - v) * gone) for v, p in zip(color, PAPER))
+        _write(img, mxy, "= " + thing["means"], SMALL_EM, (f - 0.3) / 0.7, mc, view)
 
 
 def draw(things: list[dict], acts: list[Act], t: float, view=FULL) -> Image.Image:

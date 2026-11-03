@@ -273,3 +273,40 @@ def test_open_needs_a_hinged_shape(design, tmp_path):
     assert motion.design_problems(d, WORDS, tmp_path) == []
     sc = motion.timed(d, *motion.estimated(d), tmp_path)
     assert next(th for th in sc.things if th["id"] == "mem")["hinge"]["turn"] == -80
+
+
+def test_metaphor_words_may_label_but_not_mean(design, tmp_path):
+    (tmp_path / "an-du.md").write_text("cổng soát vé = chứng chỉ")  # "soát", "vé" are not in COMMON
+    d = json.loads(json.dumps(design))
+    d["things"][1]["label"] = "soát vé"
+    assert motion.design_problems(d, WORDS, tmp_path) == []
+    d["things"][1]["means"] = "chứng chỉ"  # in an-du.md, not in WORDS
+    assert any("means" in p for p in motion.design_problems(d, WORDS, tmp_path))
+    d["things"][1]["means"] = "bộ nhớ"
+    assert motion.design_problems(d, WORDS, tmp_path) == []
+
+
+def test_missing_metaphor_file_adds_no_words(tmp_path):
+    assert motion._metaphor(tmp_path) == set() and motion._metaphor(None) == set()
+
+
+def test_means_needs_a_label(design, tmp_path):
+    d = json.loads(json.dumps(design))
+    d["things"][1] = {k: v for k, v in d["things"][1].items() if k != "label"} | {"means": "bộ nhớ"}
+    assert any("means" in p for p in motion.design_problems(d, WORDS, tmp_path))
+
+
+def test_timed_adds_plain_at_the_next_kept_beat(design, tmp_path):
+    d = json.loads(json.dumps(design))
+    d["things"][1]["means"] = "bộ nhớ"
+    sc = motion.timed(d, *motion.estimated(d), tmp_path)
+    assert [(a.thing, a.t0) for a in sc.acts if a.do == "plain"] == [("srv", 3.0)]
+
+
+def test_bind_means_override(design, tmp_path):
+    design["things"][1]["means"] = "nứt"  # a brief word the voice never says
+    assert any("'nứt'" in p for p in motion.bind_problems(design, BIND, SCRIPT, tmp_path))
+    assert motion.bind_problems(design, BIND | {"means": {"srv": ""}}, SCRIPT, tmp_path) == []
+    assert motion.bind_problems(design, BIND | {"means": {"srv": "bộ nhớ"}}, SCRIPT, tmp_path) == []
+    assert "means" not in motion.bound(design, BIND | {"means": {"srv": ""}})["things"][1]
+    assert any("means" in p for p in motion.bind_problems(design, BIND | {"means": {"mem": "x"}}, SCRIPT, tmp_path))

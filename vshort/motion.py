@@ -16,8 +16,10 @@ from vshort.visuals import SAFE_TLDS, _int, _strip_marks
 
 # syllables any label may use besides the narration's own words
 COMMON = frozenset("điện thoại máy tính chủ dữ liệu hệ thống hacker kẻ tấn công nghe lén mạng trình duyệt người dùng nạn "
-                   "nhân gói tin tệp mật khẩu nhắn ví tiền thư khóa đã bị chiếm lấy cắp trang web an toàn lõi lớp bảo vệ"
-                   .split())
+                   "nhân gói tin tệp mật khẩu nhắn ví tiền thư khóa đã bị chiếm lấy cắp trang web an toàn lõi lớp bảo vệ "
+                   # the everyday props kit and the moves of its scenes
+                   "thẻ chìa cửa barie tòa nhà phòng két sắt phong bì hòm kiện hàng xe giao camera rào bảng tên danh sách "
+                   "quét bản sao kẹp cho vào đúng sai tầng cầu thang viên kỹ sư khách".split())
 MAX_SEEN, MAX_BEATS = 7, 6
 BEAT_EST = 3.0  # s per beat: the timing of a design, before any line is spoken
 SYL = 0.2  # s per syllable: the voice before the timeline exists
@@ -87,19 +89,26 @@ def _inside(box) -> bool:
     return box[0] >= x0 and box[1] >= y0 and box[2] <= x1 and box[3] <= y1
 
 
-def _text_problems(what: str, text, said: set[str]) -> list[str]:
+def _metaphor(run_dir: Path | None) -> set[str]:
+    """The words of the approved metaphor (RUN/an-du.md): a label or say may use them; none when there is no file."""
+    f = run_dir / "an-du.md" if run_dir else None
+    return set(_words(f.read_text(encoding="utf-8"))) if f and f.exists() else set()
+
+
+def _text_problems(what: str, text, said: set[str], extra: frozenset | set = frozenset()) -> list[str]:
     if not isinstance(text, str) or not text.strip() or "\n" in text:
         return [f"{what} phải là một dòng chữ, không rỗng"]
     probs = []
     if len(text) > kit.MAX_LABEL:
         probs.append(f"{what} {text!r} dài {len(text)} ký tự (tối đa {kit.MAX_LABEL})")
     for w in _words(text):
-        if not (w in said or w in COMMON or (len(w) == 1 and w.isalnum()) or ("." in w and w.endswith(SAFE_TLDS))):
+        if not (w in said or w in extra or w in COMMON or (len(w) == 1 and w.isalnum())
+                or ("." in w and w.endswith(SAFE_TLDS))):
             probs.append(f"{what} {text!r}: chữ {w!r} không có trong lời đọc của đoạn này hay danh sách danh từ thường")
     return probs
 
 
-def _thing_problems(th, said: set[str], run_dir: Path | None) -> list[str]:
+def _thing_problems(th, said: set[str], run_dir: Path | None, extra: frozenset | set = frozenset()) -> list[str]:
     if not isinstance(th, dict):
         return ["thing phải là object"]
     tid, kind = th.get("id"), th.get("kind")
@@ -139,10 +148,13 @@ def _thing_problems(th, said: set[str], run_dir: Path | None) -> list[str]:
     if not isinstance(th.get("color", "ink"), str) or th.get("color", "ink") not in kit.COLORS:
         probs.append(f"{what}: color {th['color']!r} không hợp lệ ({', '.join(kit.COLORS)})")
     if "label" in th:
-        found = _text_problems("nhãn", th["label"], said)
+        found = _text_problems("nhãn", th["label"], said, extra)
         probs += [f"{what}: {p}" for p in found]
         if not found and kind == "box" and kit.label_em(th) == 0:
             probs.append(f"{what}: nhãn {th['label']!r} không vừa hộp ở cỡ chữ nhỏ nhất {kit.MIN_LABEL_EM}")
+    if "means" in th:  # the technical half: only words of the brief or the voice, never the metaphor's own
+        probs += ([f"{what}: means cần label (means là dòng nghĩa dưới nhãn)"] if not th.get("label") else
+                  [f"{what}: {p}" for p in _text_problems("means", th["means"], said)])
     if "url" in th:
         url = th["url"]
         if kind not in ("phone", "computer"):
@@ -156,7 +168,8 @@ def _thing_problems(th, said: set[str], run_dir: Path | None) -> list[str]:
     return probs + _at_problems(what, th)
 
 
-def _act_problems(m: int, a, things: dict[str, dict], said: set[str], hinged: frozenset | set = frozenset()) -> list[str]:
+def _act_problems(m: int, a, things: dict[str, dict], said: set[str], hinged: frozenset | set = frozenset(),
+                  extra: frozenset | set = frozenset()) -> list[str]:
     if not isinstance(a, dict):
         return [f"act {m}: phải là object"]
     do, tid = a.get("do"), a.get("thing")
@@ -186,7 +199,7 @@ def _act_problems(m: int, a, things: dict[str, dict], said: set[str], hinged: fr
         elif th["box"][3] - th["box"][1] < kit.SAY_BOX_H:
             probs.append(f"{what}: box {tid!r} thấp hơn {kit.SAY_BOX_H} px, không đủ chỗ cho say dưới nhãn")
         else:
-            probs += [f"{what}: {p}" for p in _text_problems("say", a["say"], said)]
+            probs += [f"{what}: {p}" for p in _text_problems("say", a["say"], said, extra)]
     if do not in ("move", "bounce") and ("to" in a or "path" in a):
         probs.append(f"{what}: to và path chỉ dùng với move hoặc bounce")
     if "vanish" in a and (do != "move" or not isinstance(a["vanish"], bool)):
@@ -241,7 +254,7 @@ def _order_problems(sc: Scene) -> list[str]:
             gone[a.thing] = min(gone.get(a.thing, math.inf), a.t1)
     probs = []
     for a in sc.acts:
-        if a.do in ("draw", "dim", "undim"):
+        if a.do in ("draw", "dim", "undim", "plain"):
             continue
         if a.t0 < drawn[a.thing] - 1e-9:
             probs.append(f"motion.json: {a.do} của {a.thing!r} bắt đầu trước khi nó được vẽ")
@@ -306,9 +319,9 @@ def design_problems(doc, said: set[str], run_dir: Path | None) -> list[str]:
         return probs + [f"motion.json: beats phải là danh sách 1–{MAX_BEATS} nhịp"]
     if not isinstance(things, list) or not things:
         return probs + ["motion.json: things phải là danh sách, không rỗng"]
-    by_id = {}
+    by_id, meta = {}, _metaphor(run_dir)
     for th in things:
-        probs += [f"motion.json: {p}" for p in _thing_problems(th, said, run_dir)]
+        probs += [f"motion.json: {p}" for p in _thing_problems(th, said, run_dir, meta)]
         if isinstance(th, dict) and isinstance(th.get("id"), str):
             if not (_int(th.get("beat")) and 1 <= th["beat"] <= len(beats)):
                 probs.append(f"motion.json: thing {th['id']!r}: beat {th.get('beat')!r} phải là số nhịp 1–{len(beats)}")
@@ -332,7 +345,7 @@ def design_problems(doc, said: set[str], run_dir: Path | None) -> list[str]:
     hinged = {i for i, th in by_id.items() if th.get("kind") == "shape" and "hinge" in (shapes.find(th["shape"], run_dir) or {})}
     for k, b in enumerate(beats, 1):
         for m, a in enumerate(b.get("acts", []), 1):
-            probs += [f"motion.json nhịp {k}: {p}" for p in _act_problems(m, a, by_id, said, hinged)]
+            probs += [f"motion.json nhịp {k}: {p}" for p in _act_problems(m, a, by_id, said, hinged, meta)]
     if probs:
         return probs
     probs += _attach_loops(beats)
@@ -399,6 +412,11 @@ def timed(doc: dict, starts: list[float | None], end: float, run_dir: Path | Non
             if (i in touched[k]) == (i in dim):
                 acts.append(kit.Act("undim" if i in dim else "dim", i, s, s + kit.TURN))
                 dim ^= {i}
+    for th in things:  # a means line goes plain as the next kept beat starts
+        later = [k for k in kept if k > home[th["id"]]]
+        if th.get("means") and later:
+            s = span[later[0]][0]
+            acts.append(kit.Act("plain", th["id"], s, s + kit.TURN))
     return Scene(list(doc.get("lines", [])), things, acts, _cams(doc, kept, span, touched, things, acts))
 
 
@@ -489,14 +507,24 @@ def _cue_problems(k: int, cue, want: list[int], text: dict[int, str]) -> list[st
     return probs
 
 
+def _rebound(th, labels: dict, means: dict):
+    """One thing with the bind's label and means; a means of "" is dropped."""
+    if not (isinstance(th, dict) and isinstance(th.get("id"), str)):
+        return th
+    i = th["id"]
+    if i in labels:
+        th = th | {"label": labels[i]}
+    if i in means:
+        th = th | {"means": means[i]} if means[i] else {k: v for k, v in th.items() if k != "means"}
+    return th
+
+
 def bound(doc: dict, bind: dict) -> dict:
-    """The canvas with the bind's labels and lines: what render, visuals and the checks of the voice use."""
-    labels = bind.get("labels") or {}
-    ids = {i for i in labels if isinstance(i, str)} if isinstance(labels, dict) else set()
-    return doc | {"lines": list(bind["lines"]),
-                  "things": [th | {"label": labels[th["id"]]} if isinstance(th, dict) and isinstance(th.get("id"), str) and th["id"] in ids
-                             else th
-                             for th in doc["things"]]}
+    """The canvas with the bind's labels, means and lines: what render, visuals and the checks of the voice use."""
+    labels, means = bind.get("labels") or {}, bind.get("means") or {}
+    labels = {i: v for i, v in labels.items() if isinstance(i, str)} if isinstance(labels, dict) else {}
+    means = {i: v for i, v in means.items() if isinstance(i, str)} if isinstance(means, dict) else {}
+    return doc | {"lines": list(bind["lines"]), "things": [_rebound(th, labels, means) for th in doc["things"]]}
 
 
 def _starts(bind: dict, placements: list[Placement], script: list[dict]) -> tuple[list[float | None], float]:
@@ -535,6 +563,11 @@ def bind_problems(doc, bind, script: list[dict], run_dir: Path | None, visuals: 
     ids = {th["id"] for th in doc["things"] if isinstance(th, dict) and isinstance(th.get("id"), str) and "label" in th}
     if not isinstance(labels, dict) or not all(isinstance(i, str) and i in ids for i in labels):
         probs.append("motion.bind.json: labels phải là {\"<id thing có nhãn>\": \"<nhãn mới>\"}")
+    means = bind.get("means", {})
+    mids = {th["id"] for th in doc["things"] if isinstance(th, dict) and isinstance(th.get("id"), str) and "means" in th}
+    if not isinstance(means, dict) or not all(isinstance(i, str) and i in mids and isinstance(v, str)
+                                              for i, v in means.items()):
+        probs.append("motion.bind.json: means phải là {\"<id thing có means>\": \"<chữ trong lời>\" hoặc \"\" (bỏ)}")
     if probs:
         return probs
     kept = [(k, c) for k, c in enumerate(cues, 1) if c is not None]

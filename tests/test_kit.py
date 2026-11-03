@@ -167,3 +167,26 @@ def test_squash_folds_a_door_towards_its_hinge():
     door = ARM | {"hinge": {"strokes": [0], "pivot": (100, 200), "turn": None, "squash": 0.2}}
     opened = draw([door], [Act("draw", "b", 0, 0.8), Act("open", "b", 1.0, 1.8)], 2.5)
     assert _ink(opened, (100, 190, 140, 210)) > 0 and _ink(opened, (200, 190, 300, 210)) == 0
+
+
+def test_means_line_shows_then_goes_plain():
+    th = {"id": "f", "kind": "figure", "xy": [300, 300], "label": "thẻ", "means": "chứng chỉ"}
+    acts = [Act("draw", "f", 0, 0.8), Act("plain", "f", 2.0, 2.6)]
+    line = (200, 455, 400, 492)  # under the label at y 425
+    assert _ink(draw([th], acts, 1.0), line) > 0 and _ink(draw([th], acts, 3.0), line) == 0
+    assert bbox(th)[3] > bbox(th | {"means": ""})[3]
+
+
+def test_means_of_a_server_stays_above_it():
+    th = {"id": "s", "kind": "server", "box": [200, 400, 520, 600], "label": "bảo vệ", "means": "máy chủ"}
+    assert bbox(th)[3] == 600 and bbox(th)[1] < bbox(th | {"means": ""})[1]
+    up = (200, 305, 520, 338)  # the label, pushed up to make room for the means line under it
+    assert _ink(draw([th], [Act("draw", "s", 0, 0.8)], 1.0), up) > 0
+    assert _ink(draw([th | {"means": ""}], [Act("draw", "s", 0, 0.8)], 1.0), up) == 0
+
+
+def test_pen_tip_shows_only_while_drawing():
+    line = {"id": "l", "kind": "path", "points": [[100, 600], [600, 600]]}
+    acts = [Act("draw", "l", 0.0, 1.0)]
+    assert _ink(draw([line], acts, 0.5), (345, 560, 385, 595)) > 0
+    assert _ink(draw([line], acts, 1.5), (345, 560, 385, 595)) == 0
