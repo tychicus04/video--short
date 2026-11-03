@@ -20,12 +20,14 @@ LABEL_EM, SMALL_EM, MIN_LABEL_EM, MAX_LABEL = 44, 34, 32, 20
 DRAW, TURN, HIDE, MOVE = 0.8, 0.6, 0.4, 1.2  # seconds: draw on, turn red, erase, default move/bounce
 DIM = 0.55  # how far a thing the voice has moved on from fades towards the paper
 BOXED = {"phone", "computer", "server", "box", "wall", "shape"}  # take `box`
-POINTED = {"person", "icon", "dot", "text", "crack"}  # take `xy`
+POINTED = {"person", "icon", "dot", "text", "crack", "figure", "check", "cross"}  # take `xy`
 ICONS = {"key", "message", "wallet", "file", "lock", "mail"}
-MOVERS = {"dot", "icon"}
+MOVERS = {"dot", "icon", "figure", "shape"}  # a shape moves by the centre of its box
+ROLES = {"guard", "attacker"}  # a figure's role: a cap, or a hood (and red)
 DOT_R = 13
 SAY_BOX_H = 100  # a box needs this height to hold its label and a say line under it
-TOP = {"dot": DOT_R, "icon": 55}  # ink above a mover's centre
+TOP = {"dot": DOT_R, "icon": 55, "figure": 112}  # ink above a mover's centre (a shape: half its box)
+STEP_HZ, SWING, BOB = 2.0, 12.0, 6.0  # a walking figure: steps a second, leg spread in degrees, bob in px
 
 
 @dataclass
@@ -38,6 +40,8 @@ class Act:
     path: list[tuple[float, float]] | None = None
     say: str = ""
     vanish: bool = False
+    on: str = ""  # attach: the mover it is carried by from then on
+    offset: tuple[float, float] | None = None  # attach: where on the carrier it sits
 
 
 def clamp(x: float) -> float:
@@ -147,7 +151,9 @@ def _write(img: Image.Image, xy, text: str, em: int, p: float, color, view=FULL)
 
 
 def _color(thing: dict) -> tuple[int, int, int]:
-    default = {"dot": "red", "wall": "blue"}.get(thing["kind"], "ink")
+    default = {"dot": "red", "wall": "blue", "check": "green", "cross": "red"}.get(thing["kind"], "ink")
+    if thing.get("role") == "attacker":
+        default = "red"
     return COLORS[thing.get("color", default)]
 
 
@@ -172,7 +178,50 @@ def _label_at(thing: dict, xy=None) -> tuple[float, float]:
         x0, y0, x1, y1 = thing["box"]
         return ((x0 + x1) / 2, (y0 + y1) / 2) if kind == "box" else ((x0 + x1) / 2, y0 - 34)
     x, y = xy or thing["xy"]
-    return {"person": (x, y + 105), "icon": (x, y + 55), "dot": (x, y + 48), "text": (x, y)}.get(kind, (x, y))
+    return {"person": (x, y + 105), "icon": (x, y + 55), "dot": (x, y + 48), "text": (x, y),
+            "figure": (x, y + 125)}.get(kind, (x, y))
+
+
+def _bezier(p0, p1, p2, p3, n: int = 12) -> list[tuple[float, float]]:
+    return [tuple((1 - u) ** 3 * a + 3 * (1 - u) ** 2 * u * b + 3 * (1 - u) * u * u * c + u ** 3 * d
+                  for a, b, c, d in zip(p0, p1, p2, p3)) for u in np.linspace(0, 1, n)]
+
+
+def _legs(x: float, y: float, spread: float) -> list[list[tuple[float, float]]]:
+    """Left and right leg, hip to foot; spread 0 stands (mirror images), 1 is a full stride (feet SWING degrees out)."""
+    a = math.radians(SWING * spread)
+    out = []
+    for side in (-1, 1):
+        fx, fy = side * (2 * math.cos(a) + 52 * math.sin(a)), 52 * math.cos(a) - 2 * math.sin(a)
+        out.append([(x + 14 * side, y + 40), (x + 14 * side + fx, y + 40 + fy)])
+    return out
+
+
+def _figure(x: float, y: float, spread: float, role) -> list[list[tuple[float, float]]]:
+    """A figure as in the approved sketch: round head, rounded torso, two legs; a cap (guard) or a hood (attacker)."""
+    def at(pts):
+        return [(x + px, y + py) for px, py in pts]
+
+    head = [(x + 24 * math.cos(u), y - 70 + 24 * math.sin(u)) for u in np.linspace(0, 2 * math.pi, 25)]
+    torso = _bezier((-36, 40), (-38, -10), (-26, -38), (0, -40)) + _bezier((0, -40), (26, -38), (38, -10), (36, 40))[1:]
+    out = [head, at(torso + [(-36, 40)]), *_legs(x, y, spread)]
+    if role == "guard":
+        out += [at(_bezier((-28, -84), (-20, -106), (20, -106), (28, -84)) + [(-28, -84)]), at([(26, -86), (46, -82)])]
+    elif role == "attacker":
+        out.append(at(_bezier((-34, -60), (-42, -114), (42, -114), (34, -60)) + [(30, -38)]))
+    return out
+
+
+def at_pos(thing: dict, xy) -> dict:
+    """The thing moved so its anchor (`xy`, or the centre of its box) is at xy."""
+    if "box" not in thing:
+        return thing | {"xy": [xy[0], xy[1]]}
+    x0, y0, x1, y1 = thing["box"]
+    dx, dy = xy[0] - (x0 + x1) / 2, xy[1] - (y0 + y1) / 2
+    out = thing | {"box": [x0 + dx, y0 + dy, x1 + dx, y1 + dy]}
+    if "strokes" in thing:
+        out["strokes"] = [[(px + dx, py + dy) for px, py in s] for s in thing["strokes"]]
+    return out
 
 
 def _shape(thing: dict) -> list[tuple[list, int, int]]:
@@ -215,6 +264,12 @@ def _shape(thing: dict) -> list[tuple[list, int, int]]:
                 ([(x - 30, y + 75), (x, y + 30), (x + 30, y + 75)], 4, 0)]
     if kind == "icon":
         return [(s, 5, 0) for s in _icon(thing["icon"], x, y - 15)]
+    if kind == "figure":
+        return [(s, 4, 0) for s in _figure(x, y, 0.0, thing.get("role"))]
+    if kind == "check":
+        return [([(x - 24, y), (x - 8, y + 18), (x + 26, y - 22)], 5, 0)]
+    if kind == "cross":
+        return [([(x - 20, y - 20), (x + 20, y + 20)], 5, 0), ([(x + 20, y - 20), (x - 20, y + 20)], 5, 0)]
     return []
 
 
@@ -261,7 +316,8 @@ def bbox(thing: dict) -> tuple[float, float, float, float]:
     else:
         x, y = thing["xy"]
         rx, top, bottom = {"person": (38, 79, 75), "icon": (50, 55, 33), "dot": (DOT_R, DOT_R, DOT_R),
-                           "crack": (30, 11, 11), "text": (0, 0, 0)}[kind]
+                           "crack": (30, 11, 11), "text": (0, 0, 0), "figure": (40, 112, 92),
+                           "check": (26, 22, 22), "cross": (26, 22, 22)}[kind]
         x0, y0, x1, y1 = x - rx, y - top, x + rx, y + bottom
     if thing.get("label") and kind not in ("path", "crack"):
         em = label_em(thing) or MIN_LABEL_EM
@@ -271,13 +327,42 @@ def bbox(thing: dict) -> tuple[float, float, float, float]:
     return float(x0), float(y0), float(x1), float(y1)
 
 
-def _position(thing: dict, acts: list[Act], t: float) -> tuple[float, float]:
-    """Where a mover is at t: its moves and bounces applied in order."""
-    pos = tuple(thing["xy"])
-    for a in sorted((a for a in acts if a.thing == thing["id"] and a.do in ("move", "bounce") and a.t0 <= t),
+def _anchor(thing: dict) -> tuple[float, float]:
+    if "xy" in thing:
+        return tuple(thing["xy"])
+    x0, y0, x1, y1 = thing["box"]
+    return (x0 + x1) / 2, (y0 + y1) / 2
+
+
+def _top(thing: dict) -> float:
+    return (thing["box"][3] - thing["box"][1]) / 2 if thing["kind"] == "shape" else TOP[thing["kind"]]
+
+
+def _position(thing: dict, acts: list[Act], t: float, by_id: dict[str, dict] | None = None) -> tuple[float, float]:
+    """Where a mover is at t: its moves, bounces and attaches applied in order. Once attached it rides on its carrier
+    (`by_id` finds it) until a later move or bounce of its own takes it off, from where it was carried to."""
+    pos, held = _anchor(thing), None
+
+    def carried(at: float) -> tuple[float, float]:
+        cx, cy = _position(by_id[held[0]], acts, at, by_id)
+        return cx + held[1][0], cy + held[1][1]
+
+    for a in sorted((a for a in acts if a.thing == thing["id"] and a.do in ("move", "bounce", "attach") and a.t0 <= t),
                     key=lambda a: a.t0):
+        if held:
+            pos, held = carried(a.t0), None
         u = clamp((t - a.t0) / max(a.t1 - a.t0, 1e-6))
-        if a.do == "bounce":
+        if a.do == "attach":
+            if a.on not in (by_id or {}):
+                continue
+            off = a.offset or (0.0, 0.0)
+            cx, cy = _position(by_id[a.on], acts, min(t, a.t1), by_id)
+            if u < 1:
+                e = ease(u)
+                pos = (pos[0] + (cx + off[0] - pos[0]) * e, pos[1] + (cy + off[1] - pos[1]) * e)
+            else:
+                pos, held = (cx + off[0], cy + off[1]), (a.on, off)
+        elif a.do == "bounce":
             s = math.sin(math.pi * u)
             pos = (pos[0] + (a.to[0] - pos[0]) * s, pos[1] + (a.to[1] - pos[1]) * s) if u < 1 else pos
         elif a.path:
@@ -285,8 +370,8 @@ def _position(thing: dict, acts: list[Act], t: float) -> tuple[float, float]:
         else:
             e, (fx, fy), (tx, ty) = ease(u), pos, a.to
             arc = min(120, 0.25 * math.hypot(tx - fx, ty - fy)) * math.sin(math.pi * e)
-            pos = (fx + (tx - fx) * e, max(fy + (ty - fy) * e - arc, SAFE[1] + TOP[thing["kind"]]))  # arc stays in SAFE
-    return pos
+            pos = (fx + (tx - fx) * e, max(fy + (ty - fy) * e - arc, SAFE[1] + _top(thing)))  # arc stays in SAFE
+    return carried(t) if held else pos
 
 
 def _shown(thing: dict, acts: list[Act], t: float) -> float:
@@ -309,7 +394,8 @@ def _dimmed(mine: list[Act], t: float) -> float:
     return level
 
 
-def _draw_thing(img: Image.Image, d: ImageDraw.ImageDraw, thing: dict, acts: list[Act], t: float, view=FULL) -> None:
+def _draw_thing(img: Image.Image, d: ImageDraw.ImageDraw, thing: dict, acts: list[Act], t: float, view=FULL,
+                by_id: dict[str, dict] | None = None) -> None:
     f = _shown(thing, acts, t)
     if f <= 0:
         return
@@ -321,9 +407,9 @@ def _draw_thing(img: Image.Image, d: ImageDraw.ImageDraw, thing: dict, acts: lis
     fade = (lambda c: tuple(round(v + (p - v) * dim) for v, p in zip(c, PAPER))) if dim else (lambda c: c)
     ink, red, gray, blue = map(fade, (INK, RED, GRAY, BLUE))
     color = fade(_color(thing))
-    outline = blue if kind == "wall" else red if kind == "crack" else ink
+    outline = blue if kind == "wall" else red if kind == "crack" else color if kind in ("check", "cross") else ink
     if kind in MOVERS:
-        x, y = _position(thing, acts, t)
+        x, y = _position(thing, acts, t, by_id)
         if kind == "dot":
             glow = any(a.do == "pulse" and a.t0 <= t <= a.t1 for a in mine)
             fill = red if r else color
@@ -334,10 +420,21 @@ def _draw_thing(img: Image.Image, d: ImageDraw.ImageDraw, thing: dict, acts: lis
                 g = (rad + (8 + 6 * (0.5 + 0.5 * math.sin(t * 5))) * z) * SS
                 d.ellipse((sx * SS - g, sy * SS - g, sx * SS + g, sy * SS + g), outline=fill, width=round(2 * SS * z))
             d.ellipse((sx * SS - rad * SS, sy * SS - rad * SS, sx * SS + rad * SS, sy * SS + rad * SS), fill=fill)
-        else:
+        elif kind == "icon":
             for k, s in enumerate(_icon(thing["icon"], x, y - 15)):
                 _stroke(d, s, f, red if r else color, 5, seed + k, view=view)
-        lx, ly = _label_at(thing, (x, y))
+        else:
+            if kind == "figure":
+                px, py = _position(thing, acts, t - 0.05, by_id)
+                spread = abs(math.sin(math.pi * STEP_HZ * t)) if math.hypot(x - px, y - py) > 0.5 else 0.0
+                strokes, base = [(s, 4, 0) for s in _figure(x, y - BOB * spread, spread, thing.get("role"))], color
+            else:
+                strokes, base = _shape(at_pos(thing, (x, y))), outline
+            for k, (pts, w, dash) in enumerate(strokes):
+                _stroke(d, pts, f, base, w, seed + k, dash, view)
+                if r:
+                    _stroke(d, pts, r, red, w + 2, seed + k, dash, view)
+        lx, ly = _label_at(at_pos(thing, (x, y)) if kind == "shape" else thing, (x, y))
     else:
         for k, (pts, w, dash) in enumerate(_shape(thing)):
             _stroke(d, pts, f, outline, w, seed + k, dash, view)
@@ -368,6 +465,7 @@ def draw(things: list[dict], acts: list[Act], t: float, view=FULL) -> Image.Imag
     ones on top. The paper stays put; only the ink is moved and enlarged."""
     img = _paper().copy()
     d = ImageDraw.Draw(img)
+    by_id = {th["id"]: th for th in things}
     for thing in things:
-        _draw_thing(img, d, thing, acts, t, view)
+        _draw_thing(img, d, thing, acts, t, view, by_id)
     return img.reduce(SS)

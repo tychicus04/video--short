@@ -23,8 +23,10 @@ BEAT_EST = 3.0  # s per beat: the timing of a design, before any line is spoken
 SYL = 0.2  # s per syllable: the voice before the timeline exists
 MIN_ACT = 0.3  # shortest action, even at the very end of a line
 LEAD_IN = 0.35  # what opens the canvas starts drawing in the crossfade into it (half the gap + half the fade): no blank page
-ACTS = ("move", "bounce", "red", "pulse", "hide")
-DUR = {"draw": kit.DRAW, "red": kit.TURN, "hide": kit.HIDE, "move": kit.MOVE, "bounce": kit.MOVE}
+ACTS = ("move", "bounce", "red", "pulse", "hide", "attach")
+DUR = {"draw": kit.DRAW, "red": kit.TURN, "hide": kit.HIDE, "move": kit.MOVE, "bounce": kit.MOVE, "attach": kit.MOVE}
+MOVERS = ", ".join(sorted(kit.MOVERS))
+MARKS = ("crack", "check", "cross")  # small marks: no label, not counted as things in view
 KINDS = kit.BOXED | kit.POINTED | {"path"}
 AREA = f"vùng an toàn x {kit.SAFE[0]}–{kit.SAFE[2]}, y {kit.SAFE[1]}–{kit.SAFE[3]}"
 SHEET_W = 240
@@ -129,8 +131,10 @@ def _thing_problems(th, said: set[str], run_dir: Path | None) -> list[str]:
             return [f"{what}: icon {th.get('icon')!r} không hợp lệ ({', '.join(sorted(kit.ICONS))})"]
         if kind == "text" and not th.get("label"):
             return [f"{what}: text cần label"]
-        if kind == "crack" and th.get("label"):
-            probs.append(f"{what}: crack không có nhãn")
+        if kind in MARKS and th.get("label"):
+            probs.append(f"{what}: {kind} không có nhãn")
+    if "role" in th and (kind != "figure" or th["role"] not in kit.ROLES):
+        probs.append(f"{what}: role chỉ dùng cho figure, một trong {', '.join(sorted(kit.ROLES))}")
     if not isinstance(th.get("color", "ink"), str) or th.get("color", "ink") not in kit.COLORS:
         probs.append(f"{what}: color {th['color']!r} không hợp lệ ({', '.join(kit.COLORS)})")
     if "label" in th:
@@ -161,8 +165,16 @@ def _act_problems(m: int, a, things: dict[str, dict], said: set[str]) -> list[st
     if not isinstance(tid, str) or tid not in things:
         return [f"{what}: thing {tid!r} không có trong things"]
     th, probs = things[tid], []
-    if do in ("move", "bounce") and th["kind"] not in kit.MOVERS:
-        probs.append(f"{what}: {tid!r} ({th['kind']}) không được di chuyển — chỉ dot và icon")
+    if do in ("move", "bounce", "attach") and th["kind"] not in kit.MOVERS:
+        probs.append(f"{what}: {tid!r} ({th['kind']}) không được di chuyển hay gắn — chỉ {MOVERS}")
+    if do == "attach":
+        on = a.get("on")
+        if not isinstance(on, str) or on == tid or things.get(on, {}).get("kind") not in kit.MOVERS:
+            probs.append(f"{what}: on {on!r} phải là id một thứ di chuyển được ({MOVERS}), khác {tid!r}")
+        if not _xy(a.get("offset", [0, 0])):
+            probs.append(f"{what}: offset phải là [x, y] (chỗ nó nằm trên thứ mang nó)")
+    elif "on" in a or "offset" in a:
+        probs.append(f"{what}: on và offset chỉ dùng với attach")
     if do == "pulse" and th["kind"] != "dot":
         probs.append(f"{what}: chỉ dot mới pulse")
     if "say" in a:
@@ -190,7 +202,7 @@ def _act_problems(m: int, a, things: dict[str, dict], said: set[str]) -> list[st
             probs.append(f"{what}: path {a['path']!r} không phải một thing kind path")
         elif th["kind"] in kit.MOVERS:
             ends = [a["to"]] if has_to else things[a["path"]]["points"]
-            if not all(_inside(kit.bbox({**th, "xy": p})) for p in ends):
+            if not all(_inside(kit.bbox(kit.at_pos(th, p))) for p in ends):
                 probs.append(f"{what}: {tid!r} đi ra ngoài {AREA}")
     return probs + _at_problems(what, a)
 
@@ -207,8 +219,8 @@ def _actor_problems(doc: dict, things: dict[str, dict]) -> list[str]:
     """The red actor is drawn in beat 1 and runs through the whole canvas: never hidden, never vanishing."""
     actor = doc.get("actor")
     th = things.get(actor) if isinstance(actor, str) else None
-    if th is None or th["kind"] != "dot":
-        return [f"motion.json: actor {actor!r} phải là id của một thing kind dot (chấm đỏ đi suốt đoạn)"]
+    if th is None or th["kind"] not in ("dot", "figure"):
+        return [f"motion.json: actor {actor!r} phải là id của một thing kind dot hoặc figure (kẻ tấn công đi suốt đoạn)"]
     probs = [] if th["beat"] == 1 else [f"motion.json: actor {actor!r} phải được vẽ ở nhịp 1"]
     for k, b in enumerate(doc["beats"], 1):
         for a in b.get("acts", []):
@@ -235,18 +247,40 @@ def _order_problems(sc: Scene) -> list[str]:
     by_id = {th["id"]: th for th in sc.things}
     for a in sc.acts:  # a path move starts where its path does: the mover must already be there
         if a.do == "move" and a.path:
-            x, y = kit._position(by_id[a.thing], [b for b in sc.acts if b.t0 < a.t0], a.t0)
+            x, y = kit._position(by_id[a.thing], [b for b in sc.acts if b.t0 < a.t0], a.t0, by_id)
             if (gap := math.hypot(x - a.path[0][0], y - a.path[0][1])) > JUMP:
                 probs.append(f"motion.json: {a.thing!r} nhảy {gap:.0f} px tới đầu path lúc {a.t0:.1f} s: cho nó tới đầu path "
                              "trước (move to), hoặc đừng bỏ nhịp đưa nó tới đó")
     counted = [th["id"] for th in sc.things
-               if th["kind"] not in ("path", "crack") and (th["kind"] != "dot" or th.get("label"))]
+               if th["kind"] not in ("path", *MARKS) and (th["kind"] != "dot" or th.get("label"))]
     for t in sorted(drawn[i] for i in counted):
         seen = [i for i in counted if drawn[i] <= t + 1e-9 < gone.get(i, math.inf)]
         if len(seen) > MAX_SEEN:
             probs.append(f"motion.json: {len(seen)} thứ cùng hiện ({', '.join(seen)}), tối đa {MAX_SEEN}")
             break
     return probs
+
+
+def _attach_loops(beats: list[dict]) -> list[str]:
+    """Things carried, through attach, by something they themselves carry."""
+    on: dict[str, set[str]] = {}
+    for b in beats:
+        for a in b.get("acts", []):
+            if a["do"] == "attach":
+                on.setdefault(a["thing"], set()).add(a["on"])
+
+    def loop(path: list[str]) -> list[str] | None:
+        for nxt in sorted(on.get(path[-1], ())):
+            if nxt in path:
+                return path[path.index(nxt):] + [nxt]
+            if found := loop(path + [nxt]):
+                return found
+        return None
+
+    for start in sorted(on):
+        if found := loop([start]):
+            return [f"motion.json: attach tạo vòng ({' → '.join(found)}): một thứ không mang được thứ đang mang nó"]
+    return []
 
 
 def brief_words(brief_md: str) -> set[str]:
@@ -297,6 +331,7 @@ def design_problems(doc, said: set[str], run_dir: Path | None) -> list[str]:
             probs += [f"motion.json nhịp {k}: {p}" for p in _act_problems(m, a, by_id, said)]
     if probs:
         return probs
+    probs += _attach_loops(beats)
     probs += _actor_problems(doc, by_id)
     return probs or _order_problems(timed(doc, *estimated(doc), run_dir))
 
@@ -345,7 +380,8 @@ def timed(doc: dict, starts: list[float | None], end: float, run_dir: Path | Non
             touched[k] |= {a["thing"], a.get("path")} - {None}
             acts.append(kit.Act(a["do"], a["thing"], *when(k, a.get("at", 0), a["do"], a.get("dur", DUR.get(a["do"], 0))),
                                 to=tuple(a["to"]) if "to" in a else None, path=paths.get(a.get("path")),
-                                say=a.get("say", ""), vanish=a.get("vanish", False)))
+                                say=a.get("say", ""), vanish=a.get("vanish", False), on=a.get("on", ""),
+                                offset=tuple(a["offset"]) if "offset" in a else None))
     gone = {a.thing: a.t0 for a in sorted(acts, key=lambda a: -a.t0) if a.do == "hide" or a.vanish}
     dim: set[str] = set()
     for k in kept[1:]:
@@ -376,7 +412,7 @@ def _cams(doc: dict, kept: list[int], span: dict, touched: dict[int, set[str]], 
         for i in touched[k] & by_id.keys():
             th = by_id[i]
             if th["kind"] in kit.MOVERS:
-                got += [kit.bbox(th | {"xy": kit._position(th, acts, t)}) for t in (s, e)]
+                got += [kit.bbox(kit.at_pos(th, kit._position(th, acts, t, by_id))) for t in (s, e)]
             else:
                 got.append(kit.bbox(th))
         boxes.append((min(b[0] for b in got), min(b[1] for b in got), max(b[2] for b in got), max(b[3] for b in got))

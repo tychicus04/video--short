@@ -1,7 +1,8 @@
 import numpy as np
 import pytest
 
-from vshort.kit import SAFE, Act, H, RED, W, bbox, draw, label_em
+from vshort import kit
+from vshort.kit import GREEN, SAFE, Act, H, RED, W, bbox, draw, label_em
 
 PHONE = {"id": "p", "kind": "phone", "box": [180, 170, 540, 1010], "label": "trang web hợp pháp", "color": "green",
          "url": "tin-tuc.example"}
@@ -14,9 +15,13 @@ def _ink(img, box):
     return int((a < 180).sum())
 
 
-def _red(img, box):
+def _colour(img, box, colour):
     a = np.asarray(img.crop(box).convert("RGB")).astype(int)
-    return bool((np.abs(a - np.array(RED)) < 40).all(axis=2).any())
+    return bool((np.abs(a - np.array(colour)) < 40).all(axis=2).any())
+
+
+def _red(img, box):
+    return _colour(img, box, RED)
 
 
 def test_nothing_shows_before_its_draw_act():
@@ -98,3 +103,48 @@ def test_dim_fades_towards_paper_and_undim_brings_it_back():
     back = dim + [Act("undim", "p", 2.0, 2.6)]
     assert mean(dim, 2.0) > mean(on, 2.0) + 1
     assert mean(back, 3.0) == pytest.approx(mean(on, 3.0))
+
+
+FIG = {"id": "f", "kind": "figure", "xy": [200, 300], "label": "kỹ sư"}
+KEY = {"id": "k", "kind": "icon", "icon": "key", "xy": [600, 600]}
+
+
+def test_attached_thing_follows_its_moving_parent():
+    acts = [Act("draw", "f", 0, 0.8), Act("draw", "k", 0, 0.8),
+            Act("attach", "k", 0.0, 0.5, on="f", offset=(0, 5)), Act("move", "f", 1.0, 2.0, to=(500, 300))]
+    by_id = {"f": FIG, "k": KEY}
+    assert kit._position(KEY, acts, 2.5, by_id) == (500, 305)
+    assert kit._position(KEY, acts, 0.25, by_id) != (600, 600)  # on its way over
+
+
+def test_a_later_move_takes_an_attached_thing_off_its_parent():
+    acts = [Act("attach", "k", 0.0, 0.5, on="f", offset=(0, 5)), Act("move", "k", 1.0, 2.0, to=(600, 900)),
+            Act("move", "f", 2.5, 3.5, to=(500, 300))]
+    assert kit._position(KEY, acts, 4.0, {"f": FIG, "k": KEY}) == (600, 900)
+
+
+def test_standing_legs_are_symmetric_walking_legs_spread():
+    (l0, r0), (l1, r1) = kit._legs(0, 0, 0.0), kit._legs(0, 0, 1.0)
+    assert [(-x, y) for x, y in l0] == r0
+    assert abs(r1[-1][0] - l1[-1][0]) > abs(r0[-1][0] - l0[-1][0])
+
+
+def test_figure_roles_and_colour():
+    atk = FIG | {"id": "a", "role": "attacker"}
+    img = draw([atk], [Act("draw", "a", 0, 0.8)], 2.0)
+    assert _red(img, (150, 180, 250, 400))  # the attacker is drawn red by default
+    hood, plain = (bbox(FIG | {"role": r})[1] for r in ("attacker", None))
+    assert hood == plain  # the box always leaves room for a hood
+
+
+def test_check_and_cross_draw_in_their_colours():
+    img = draw([{"id": "c", "kind": "check", "xy": [300, 300]}, {"id": "x", "kind": "cross", "xy": [500, 300]}],
+               [Act("draw", "c", 0, 0.8), Act("draw", "x", 0, 0.8)], 2.0)
+    assert _colour(img, (260, 260, 340, 340), GREEN) and _red(img, (460, 260, 540, 340))
+
+
+def test_shape_prop_moves_by_its_centre():
+    th = {"id": "m", "kind": "shape", "shape": "x", "box": [100, 100, 200, 200],
+          "strokes": [[(100, 100), (200, 200)], [(100, 200), (200, 100)]]}
+    img = draw([th], [Act("draw", "m", 0, 0.8), Act("move", "m", 1.0, 2.0, to=(400, 400))], 3.0)
+    assert _ink(img, (350, 350, 450, 450)) > 100 and _ink(img, (100, 100, 200, 200)) == 0

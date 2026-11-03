@@ -239,3 +239,24 @@ def test_beat_view_overrides_and_is_checked(design, tmp_path):
     bad = json.loads(json.dumps(design))
     bad["beats"][0]["view"] = [0, 0, 10, 10]
     assert any("view" in p for p in motion.design_problems(bad, WORDS, tmp_path))
+
+
+def test_attach_rules(design, tmp_path):
+    d = json.loads(json.dumps(design))
+    d["beats"][0]["acts"].append({"do": "attach", "thing": "srv", "on": "atk", "offset": [0, 0], "at": 0.6})
+    assert any("attach" in p for p in motion.design_problems(d, WORDS, tmp_path))
+    d = json.loads(json.dumps(design))
+    d["things"] += [{"id": "k1", "kind": "icon", "icon": "key", "xy": [150, 600], "beat": 1},
+                    {"id": "k2", "kind": "icon", "icon": "lock", "xy": [300, 600], "beat": 1}]
+    d["beats"][0]["acts"].append({"do": "attach", "thing": "k1", "on": "k2", "offset": [0, 0], "at": 0.6})
+    d["beats"][1]["acts"].append({"do": "attach", "thing": "k2", "on": "k1", "offset": [0, 0], "at": 0.6})
+    assert any("vòng" in p for p in motion.design_problems(d, WORDS, tmp_path))
+
+
+def test_figure_can_be_the_actor(design, tmp_path):
+    d = json.loads(json.dumps(design))
+    d["things"][0] = {"id": "atk", "kind": "figure", "role": "attacker", "xy": [160, 300], "label": "kẻ tấn công",
+                      "beat": 1}
+    assert motion.design_problems(d, WORDS, tmp_path) == []
+    d["things"][0]["role"] = "wizard"
+    assert any("role" in p for p in motion.design_problems(d, WORDS, tmp_path))
