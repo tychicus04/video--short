@@ -3,7 +3,7 @@
  "actor": "bug",
  "things": [
   {"id": "web", "kind": "computer", "box": [190, 175, 530, 375], "label": "trang web hợp pháp", "color": "green", "url": "tin-tuc.example", "beat": 1},
-  {"id": "bug", "kind": "dot", "xy": [360, 270], "label": "mã độc", "beat": 1, "at": 0.4},
+  {"id": "bug", "kind": "dot", "xy": [360, 270], "label": "mã độc", "beat": 1, "at": 0.15},
   {"id": "sandbox", "kind": "wall", "box": [60, 450, 660, 640], "label": "sandbox", "beat": 2},
   {"id": "safari", "kind": "box", "box": [100, 480, 620, 610], "label": "Safari", "beat": 2, "at": 0.05},
   {"id": "in", "kind": "path", "points": [[360, 270], [520, 525]], "beat": 2, "at": 0.08},
@@ -16,12 +16,14 @@
  ],
  "beats": [
   {"idea": "trang web hợp pháp mang mã độc, mã độc chạy ngay",
-   "acts": [{"do": "pulse", "thing": "bug", "at": 0.6}]},
+   "acts": [{"do": "move", "thing": "bug", "to": [290, 300], "at": 0.3}, {"do": "pulse", "thing": "bug", "at": 0.45},
+            {"do": "move", "thing": "bug", "to": [430, 300], "at": 0.55},
+            {"do": "move", "thing": "bug", "to": [360, 270], "at": 0.8}]},
   {"idea": "mã độc vào Safari, thoát sandbox, leo xuống chiếm lõi",
    "acts": [{"do": "move", "thing": "bug", "path": "in", "at": 0.12},
             {"do": "bounce", "thing": "bug", "to": [520, 630], "at": 0.3, "dur": 0.8},
             {"do": "move", "thing": "bug", "path": "down", "at": 0.6},
-            {"do": "red", "thing": "kernel", "say": "đã bị chiếm", "at": 0.8}]},
+            {"do": "red", "thing": "kernel", "say": "đã bị chiếm", "at": 0.8, "dur": 2.0}]},
   {"idea": "dữ liệu bay về hacker",
    "acts": [{"do": "move", "thing": "key", "path": "out", "vanish": true, "at": 0.6}]}
  ]}

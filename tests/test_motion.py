@@ -310,3 +310,24 @@ def test_bind_means_override(design, tmp_path):
     assert motion.bind_problems(design, BIND | {"means": {"srv": "bộ nhớ"}}, SCRIPT, tmp_path) == []
     assert "means" not in motion.bound(design, BIND | {"means": {"srv": ""}})["things"][1]
     assert any("means" in p for p in motion.bind_problems(design, BIND | {"means": {"mem": "x"}}, SCRIPT, tmp_path))
+
+
+
+def test_a_quiet_stretch_is_reported(design, tmp_path):
+    d = json.loads(json.dumps(design))
+    d["beats"][1]["acts"] = []  # beat 2 only draws mem: ~2.2 s with nothing moving
+    assert any("không có gì chuyển động" in p for p in motion.design_problems(d, WORDS, tmp_path))
+    assert motion.design_problems(design, WORDS, tmp_path) == []
+
+
+def test_pulse_does_not_count_as_motion(design, tmp_path):
+    d = json.loads(json.dumps(design))
+    d["beats"][1]["acts"] = [{"do": "pulse", "thing": "atk", "at": 0.2}]
+    assert any("không có gì chuyển động" in p for p in motion.design_problems(d, WORDS, tmp_path))
+
+
+def test_mechanism_may_take_55_percent():
+    def text(n_title, n_mech, n_rest):
+        return {1: " ".join(["ba"] * n_title), 2: " ".join(["ba"] * n_mech), 3: " ".join(["ba"] * n_rest)}
+    assert motion._lines_problems([2], text(10, 26, 14)) == []  # 52 %
+    assert any("55 %" in p for p in motion._lines_problems([2], text(10, 30, 10)))  # 60 %

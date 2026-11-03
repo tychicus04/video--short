@@ -34,6 +34,8 @@ KINDS = kit.BOXED | kit.POINTED | {"path"}
 AREA = f"vùng an toàn x {kit.SAFE[0]}–{kit.SAFE[2]}, y {kit.SAFE[1]}–{kit.SAFE[3]}"
 SHEET_W = 240
 JUMP = 20  # px a mover may be off the start of the path it then runs along
+MAX_QUIET = 1.5  # s the canvas may hold with nothing drawing, moving, turning or the camera gliding
+MAX_SHARE = 0.55  # of the spoken syllables the mechanism may take
 
 
 OLD = "motion.json dạng cũ (scenes): viết lại theo dạng nhịp (beats)"
@@ -299,6 +301,23 @@ def _attach_loops(beats: list[dict]) -> list[str]:
     return []
 
 
+def _quiet_problems(sc: Scene, end: float) -> list[str]:
+    """Stretches longer than MAX_QUIET where nothing happens: no act under way (a pulse does not count) and the camera
+    not gliding between two frames."""
+    busy = [(a.t0, a.t1) for a in sc.acts if a.do != "pulse" and math.isfinite(a.t1)]
+    busy += [(a[0], b[0]) for a, b in zip(sc.cams, sc.cams[1:]) if a[1:] != b[1:]]
+    draws = [a.t0 for a in sc.acts if a.do == "draw"]
+    if not draws:
+        return []
+    t, probs = min(draws), []
+    for s, e in sorted(busy) + [(end, end)]:
+        if s - t > MAX_QUIET:
+            probs.append(f"motion.json: {t:.1f}–{s:.1f} s không có gì chuyển động ({s - t:.1f} s, tối đa {MAX_QUIET}); "
+                         "thêm hành động cho nhịp đó")
+        t = max(t, e)
+    return probs
+
+
 def brief_words(brief_md: str) -> set[str]:
     """The words of the brief: what a label may say before there is a Vietnamese script."""
     return set(_words(brief_md))
@@ -350,7 +369,10 @@ def design_problems(doc, said: set[str], run_dir: Path | None) -> list[str]:
         return probs
     probs += _attach_loops(beats)
     probs += _actor_problems(doc, by_id)
-    return probs or _order_problems(timed(doc, *estimated(doc), run_dir))
+    if probs:
+        return probs
+    sc = timed(doc, *estimated(doc), run_dir)
+    return _order_problems(sc) + _quiet_problems(sc, estimated(doc)[1])
 
 
 def estimated(doc: dict) -> tuple[list[float], float]:
@@ -474,7 +496,7 @@ def estimate(script: list[dict]) -> list[Placement]:
 
 
 def _lines_problems(want, text: dict[int, str]) -> list[str]:
-    """The animated lines: spoken, back to back, not the title, at most half of the video."""
+    """The animated lines: spoken, back to back, not the title, at most MAX_SHARE of the video."""
     if not (isinstance(want, list) and want and all(_int(i) for i in want)):
         return ["motion.bind.json: lines phải là danh sách id câu, không rỗng"]
     if missing := [i for i in want if i not in text]:
@@ -486,8 +508,9 @@ def _lines_problems(want, text: dict[int, str]) -> list[str]:
     if spoken[0] in want:
         probs.append(f"motion.bind.json: lines không được có câu {spoken[0]} (câu tiêu đề)")
     # ponytail: syllables stand in for seconds; the timeline does not exist yet
-    if 2 * sum(syllables(text[i]) for i in want) > sum(syllables(t) for t in text.values()):
-        probs.append("motion.bind.json: đoạn hình động dài hơn nửa video (tính theo số âm tiết lời đọc)")
+    if sum(syllables(text[i]) for i in want) > MAX_SHARE * sum(syllables(t) for t in text.values()):
+        probs.append(f"motion.bind.json: đoạn hình động dài hơn {MAX_SHARE:.0%} video (tính theo số âm tiết lời đọc)"
+                     .replace("%", " %"))
     return probs
 
 
@@ -583,7 +606,9 @@ def bind_problems(doc, bind, script: list[dict], run_dir: Path | None, visuals: 
     doc = bound(doc, bind)
     probs += design_problems(doc, said, run_dir)  # the labels again, now against the words of the voice
     if not probs:
-        probs += _order_problems(timed(doc, *_starts(bind, estimate(script), script), run_dir))
+        starts, end = _starts(bind, estimate(script), script)
+        sc = timed(doc, starts, end, run_dir)
+        probs += _order_problems(sc) + _quiet_problems(sc, end)
     if visuals is not None:
         probs += clashes(visuals, set(want))
     return probs
