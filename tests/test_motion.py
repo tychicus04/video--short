@@ -35,8 +35,24 @@ def test_design_ok_and_actor_rules(design, tmp_path):
     bad = design | {"beats": design["beats"] + [{"idea": "x", "acts": [{"do": "hide", "thing": "atk", "at": 0}]}]}
     assert any("actor" in p for p in motion.design_problems(bad, WORDS, tmp_path))
     late = json.loads(json.dumps(design))
-    late["things"][0]["beat"] = 2
+    late["things"][0]["beat"] = 3
     assert any("actor" in p for p in motion.design_problems(late, WORDS, tmp_path))
+
+
+def test_the_actor_may_enter_after_the_normal_beat(design, tmp_path):
+    d = json.loads(json.dumps(design))  # beat 1 tells how it should work; the attacker comes in at beat 2
+    d["things"][0]["beat"] = 2
+    d["beats"][0]["acts"] = [{"do": "red", "thing": "srv", "at": 0.6}]
+    assert not any("actor" in p for p in motion.design_problems(d, WORDS, tmp_path))
+
+
+def test_carried_things_do_not_count_as_clutter(design, tmp_path):
+    design["things"] += [{"id": f"b{k}", "kind": "box", "box": [60, 500 + 60 * k, 340, 550 + 60 * k], "label": "dữ liệu",
+                          "beat": 3} for k in range(4)]  # 7 in view
+    design["things"].append({"id": "k", "kind": "icon", "icon": "key", "xy": [520, 680], "beat": 3})
+    assert any("tối đa 7" in p for p in motion.design_problems(design, WORDS, tmp_path))
+    design["beats"][2]["acts"].append({"do": "attach", "thing": "k", "on": "atk", "offset": [0, 0], "at": 0})
+    assert not any("tối đa 7" in p for p in motion.design_problems(design, WORDS, tmp_path))
 
 
 def test_more_than_seven_things_is_clutter(design, tmp_path):
@@ -347,3 +363,28 @@ def test_drift_alone_is_still_quiet(design, tmp_path):
     sc = motion.timed(d, *motion.estimated(d), tmp_path)
     assert sc.view(4.0)[2] < sc.view(5.9)[2]  # the camera drifts through the quiet stretch
     assert any("không có gì chuyển động" in p for p in motion.design_problems(d, WORDS, tmp_path))
+
+
+
+def test_an_attach_frames_and_wakes_its_carrier_too(design, tmp_path):
+    d = json.loads(json.dumps(design))
+    d["things"] += [{"id": "f", "kind": "figure", "xy": [160, 600], "label": "kỹ sư", "beat": 1},
+                    {"id": "k", "kind": "icon", "icon": "key", "xy": [150, 900], "beat": 3}]
+    d["beats"][2]["acts"] = [{"do": "attach", "thing": "k", "on": "f", "offset": [50, 20], "at": 0.2}]
+    sc = motion.timed(d, *motion.estimated(d), tmp_path)
+    assert [(a.do, a.t0) for a in sc.acts if a.thing == "f" and a.do in ("dim", "undim")] == [("dim", 3.0), ("undim", 6.0)]
+
+
+
+def test_hiding_a_carrier_hides_what_it_carries(design, tmp_path):
+    d = json.loads(json.dumps(design))
+    d["things"] += [{"id": "f", "kind": "figure", "xy": [160, 600], "label": "kỹ sư", "beat": 1},
+                    {"id": "k", "kind": "icon", "icon": "key", "xy": [210, 620], "beat": 1},
+                    {"id": "m", "kind": "icon", "icon": "mail", "xy": [420, 900], "beat": 1}]
+    d["beats"][0]["acts"] += [{"do": "attach", "thing": "k", "on": "f", "offset": [50, 20], "at": 0.2},
+                              {"do": "attach", "thing": "m", "on": "f", "offset": [-50, 20], "at": 0.2}]
+    d["beats"][1]["acts"] += [{"do": "move", "thing": "m", "to": [420, 900], "at": 0.1},  # put down: no longer carried
+                              {"do": "hide", "thing": "f", "at": 0.6}]
+    sc = motion.timed(d, *motion.estimated(d), tmp_path)
+    hides = {a.thing: a.t0 for a in sc.acts if a.do == "hide"}
+    assert hides == {"f": 4.8, "k": 4.8}

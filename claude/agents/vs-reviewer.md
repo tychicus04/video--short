@@ -60,7 +60,12 @@ Kiểm:
      không vẽ bước mà lời đã bỏ;
    - **hình mới đúng phong cách** (`RUN/shapes/`): cùng nét bút chì, cùng màu như hình khác, nhận ra được là gì; lệch phong cách = lỗi
      (`agent` `"motion"`: vẽ hình mới với tên mới, không sửa hình thư viện);
-   - nét vẽ hiện mượt, chấm chạy mượt, không camera zoom/trượt trên hình động;
+   - nét vẽ hiện mượt, chấm/người chạy mượt; **máy quay** (phóng vào từng nhịp, trôi chậm khi giữ, lùi ra toàn khung ở cuối) theo
+     lời, không giật, không chóng mặt, không cắt mất thứ đang được nói; **không có quãng đứng im** quá ~1,5 s;
+   - **ẩn dụ** (nếu có `RUN/an-du.md`): cảnh khớp bảng đổi trong `an-du.md` và mục "Lưu ý độ chính xác" của brief — không nói quá
+     (ví dụ thành "ai cũng vào được"), không thiếu điều kiện; ở chế độ `--auto` đây là lần soát duy nhất của ẩn dụ. **Chỗ hỏng** phải
+     hiện thành một hành động nhìn thấy (máy so cả xấp thẻ thay vì chỉ thẻ đã xác nhận chủ). Trông trẻ con (mặt cười, hoạt hình nhí
+     nhảnh) = lỗi;
    - an toàn: nhãn chỉ ở mức khái niệm; tên lỗ hổng/CVE, tên exploit hay công cụ, mã, lệnh, địa chỉ web thật, hoặc các bước đủ chi tiết
      để làm lại = lỗi nặng; hình nói điều lời không nói = lỗi.
    Ghi đoạn hình động vào `review.md`: các câu, từng nhịp (câu nào, `idea`, hay bị bỏ).

@@ -240,7 +240,8 @@ def _actor_problems(doc: dict, things: dict[str, dict]) -> list[str]:
     th = things.get(actor) if isinstance(actor, str) else None
     if th is None or th["kind"] not in ("dot", "figure"):
         return [f"motion.json: actor {actor!r} phải là id của một thing kind dot hoặc figure (kẻ tấn công đi suốt đoạn)"]
-    probs = [] if th["beat"] == 1 else [f"motion.json: actor {actor!r} phải được vẽ ở nhịp 1"]
+    # beat 1 may tell how it should work (step 0 of the brief): the attacker may come in at beat 2
+    probs = [] if th["beat"] <= 2 else [f"motion.json: actor {actor!r} phải được vẽ ở nhịp 1 hoặc 2"]
     for k, b in enumerate(doc["beats"], 1):
         for a in b.get("acts", []):
             if a["thing"] == actor and (a["do"] == "hide" or a.get("vanish")):
@@ -270,8 +271,9 @@ def _order_problems(sc: Scene) -> list[str]:
             if (gap := math.hypot(x - a.path[0][0], y - a.path[0][1])) > JUMP:
                 probs.append(f"motion.json: {a.thing!r} nhảy {gap:.0f} px tới đầu path lúc {a.t0:.1f} s: cho nó tới đầu path "
                              "trước (move to), hoặc đừng bỏ nhịp đưa nó tới đó")
-    counted = [th["id"] for th in sc.things
-               if th["kind"] not in ("path", *MARKS) and (th["kind"] != "dot" or th.get("label"))]
+    carried = {a.thing for a in sc.acts if a.do == "attach"}  # a badge in a hand reads as part of whoever holds it
+    counted = [th["id"] for th in sc.things if th["id"] not in carried
+               and th["kind"] not in ("path", *MARKS) and (th["kind"] != "dot" or th.get("label"))]
     for t in sorted(drawn[i] for i in counted):
         seen = [i for i in counted if drawn[i] <= t + 1e-9 < gone.get(i, math.inf)]
         if len(seen) > MAX_SEEN:
@@ -420,11 +422,13 @@ def timed(doc: dict, starts: list[float | None], end: float, run_dir: Path | Non
         for a in doc["beats"][k].get("acts", []):
             if a["thing"] not in home or ("path" in a and a["path"] not in paths):
                 continue
-            touched[k] |= {a["thing"], a.get("path")} - {None}
+            touched[k] |= {a["thing"], a.get("path"), a.get("on")} - {None}  # an attach involves its carrier too
             acts.append(kit.Act(a["do"], a["thing"], *when(k, a.get("at", 0), a["do"], a.get("dur", DUR.get(a["do"], 0))),
                                 to=tuple(a["to"]) if "to" in a else None, path=paths.get(a.get("path")),
                                 say=a.get("say", ""), vanish=a.get("vanish", False), on=a.get("on", ""),
                                 offset=tuple(a["offset"]) if "offset" in a else None))
+    for h in [a for a in acts if a.do == "hide"]:  # what a hidden thing carries goes with it
+        acts += [kit.Act("hide", i, h.t0, h.t1) for i in sorted(_carried(h.thing, acts, h.t0))]
     gone = {a.thing: a.t0 for a in sorted(acts, key=lambda a: -a.t0) if a.do == "hide" or a.vanish}
     dim: set[str] = set()
     for k in kept[1:]:
@@ -441,6 +445,21 @@ def timed(doc: dict, starts: list[float | None], end: float, run_dir: Path | Non
             s = span[later[0]][0]
             acts.append(kit.Act("plain", th["id"], s, s + kit.TURN))
     return Scene(list(doc.get("lines", [])), things, acts, _cams(doc, kept, span, touched, things, acts))
+
+
+def _carried(carrier: str, acts: list[kit.Act], t: float) -> set[str]:
+    """Things riding on `carrier` at t (attached, and not moved off since), and what those carry in turn."""
+    last: dict[str, kit.Act] = {}
+    for a in sorted((a for a in acts if a.do in ("move", "bounce", "attach") and a.t0 <= t), key=lambda a: a.t0):
+        last[a.thing] = a
+    out, todo = set(), [carrier]
+    while todo:
+        c = todo.pop()
+        for i, a in last.items():
+            if a.do == "attach" and a.on == c and i not in out:
+                out.add(i)
+                todo.append(i)
+    return out
 
 
 def _cams(doc: dict, kept: list[int], span: dict, touched: dict[int, set[str]], things: list[dict],
