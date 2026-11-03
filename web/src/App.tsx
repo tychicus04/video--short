@@ -1,16 +1,16 @@
 // The shell: header, the relogin banner, hash routing (#/ is the list, #/r/<slug> one video), and the 5-second refresh.
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowLeft, Clapperboard, KeyRound, LogIn, Loader2, WifiOff } from 'lucide-react'
+import { Clapperboard, KeyRound, LogIn, Loader2, WifiOff } from 'lucide-react'
 import { toast } from 'sonner'
 import { AccessCode } from '@/AccessCode'
 import { AddTopics } from '@/AddTopics'
+import { RunDetail } from '@/RunDetail'
 import { RunList } from '@/RunList'
 import { errorMessage, getState, onAccessLost, post, type State } from '@/api'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Toaster } from '@/components/ui/sonner'
-import { StatusBadge } from '@/status'
 
 const REFRESH_MS = 5000
 
@@ -129,26 +129,6 @@ function ReloginBanner({ state, refresh }: { state: State; refresh: () => void }
   )
 }
 
-/** Where Task 7 puts the page of one video. */
-function RunSlot({ slug, state }: { slug: string; state: State | null }) {
-  const row = state?.rows.find((r) => r.slug === slug)
-  return (
-    <div className="space-y-4">
-      <Button asChild variant="ghost" size="sm" className="-ml-2">
-        <a href="#/">
-          <ArrowLeft /> Danh sách
-        </a>
-      </Button>
-      <div className="flex flex-wrap items-center gap-3">
-        <h1 className="font-mono text-lg font-semibold break-all">{slug}</h1>
-        {row && <StatusBadge state={row.state} />}
-      </div>
-      {row?.topic && <p className="text-sm text-muted-foreground">{row.topic}</p>}
-      {state && !row && <p className="text-sm text-muted-foreground">Không có video này.</p>}
-    </div>
-  )
-}
-
 export default function App() {
   const route = useRoute()
   const { state, failed, at, refresh } = useServerState()
@@ -221,7 +201,15 @@ export default function App() {
             <RunList rows={state?.rows ?? null} canWrite={!!state?.can_write} refresh={refresh} />
           </section>
         </div>
-        {route.name === 'run' && <RunSlot slug={route.slug} state={state} />}
+        {route.name === 'run' && (
+          <RunDetail
+            key={route.slug} // another video starts from nothing: no draft or notice of the last one
+            slug={route.slug}
+            canWrite={!!state?.can_write}
+            fallback={state?.rows.find((r) => r.slug === route.slug)}
+            refreshState={refresh}
+          />
+        )}
       </main>
       <Toaster theme="dark" />
     </div>
