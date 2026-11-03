@@ -46,6 +46,12 @@ riêng, làm sau** (xem "Không làm").
 - **Brief có bước 0 "Bình thường: …"** ở đầu mục "Cơ chế từng bước" (cả bản Việt lẫn bản Anh), để NotebookLM luôn nói cảnh "trước".
 - **Ẩn dụ do một lượt Sonnet ngắn viết**, sau `vs-researcher` (vẫn Haiku) và trước điểm duyệt brief, chỉ đọc brief; thêm khoảng vài
   chục cent mỗi video.
+- **Lấy luật của skill `kallaway-style`** (Tai cài 03/11/2026, chọn "lấy luật cho hình động", giữ nét chì trên giấy, không đổi sang
+  neon): máy quay **trôi chậm** khi giữ một nhịp (phóng thêm khoảng 3 %, kiểu Ken Burns 3–6 %); **hình đi trước lời 0,2 s** (mỗi nhịp
+  sau nhịp mở đoạn bắt đầu sớm 0,2 s so với chữ của nó); luôn có gì đó đổi trên hình (luật quãng chết ở mục 3); bảng "động từ →
+  chuyển động" và màu mang nghĩa (đỏ = tấn công/sai, xanh lá = đúng/an toàn, xám = đã qua) trong lời dặn `vs-motion`. Trôi chậm không
+  tính là "chuyển động" trong luật quãng chết. *(Claude quyết: nếu tính, luật quãng chết thành vô nghĩa.)* "Hành động đi trước lời"
+  trong mục anti-goal là làm một **bước** trước khi lời nói tới bước đó, không phải 0,2 s này.
 
 ## Mục tiêu
 

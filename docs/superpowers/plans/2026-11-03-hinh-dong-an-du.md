@@ -273,6 +273,35 @@ def test_mechanism_may_take_55_percent(design, tmp_path):  # script mà lines ch
 - [ ] **Step 4:** `uv run pytest -q`. Nếu `tests/test_examples.py` trượt vì quãng chết trong `coruna`/`goi-tin`: thêm act (vd. `pulse` không tính, nên thêm `move` ngắn của actor, hoặc dời `at`) vào ví dụ cho tới khi PASS; không nới `MAX_QUIET`.
 - [ ] **Step 5:** Commit `feat(motion): no dead time in the mechanism, stretch up to 55 %`.
 
+### Task 6b: Máy quay trôi chậm, hình đi trước lời 0,2 s (luật từ `kallaway-style`, Tai chọn 03/11)
+
+**Files:**
+- Modify: `vshort/camera.py`, `vshort/motion.py` (`_starts`, `_quiet_problems`), `tests/test_camera.py`, `tests/test_motion.py`
+
+**Interfaces:**
+- Produces:
+  - `camera.DRIFT = 0.03`: trong `keys`, từ lúc một nhịp đã khung xong (cuối cú lướt, hoặc mốc đầu với nhịp 1) tới lúc nhịp sau bắt đầu
+    (hay tới `t_out` với nhịp cuối), zoom tăng dần từ `z` lên `z · (1 + DRIFT)` cùng tâm (tâm kẹp lại theo `view` ở zoom mới). Mốc của
+    cú lùi ra cuối và `FULL` cuối không trôi.
+  - `motion.LEAD_WORD = 0.2`: trong `_starts`, mọi mốc nhịp giữ lại **sau nhịp đầu** lùi sớm `LEAD_WORD` s.
+  - `_quiet_problems` không tính các khoảng chỉ có trôi (giữa hai mốc cùng tâm mà zoom khác nhau ≤ `DRIFT`).
+
+- [ ] **Step 1: Write the failing tests**
+
+```python
+def test_camera_drifts_while_a_beat_holds():
+    ks = camera.keys([(0, 5), (5, 10)], [(200, 300, 300, 400), None], lead=0.35)
+    assert camera.at(ks, 1.0)[2] < camera.at(ks, 4.9)[2] <= 2.0 * (1 + camera.DRIFT) + 1e-9
+    assert ks[-1] == (9.2, *kit.FULL)
+def test_beats_after_the_first_start_a_little_before_their_words(design, tmp_path): ...  # bind_timed: nhịp 2 bắt đầu sớm 0,2 s so với mốc cụm của nó; nhịp 1 đúng mốc
+def test_drift_alone_is_still_quiet(design, tmp_path): ...  # như test_a_quiet_stretch_is_reported: vẫn báo dù máy quay trôi
+```
+
+- [ ] **Step 2:** `uv run pytest tests/test_camera.py tests/test_motion.py -q` → FAIL.
+- [ ] **Step 3:** Làm theo Interfaces; sửa `test_keys_glide_between_beats_and_pull_back` nếu mốc giữa đổi vì trôi (giá trị đầu/cuối giữ).
+- [ ] **Step 4:** `uv run pytest -q` → PASS.
+- [ ] **Step 5:** Commit `feat(motion): slow camera drift, picture leads the word by 0.2 s`.
+
 ### Task 7: Bộ đạo cụ đời thường (Tai duyệt)
 
 **Files:**
@@ -344,7 +373,10 @@ def test_an_du_is_not_asked_twice(...):            # "an_du" đã đánh dấu �
 - Produces:
   - Ví dụ `the-nhan-vien`: cảnh LXD của bản phác, viết bằng `motion.json` mới: bước 0 kỹ sư cắm chìa, máy quét ✓; tòa nhà, barie, chốt bảo vệ, bảng tên; kẻ gian (`figure` `role: attacker`, actor) lấy bản sao thẻ (`attach`), kẹp sau thẻ mình, cắm chìa của chính hắn; máy quét ✓ thẻ đầu; mũi tên `path` `arrow` so thẻ với bảng: ✗ thẻ hắn, ✓ thẻ kỹ sư; barie `open`; phòng `red` lần lượt, tầng nền `red`. `means` ở lần đầu: thẻ = chứng chỉ công khai, chìa = khóa riêng, bảng tên = danh sách tin cậy, phòng = máy ảo. `.script.json` là câu 1–15 của `~/notebooklm-videos/lxd-microcloud-cvss10/script.vi.json` (bản Tai đã duyệt); `.bind.json` gắn 6 nhịp vào câu 3–8.
   - `test_examples.py` thêm `"the-nhan-vien"` vào danh sách tham số.
-  - `vs-motion.md`: đọc `RUN/an-du.md` trước, dựng đúng ẩn dụ đó (không có file thì dựng như cũ); ưu tiên đạo cụ thư viện, chỉ vẽ hình mới khi thư viện thiếu; mô tả `figure`/`role`, thứ di chuyển mới, `attach`, `open`/`close`, `check`/`cross`, `means`, `view` (thường để code tự tính), luật quãng chết 1,5 s; chỗ hỏng phải thành một hành động nhìn thấy; bước 0 là nhịp đầu; ví dụ chuẩn đọc trước thêm `the-nhan-vien`. Danh sách chữ được phép trong mục An toàn thêm từ đời thường mới và chữ của `an-du.md`.
+  - `vs-motion.md`: đọc `RUN/an-du.md` trước, dựng đúng ẩn dụ đó (không có file thì dựng như cũ); ưu tiên đạo cụ thư viện, chỉ vẽ hình mới khi thư viện thiếu; mô tả `figure`/`role`, thứ di chuyển mới, `attach`, `open`/`close`, `check`/`cross`, `means`, `view` (thường để code tự tính), luật quãng chết 1,5 s; bảng "động từ → chuyển động" (lấy/sao chép → `attach` một bản sao; gửi/chuyển → `path` có `arrow` và thứ đó
+    chạy theo; kiểm tra/so → mũi tên `path` + `check`/`cross`; chặn → `bounce` + `cross`; mở/vượt qua → `open`; chiếm → `red`; lấy cắp →
+    icon bay theo `path` về kẻ tấn công; tập trung vào một chỗ → `view` của nhịp) và màu mang nghĩa (đỏ = tấn công/sai, xanh lá =
+    đúng/an toàn, xanh lơ chỉ cho lớp bảo vệ; tối đa hai màu nhấn mỗi khung); chỗ hỏng phải thành một hành động nhìn thấy; bước 0 là nhịp đầu; ví dụ chuẩn đọc trước thêm `the-nhan-vien`. Danh sách chữ được phép trong mục An toàn thêm từ đời thường mới và chữ của `an-du.md`.
   - `vs-reviewer.md` mục 9: bỏ "không camera zoom/trượt trên hình động"; thêm: máy quay theo lời, không giật, không chóng mặt, khung cuối lùi ra toàn khung và đọc được; ẩn dụ khớp `an-du.md` và "Lưu ý độ chính xác" của brief (ở `--auto` đây là lần soát duy nhất); chỗ hỏng hiện thành hành động; không trông trẻ con; không có quãng đứng im.
 
 - [ ] **Step 1:** Thêm `"the-nhan-vien"` vào tham số `test_example_binds_and_draws` → `uv run pytest tests/test_examples.py -q` FAIL (chưa có file).
