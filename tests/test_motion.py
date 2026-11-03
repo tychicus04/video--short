@@ -177,7 +177,7 @@ def test_labels_override_must_use_spoken_words(design, tmp_path):
 def test_bind_timed_puts_beats_on_their_cues(design, tmp_path):
     sc = motion.bind_timed(design, BIND, estimate(SCRIPT), SCRIPT, tmp_path)
     draws = {a.thing: a.t0 for a in sc.acts if a.do == "draw"}
-    assert draws["mem"] == pytest.approx(_start(5, 2)) and sc.lines == [4, 5, 6]
+    assert draws["mem"] == pytest.approx(_start(5, 2) - motion.LEAD_WORD) and sc.lines == [4, 5, 6]
 
 
 def test_dropped_beat_things_appear_with_next_beat(design, tmp_path):
@@ -331,3 +331,19 @@ def test_mechanism_may_take_55_percent():
         return {1: " ".join(["ba"] * n_title), 2: " ".join(["ba"] * n_mech), 3: " ".join(["ba"] * n_rest)}
     assert motion._lines_problems([2], text(10, 26, 14)) == []  # 52 %
     assert any("55 %" in p for p in motion._lines_problems([2], text(10, 30, 10)))  # 60 %
+
+
+def test_beats_after_the_first_start_a_little_before_their_words(design, tmp_path):
+    sc = motion.bind_timed(design, BIND, estimate(SCRIPT), SCRIPT, tmp_path)
+    draws = {a.thing: a.t0 for a in sc.acts if a.do == "draw"}
+    assert draws["atk"] == pytest.approx(_start(4) - motion.LEAD_IN)  # the first beat opens on its line
+    assert draws["mem"] == pytest.approx(_start(5, 2) - 0.2)
+    assert motion.LEAD_WORD == 0.2
+
+
+def test_drift_alone_is_still_quiet(design, tmp_path):
+    d = json.loads(json.dumps(design))
+    d["beats"][1]["acts"] = []
+    sc = motion.timed(d, *motion.estimated(d), tmp_path)
+    assert sc.view(4.0)[2] < sc.view(5.9)[2]  # the camera drifts through the quiet stretch
+    assert any("không có gì chuyển động" in p for p in motion.design_problems(d, WORDS, tmp_path))

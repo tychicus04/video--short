@@ -7,6 +7,7 @@ PAD = 40  # px of canvas kept around what a beat touches
 MOVE_S = 0.8  # s of the glide from one beat's frame to the next
 OUT_S = 1.2  # s of the pull back to the whole canvas
 OUT_LEAD = 2.0  # the pull back starts at least this long before the canvas ends
+DRIFT = 0.03  # a held frame creeps this much closer (kallaway-style: the picture never stands still)
 
 
 def view(box: tuple[float, float, float, float]) -> tuple[float, float, float]:
@@ -19,16 +20,29 @@ def view(box: tuple[float, float, float, float]) -> tuple[float, float, float]:
     return float(cx), float(cy), float(z)
 
 
+def drifted(v: tuple[float, float, float]) -> tuple[float, float, float]:
+    """The frame v after a hold: DRIFT closer, same centre (a deeper zoom only widens where the centre may sit)."""
+    return v[0], v[1], v[2] * (1 + DRIFT)
+
+
 def keys(spans: list[tuple[float, float]], boxes: list, lead: float) -> list[tuple[float, float, float, float]]:
     """(t, cx, cy, zoom) keys: beat i framed on boxes[i] (None: the whole canvas) from `lead` s before the first beat,
-    a MOVE_S glide at each beat start, and the last beat pulled back to FULL before the canvas ends."""
+    creeping DRIFT closer while it holds, a MOVE_S glide at each beat start, and the last beat pulled back to FULL
+    before the canvas ends."""
     views = [kit.FULL if b is None else view(b) for b in boxes]
     out = [(spans[0][0] - lead, *views[0])]
     for (s, e), prev, v in zip(spans[1:], views, views[1:]):
-        out += [(s, *prev), (min(s + MOVE_S, e), *v)]
+        out += [(s, *drifted(prev)), (min(s + MOVE_S, e), *v)]
     s, e = spans[-1]
     t_out = max(s + MOVE_S, s + 0.5 * (e - s), e - OUT_LEAD)
-    return out + [(t_out, *views[-1]), (t_out + OUT_S, *kit.FULL)]
+    return out + [(t_out, *drifted(views[-1])), (t_out + OUT_S, *kit.FULL)]
+
+
+def glides(ks: list[tuple[float, float, float, float]]) -> list[tuple[float, float]]:
+    """The stretches where the camera really moves: a glide or the pull back, not a held frame's drift."""
+    def same(a, b) -> bool:
+        return a[1:3] == b[1:3] and max(a[3], b[3]) <= min(a[3], b[3]) * (1 + DRIFT) + 1e-9
+    return [(a[0], b[0]) for a, b in zip(ks, ks[1:]) if not same(a, b)]
 
 
 def at(ks: list[tuple[float, float, float, float]], t: float) -> tuple[float, float, float]:

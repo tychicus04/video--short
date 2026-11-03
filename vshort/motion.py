@@ -36,6 +36,7 @@ SHEET_W = 240
 JUMP = 20  # px a mover may be off the start of the path it then runs along
 MAX_QUIET = 1.5  # s the canvas may hold with nothing drawing, moving, turning or the camera gliding
 MAX_SHARE = 0.55  # of the spoken syllables the mechanism may take
+LEAD_WORD = 0.2  # s each beat after the first starts before its words (kallaway-style: the picture leads)
 
 
 OLD = "motion.json dạng cũ (scenes): viết lại theo dạng nhịp (beats)"
@@ -305,7 +306,7 @@ def _quiet_problems(sc: Scene, end: float) -> list[str]:
     """Stretches longer than MAX_QUIET where nothing happens: no act under way (a pulse does not count) and the camera
     not gliding between two frames."""
     busy = [(a.t0, a.t1) for a in sc.acts if a.do != "pulse" and math.isfinite(a.t1)]
-    busy += [(a[0], b[0]) for a, b in zip(sc.cams, sc.cams[1:]) if a[1:] != b[1:]]
+    busy += camera.glides(sc.cams)
     draws = [a.t0 for a in sc.acts if a.do == "draw"]
     if not draws:
         return []
@@ -560,7 +561,9 @@ def _starts(bind: dict, placements: list[Placement], script: list[dict]) -> tupl
         return p.start + p.dur * (f0 + (f1 - f0) * cue.get("at", 0))
 
     last = at[bind["lines"][-1]]
-    return [None if c is None else when(c) for c in bind["beats"]], last.start + last.dur
+    starts = [None if c is None else when(c) for c in bind["beats"]]
+    first = next((s for s in starts if s is not None), None)
+    return [s if s is None or s == first else max(s - LEAD_WORD, first) for s in starts], last.start + last.dur
 
 
 def bind_problems(doc, bind, script: list[dict], run_dir: Path | None, visuals: list | None = None) -> list[str]:
