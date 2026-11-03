@@ -89,6 +89,14 @@ def test_safe_file_stays_inside_the_run(tmp_runs, tmp_path):
     assert queue.safe_file("s", "nothing.mp4") is None
 
 
+def test_safe_file_refuses_a_run_folder_that_is_a_symlink_out(tmp_runs, tmp_path, tmp_path_factory):
+    outside = tmp_path_factory.mktemp("outside")
+    (outside / "passwd").write_text("x")
+    (tmp_path / "evil").symlink_to(outside, target_is_directory=True)
+    assert (tmp_path / "evil" / "passwd").is_file()  # reachable through the link, yet not inside runs_dir
+    assert queue.safe_file("evil", "passwd") is None
+
+
 def test_safe_file_refuses_odd_names(tmp_runs, tmp_path):
     (tmp_path / "s").mkdir(); (tmp_path / "s" / "sub").mkdir()
     assert queue.safe_file("s", "/etc/hosts") is None and queue.safe_file("s", "sub") is None
@@ -147,9 +155,25 @@ def test_unknown_or_broken_files_never_hide_a_video(tmp_runs, tmp_path):
     make_run(tmp_path, "list", auto="[1, 2]", run="[]", state="oops", review="x", timeline="[]", cost="{")
     make_run(tmp_path, "nopid", auto={"state": "running"}, run={"topic": "P"})
     (tmp_path / "nopid" / "auto.json").write_text('{"state": "running"}')
+    make_run(tmp_path, "arr", auto="null", run={"topic": "A"}, state="[1]", review="[1]", cost="5")
     rs = {r["slug"]: r for r in queue.rows(queue.Queue([], []))}
     assert rs["weird"]["state"] == "error" and rs["nopid"]["state"] == "dead"
     assert rs["list"]["state"] == "idle" and rs["list"]["step"] == "Tìm hiểu" and rs["list"]["cost"] == 0
+    assert rs["arr"]["state"] == "idle" and rs["arr"]["step"] == "Tìm hiểu" and rs["arr"]["topic"] == "A"  # JSON, not objects
+
+
+def test_a_folder_keeps_the_behaviour_of_run(tmp_path):
+    # rows() opens folders as _Folder so a broken state.json cannot stop the listing; done/mark/unmark must still work
+    make_run(tmp_path, "s", state={"research": "done", "text": "done"})
+    f = queue._Folder(tmp_path / "s")
+    assert f.done("research") and not f.done("fetch")
+    f.mark("fetch")
+    f.unmark("text")
+    assert json.loads((tmp_path / "s" / "state.json").read_text()) == {"research": "done", "fetch": "done"}
+    make_run(tmp_path, "broken", state="{oops")
+    broken = queue._Folder(tmp_path / "broken")  # making it does not parse state.json…
+    with pytest.raises(ValueError):  # …done() does, as Run does, so status() has to catch it
+        broken.done("research")
 
 
 def test_step_is_the_first_one_not_done(tmp_runs, tmp_path):

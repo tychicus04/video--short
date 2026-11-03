@@ -16,7 +16,7 @@ from vshort.run import Run, config
 
 SLUG_RE = re.compile(r"\A[a-z0-9][a-z0-9-]{0,59}\Z")  # \Z, not $: "abc\n" is not a slug
 MAX_TOPIC = 500
-BAD_FILE = (OSError, ValueError, KeyError, TypeError)  # what a missing or hand-edited file can raise
+BAD_FILE = (OSError, ValueError, KeyError, TypeError, AttributeError)  # what a missing, hand-edited or non-object file raises
 # the steps in the order `vshort auto` does them (what the panel shows as "Đang ở bước …")
 STEPS = [("research", "Tìm hiểu"), ("approve_brief", "Chờ duyệt brief"), ("source", "Nạp brief"),
          ("fetch", "NotebookLM làm video"), ("detect", "Tách phụ đề"), ("transcribe", "Chép phụ đề"), ("text", "Ghép câu"),
@@ -54,9 +54,11 @@ def run_path(slug: str) -> Path:
 
 
 def safe_file(slug: str, name: str) -> Path | None:
-    """The file `name` of this run if it is a regular file inside the run folder once symlinks are followed, else None.
-    Raises ValueError for a bad slug; the server checks the slug first."""
-    root = run_path(slug).resolve()
+    """The file `name` of this run if it is a regular file inside runs_dir/<slug> once symlinks are followed, else None.
+    A run folder that is itself a link to somewhere else gives None for everything. Raises ValueError for a bad slug;
+    the server checks the slug first."""
+    run_path(slug)  # the slug check, before a path is made of it
+    root = runs_dir().resolve() / slug
     try:
         p = (root / name).resolve()
     except (OSError, ValueError, RuntimeError):  # an embedded NUL, a symlink loop
@@ -134,16 +136,23 @@ def _read(run: Run, name: str) -> dict:
     return data if isinstance(data, dict) else {}
 
 
-def _step(finished: dict, auto_mode: bool) -> str | None:
-    """The label of the first step not done; an automatic run never marks approve_brief."""
-    return next((label for step, label in STEPS if finished.get(step) != "done" and not (auto_mode and step == "approve_brief")),
-                None)
+def _step(run: Run, auto_mode: bool) -> str | None:
+    """The label of the first step `run.done` says is not done; an automatic run never marks approve_brief."""
+    try:
+        return next((label for step, label in STEPS if not (auto_mode and step == "approve_brief") and not run.done(step)), None)
+    except BAD_FILE:  # state.json is not JSON, or not an object: nothing is known to be done
+        return STEPS[0][1]
 
 
 def status(run: Run, queued: bool) -> dict:
     """The Row for one run folder. Never raises on a missing or broken file. `relogin` is read from auto.json even for a
     queued row: once Tai has queued the runs that stopped for the login, the queue must start again."""
-    meta, a = _read(run, "run.json"), _read(run, "auto.json")
+    meta = _read(run, "run.json")
+    try:
+        a = auto.get_state(run)
+    except BAD_FILE:  # auto.json is not JSON: as if there were none
+        a = {}
+    a = a if isinstance(a, dict) else {}  # JSON, but not an object
     raw = str(a.get("state", "none"))
     message = str(a.get("message") or "")
     if raw == "none":
@@ -170,18 +179,18 @@ def status(run: Run, queued: bool) -> dict:
     return {"slug": run.path.name, "topic": str(meta.get("topic") or ""), "auto": bool(meta.get("auto")),
             "state": "queued" if queued else state,
             "message": "\n".join(ln for ln in message.splitlines() if not ln.startswith("Chép về Mac")),
-            "step": _step(_read(run, "state.json"), bool(meta.get("auto"))),
+            "step": _step(run, bool(meta.get("auto"))),
             "since": stamped.stat().st_mtime if stamped else None,
             "cost": cost, "verdict": _read(run, "review.json").get("verdict"), "seconds": seconds,
             "relogin": relogin, "removable": False}
 
 
 class _Folder(Run):
-    """A run folder to read the files of. Run() parses state.json when it is made; one that is broken must not hide the
-    video, so status() reads it itself."""
+    """A run folder opened without parsing state.json: Run() does, and a broken one would raise before status() could
+    show the video. done/mark/unmark read the file as in Run; _step() catches what done() raises."""
 
-    def _load(self) -> dict[str, str]:
-        return {}
+    def __init__(self, path: Path):
+        self.path, self._state_file, self.state = Path(path), Path(path) / "state.json", {}
 
 
 def rows(q: Queue) -> list[dict]:
@@ -191,7 +200,7 @@ def rows(q: Queue) -> list[dict]:
              if p.is_dir() and SLUG_RE.fullmatch(p.name)] if root.is_dir() else []
     have = {r["slug"] for r in found}
     waiting = [{"slug": it["slug"], "topic": it["topic"], "auto": it["auto"], "state": "queued", "message": "",
-                "step": _step({}, it["auto"]), "since": it["added"], "cost": 0.0, "verdict": None, "seconds": None,
+                "step": STEPS[0][1], "since": it["added"], "cost": 0.0, "verdict": None, "seconds": None,
                 "relogin": False, "removable": True} for it in q.new if it["slug"] not in have]
     place = {s: i for i, s in enumerate([*q.resume, *(it["slug"] for it in q.new)])}
     # queued: in the order of the queue; done: the newest first
