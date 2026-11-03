@@ -211,6 +211,8 @@ def rows(q: Queue) -> list[dict]:
 def relogin_waiting(rs: list[dict]) -> list[str]:
     """Runs that stopped because NotebookLM wants a new login and have not been queued again. While there are any, the
     queue starts nothing: every new run would stop at the same place."""
+    # ponytail: Claude quota/login errors have no code of their own yet, so they don't pause the queue (every video just
+    # fails by itself). Give them a code like RELOGIN and pause on it here if they happen for real.
     return [r["slug"] for r in rs if r["relogin"] and r["state"] != "queued"]
 
 

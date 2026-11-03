@@ -155,7 +155,7 @@ export function RunList({ rows, canWrite, refresh }: { rows: Row[] | null; canWr
   if (rows.length === 0)
     return (
       <Card className="py-10 text-center text-muted-foreground">
-        Chưa có video nào. Thêm chủ đề ở phía dưới để bắt đầu.
+        Chưa có video nào. Thêm chủ đề ở ô phía trên để bắt đầu.
       </Card>
     )
 
