@@ -6,7 +6,7 @@ import time
 import pytest
 from starlette.testclient import TestClient
 
-from vshort import auto, queue, web
+from vshort import auto, cli, queue, web
 from vshort.cli import RELOGIN
 from vshort.run import Run
 
@@ -215,7 +215,7 @@ def test_queue_add_then_tick_starts_up_to_the_limit(client, calls, monkeypatch):
     items = [{"slug": s, "topic": s.upper()} for s in ("a", "b", "c")]
     assert client.post("/api/queue", json={"items": items, "auto": True}).json() == {"errors": ["", "", ""]}
     web.tick()
-    assert calls == [["auto", "a", "--topic", "A", "--auto"], ["auto", "b", "--topic", "B", "--auto"]]
+    assert calls == [["auto", "a", "--topic=A", "--auto"], ["auto", "b", "--topic=B", "--auto"]]
     assert [i["slug"] for i in queue.load_queue().new] == ["c"]
 
 
@@ -393,6 +393,55 @@ def test_tick_drops_an_item_the_cli_refuses_and_logs_one_line(client, monkeypatc
     assert [c[1] for c in calls] == ["a", "b"] and queue.load_queue().new == []     # both asked, both gone
     log = (queue.runs_dir() / "web.log").read_text(encoding="utf-8").splitlines()
     assert len(log) == 2 and "a" in log[0] and "đã có video chạy tiếp bằng `vshort auto`" in log[0]
+
+
+def test_one_item_that_cannot_be_started_does_not_block_the_queue(client, monkeypatch):
+    seen = []
+
+    def fake(args):                                               # what subprocess.run does with a NUL in an argument
+        seen.append(args)
+        if any("\x00" in a for a in args):
+            raise ValueError("embedded null byte")
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(web, "vshort", fake)
+    assert client.post("/api/queue", json={"items": [{"slug": "a", "topic": "x\x00y"}, {"slug": "b", "topic": "B"}], "auto": False}).status_code == 200
+    web.tick()
+    assert [c[1] for c in seen] == ["a", "b"] and queue.load_queue().new == []     # a is dropped, b started in the same tick
+    log = (queue.runs_dir() / "web.log").read_text(encoding="utf-8").splitlines()
+    assert len(log) == 1 and "a" in log[0] and "ValueError" in log[0]
+
+
+def test_a_topic_that_looks_like_an_option_is_passed_as_one_argument(client, calls, monkeypatch, capsys):
+    client.post("/api/queue", json={"items": [{"slug": "g", "topic": "-gravity"}], "auto": False})
+    web.tick()
+    assert calls == [["auto", "g", "--topic=-gravity"]] and queue.load_queue().new == []
+    got = []
+    monkeypatch.setattr(cli, "cmd_auto", lambda a: got.append(a.topic) or 0)
+    assert cli.main(calls[0]) == 0 and got == ["-gravity"]        # argparse reads it as the topic
+    with pytest.raises(SystemExit):                               # the two-argument form is what failed
+        cli.main(["auto", "g", "--topic", "-gravity"])
+    capsys.readouterr()
+
+
+def test_approve_only_when_the_video_waits_for_that_step(client, calls, run_s, run_wait_script, run_wait_brief):
+    for slug, what in (("s", "script"), ("w", "brief"), ("b", "script")):      # done; waits for the translation; waits for the brief
+        r = client.post(f"/api/runs/{slug}/approve", json={"what": what})
+        assert r.status_code == 400 and r.json()["error"], (slug, what)
+    assert calls == [] and queue.load_queue().resume == []
+    assert client.post("/api/runs/w/approve", json={"what": "script"}).status_code == 204
+    again = client.post("/api/runs/w/approve", json={"what": "script"})        # a double click: it is queued now
+    assert again.status_code == 400 and again.json()["error"]
+    assert queue.load_queue().resume == ["w"] and len(calls) == 1
+
+
+def test_a_run_that_is_going_refuses_writes_before_it_takes_the_lock(client, calls, run_wait_script):
+    """`vshort auto` has written auto.json (running, its child's pid) but the child has not made auto.lock yet."""
+    run_wait_script.file("auto.json").write_text(json.dumps({"state": "running", "message": "", "round": 0, "pid": os.getpid()}))
+    r = client.post("/api/runs/w/approve", json={"what": "script"})
+    assert (r.status_code, r.json()) == (409, {"error": "Video đang chạy, đợi nó dừng rồi sửa"})
+    assert client.post("/api/runs/w/script", json={"rows": []}).status_code == 409
+    assert calls == [] and queue.load_queue().resume == [] and client.get("/api/runs/w").json()["locked"] is True
 
 
 def test_tick_survives_a_cli_that_hangs(client, monkeypatch):

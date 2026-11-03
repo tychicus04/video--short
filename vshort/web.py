@@ -69,7 +69,13 @@ def _row(slug: str) -> dict | None:
 
 
 def _locked(slug: str) -> bool:
-    return auto.locked_by(queue._Folder(queue.run_path(slug))) is not None  # _Folder: Run() would raise on a broken state.json
+    """A live `vshort auto` has the run: it holds auto.lock, or it has just been started (auto.json says running and its
+    process is alive) and its child has not made the lock yet. Read from auto.json, not from the Row: the Row shows `queued` in between."""
+    run = queue._Folder(queue.run_path(slug))  # _Folder: Run() would raise on a broken state.json
+    try:
+        return auto.locked_by(run) is not None or (auto.get_state(run).get("state") == "running" and auto.alive_run(run))
+    except queue.BAD_FILE:  # auto.json is not JSON, or has no pid
+        return False
 
 
 def _text(slug: str, name: str) -> str | None:
@@ -194,13 +200,14 @@ def _log(line: str) -> None:
 def start(kind: str, slug: str, item: dict | None) -> None:
     """Ask `vshort auto` to start one video in the background (it returns at once). It may refuse, e.g. the folder
     appeared meanwhile: then the item is dropped and one line goes to web.log."""
-    args = (["auto", slug, "--topic", item["topic"], *(["--auto"] if item["auto"] else [])] if kind == "new"
-            else ["auto", str(queue.run_path(slug))])
     try:
+        # --topic=...: as two arguments, a topic that begins with "-" is read by argparse as an option
+        args = (["auto", slug, f"--topic={item['topic']}", *(["--auto"] if item["auto"] else [])] if kind == "new"
+                else ["auto", str(queue.run_path(slug))])
         cp = vshort(args)
         why = None if cp.returncode == 0 else (cp.stderr or cp.stdout)
-    except (OSError, subprocess.SubprocessError) as e:  # TimeoutExpired is one
-        why = str(e)
+    except Exception as e:  # not only a timeout: a NUL in the topic makes subprocess raise ValueError. One item must not block the rest.
+        why = repr(e)
     if why is not None:
         # ponytail: item hỏng bị bỏ, chỉ ghi log; hiện lên trang nếu thấy xảy ra
         _log(f"không bắt đầu được {kind} {slug}: {' '.join(why.split())[:300]}")
@@ -375,6 +382,8 @@ def approve(slug: str, body: dict) -> Response:
     what = body.get("what")
     if what not in ("brief", "script"):
         return _error(BAD_BODY, 400)
+    if (_row(slug) or {}).get("state") != f"wait_{what}":  # also queued: the first click already did it
+        return _error("Video không đang chờ duyệt bước này (có thể đã duyệt rồi)", 400)
     cp = vshort(["approve", str(queue.run_path(slug)), what])
     if cp.returncode != 0:
         return _error((cp.stderr or cp.stdout).strip() or "Không duyệt được", 400)
