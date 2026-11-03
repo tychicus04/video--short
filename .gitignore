@@ -7,5 +7,3 @@ __pycache__/
 .pytest_cache/
 .claude/settings.local.json
 .DS_Store
-web/node_modules/
-web/dist/
