@@ -29,7 +29,9 @@ Vite + Tailwind + shadcn/ui; systemd user unit trên Linux.
 - **Không test nào được gọi agent thật.** `tests/conftest.py` đã đặt `auto.CLAUDE = ["false"]`; test cần agent thì monkeypatch
   `auto.run_claude`. Test không được gọi `notebooklm` thật.
 - **Có phiên khác đang sửa `vshort/` trên `main`** (chưa commit ở `cli.py`, `script.py`, `captions.py`…):
-  - Làm trong worktree riêng (superpowers:using-git-worktrees).
+  - Làm trong worktree riêng (superpowers:using-git-worktrees). `assets/fonts/` và `models/` nằm trong `.gitignore`, nên
+    worktree mới không có. Tạo xong thì symlink hai thư mục đó từ bản checkout chính; `uv sync` sẽ dựng `.venv` mới. Thiếu font thì
+    test của `conftest.py` hỏng vì môi trường, không phải vì code.
   - Mỗi commit chỉ `git add` đúng file của task; không `git add -A`, không `commit -a`.
   - Dựa vào tên hàm, không dựa vào số dòng.
 - Chạy test bằng `uv run pytest …` ở gốc repo.
@@ -145,8 +147,9 @@ Expected: FAIL.
 
 Đặt ngay đầu khối `if not run.done("research"):`, gọi `notebooklm(["auth", "check", "--test"])`. Mã khác 0 thì
 `raise Stop(code, RELOGIN if code == AUTH else "Không kiểm được phiên NotebookLM; xem auto.log")`, đúng như `_vs`. Không dùng
-`--passive`, để lần kiểm cũng tự làm mới cookie giống các lệnh thật. Đã đo trên `pve2`: chạy 1,3 giây, phiên hết hạn thì thoát 1 và
-in "Run 'notebooklm login'", nên `cli._notebooklm` tự trả `AUTH`. Thêm ghi chú `# ponytail:`: lệnh này có lần treo hơn 2 phút
+`--passive`, để lần kiểm cũng tự làm mới cookie giống các lệnh thật. Đã đo trên `pve2` ngày 03/11: chạy 1,3 giây; phiên hết hạn thì
+thoát 1 và in "Run 'notebooklm login'", nên `cli._notebooklm` tự trả `AUTH`. Cùng lúc đó `notebooklm list` thật cũng hỏng với cùng
+lý do, tức lần kiểm này khớp với lúc dùng thật, không khắt khe hơn. Thêm ghi chú `# ponytail:`: lệnh này có lần treo hơn 2 phút
 trên Mac; nếu thấy treo trên server thì thêm timeout cho `run_notebooklm`.
 
 - [ ] **Step 4: Chạy lại**
@@ -195,6 +198,8 @@ git commit -m "feat: vshort auto checks the NotebookLM session before research a
       - `queued` khi `queued=True`;
       - `dead` khi `auto.json` nói `running` nhưng `not alive_run`;
       - `idle` khi chưa có `auto.json`.
+      - Trạng thái lạ (ngoài `running | wait_brief | wait_script | error | done`, là những trạng thái `auto.py` ghi hiện nay) thì
+        coi như `error` để nó hiện ở nhóm cần Tai, không biến mất khỏi danh sách.
     - `step`: nhãn của bước đầu tiên trong `STEPS` chưa `done`.
     - `since`: mtime của `auto.json`, không có thì của `run.json`.
     - `verdict` lấy từ `review.json`, `seconds` từ `timeline.json["total"]`; thiếu file thì `None`.
@@ -651,8 +656,8 @@ Việc nào đụng tới server mà cần quyền (`loginctl enable-linger`, ha
   Tạo thư mục trước nếu chưa có. Báo mã cho Tai qua terminal, không ghi vào git.
 - [ ] **Step 3: Cài dịch vụ.** Chép unit vào `~/.config/systemd/user/`, rồi `systemctl --user daemon-reload && systemctl --user
   enable --now vshort-web`. Kiểm bằng `curl -s http://192.168.1.214:8770/api/state | head -c 200`: phải ra JSON có `"rows"`.
-- [ ] **Step 4: Đăng nhập lại NotebookLM.** Lúc lập kế hoạch (03/11), `notebooklm auth check --test` trên server báo thiếu cookie
-  `__Secure-1PSIDTS`. Nhờ Tai đăng nhập lại (trên Mac, `notebooklm login` rồi `scp` như `cli.RELOGIN`) trước khi chạy kiểm tra 1.
+- [ ] **Step 4: Đăng nhập lại NotebookLM.** Lúc lập kế hoạch (03/11), cả `notebooklm auth check --test` lẫn `notebooklm list` trên
+  server đều hỏng vì thiếu cookie `__Secure-1PSIDTS`. Nhờ Tai đăng nhập lại (trên Mac, `notebooklm login` rồi `scp` như `cli.RELOGIN`) trước khi chạy kiểm tra 1.
 - [ ] **Step 5: Cùng Tai chạy 8 kiểm tra trong mục "Kiểm tra trước khi coi là xong" của spec,** đúng thứ tự, ghi kết quả từng cái.
   Kiểm tra 4 (video phát và tua được trên iPhone Safari) phải do Tai làm trên điện thoại.
 - [ ] **Step 6: Commit unit và ghi chú**
