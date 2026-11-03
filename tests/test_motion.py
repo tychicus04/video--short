@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from vshort import motion
+from vshort import camera, kit, motion
 from vshort.fit import phrase_fracs
 from vshort.motion import clashes, estimate, load
 
@@ -215,3 +215,27 @@ def test_a_dropped_move_that_leaves_the_actor_off_its_next_path_is_reported(desi
 def test_bind_survives_a_thing_id_that_is_not_a_string(design, tmp_path):
     design["things"][1]["id"] = ["srv"]
     assert motion.bind_problems(design, BIND, SCRIPT, tmp_path)
+
+
+def test_timed_scene_ends_on_the_full_canvas(design, tmp_path):
+    sc = motion.timed(design, *motion.estimated(design), tmp_path)
+    assert len(sc.cams) == 1 + 2 * (len(design["beats"]) - 1) + 2
+    assert sc.cams[-1][1:] == kit.FULL
+
+
+def test_camera_focus_covers_where_a_mover_goes(design, tmp_path):
+    sc = motion.timed(design, *motion.estimated(design), tmp_path)
+    v = camera.at(sc.cams, 5.0)  # mid beat 2: atk has reached (520, 680)
+    x, y = kit.screen(v, 520, 680)
+    assert kit.SAFE[0] <= x <= kit.SAFE[2] and kit.SAFE[1] <= y <= kit.SAFE[3]
+    assert v[2] > 1.0
+
+
+def test_beat_view_overrides_and_is_checked(design, tmp_path):
+    ok = json.loads(json.dumps(design))
+    ok["beats"][0]["view"] = [100, 200, 400, 500]
+    assert motion.design_problems(ok, WORDS, tmp_path) == []
+    assert motion.timed(ok, *motion.estimated(ok), tmp_path).cams[0][1:] == camera.view((100, 200, 400, 500))
+    bad = json.loads(json.dumps(design))
+    bad["beats"][0]["view"] = [0, 0, 10, 10]
+    assert any("view" in p for p in motion.design_problems(bad, WORDS, tmp_path))

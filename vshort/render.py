@@ -270,7 +270,7 @@ def render_video(segs: list[Segment], ass: Path, narration: Path, total: float, 
         if s.scene is None:
             return draw(load(s.file), *cam)
         sc = scenes[s.scene]
-        return kit.draw(sc.things, sc.acts, t)
+        return kit.draw(sc.things, sc.acts, t, sc.view(t))
 
     def frame(t: float) -> Image.Image:
         parts = view(segs, t)

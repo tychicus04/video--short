@@ -3,12 +3,12 @@ exists — checked, timed, previewed as a sheet. Earlier beats fade back as the 
 through the whole canvas."""
 import json
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-from vshort import kit, shapes
+from vshort import camera, kit, shapes
 from vshort.fit import GAP, LEAD, Placement, phrase_fracs
 from vshort.script import syllables
 from vshort.textfit import FONTS
@@ -39,6 +39,10 @@ class Scene:
     lines: list[int]
     things: list[dict]
     acts: list[kit.Act]
+    cams: list[tuple[float, float, float, float]] = field(default_factory=list)  # camera keys; [] is FULL throughout
+
+    def view(self, t: float) -> tuple[float, float, float]:
+        return camera.at(self.cams, t) if self.cams else kit.FULL
 
 
 def load(path: Path) -> dict | None:
@@ -282,6 +286,10 @@ def design_problems(doc, said: set[str], run_dir: Path | None) -> list[str]:
             probs.append(f"motion.json nhịp {k}: thiếu idea: một dòng nói bước cơ chế của nhịp")
         if not isinstance(b.get("acts", []), list):
             probs.append(f"motion.json nhịp {k}: acts phải là danh sách")
+        v = b.get("view")
+        if "view" in b and not (isinstance(v, list) and len(v) == 4 and all(map(_num, v)) and v[0] < v[2]
+                                and v[1] < v[3] and _inside(v)):
+            probs.append(f"motion.json nhịp {k}: view phải là [x0, y0, x1, y1] trong {AREA}")
     if probs:
         return probs
     for k, b in enumerate(beats, 1):
@@ -348,7 +356,32 @@ def timed(doc: dict, starts: list[float | None], end: float, run_dir: Path | Non
             if (i in touched[k]) == (i in dim):
                 acts.append(kit.Act("undim" if i in dim else "dim", i, s, s + kit.TURN))
                 dim ^= {i}
-    return Scene(list(doc.get("lines", [])), things, acts)
+    return Scene(list(doc.get("lines", [])), things, acts, _cams(doc, kept, span, touched, things, acts))
+
+
+def _cams(doc: dict, kept: list[int], span: dict, touched: dict[int, set[str]], things: list[dict],
+          acts: list[kit.Act]) -> list[tuple[float, float, float, float]]:
+    """Camera keys: each kept beat framed on its `view`, or on all it draws, moves or acts on (a mover where the beat
+    finds it and where it leaves it)."""
+    if not kept:
+        return []
+    by_id = {th["id"]: th for th in things}
+    boxes = []
+    for k in kept:
+        if "view" in doc["beats"][k]:
+            boxes.append(tuple(doc["beats"][k]["view"]))
+            continue
+        s, e = span[k]
+        got = []
+        for i in touched[k] & by_id.keys():
+            th = by_id[i]
+            if th["kind"] in kit.MOVERS:
+                got += [kit.bbox(th | {"xy": kit._position(th, acts, t)}) for t in (s, e)]
+            else:
+                got.append(kit.bbox(th))
+        boxes.append((min(b[0] for b in got), min(b[1] for b in got), max(b[2] for b in got), max(b[3] for b in got))
+                     if got else None)
+    return camera.keys([span[k] for k in kept], boxes, LEAD_IN)
 
 
 def design_sheet(doc: dict, run_dir: Path | None) -> Image.Image:
@@ -363,7 +396,7 @@ def _sheet(sc: Scene, ends: list[float]) -> Image.Image:
     d = ImageDraw.Draw(img)
     font = ImageFont.truetype(str(FONTS / "BeVietnamPro-Bold.ttf"), 28)
     for c, t in enumerate(ends):
-        frame = kit.draw(sc.things, sc.acts, t - 0.01).resize((SHEET_W, h), Image.LANCZOS)
+        frame = kit.draw(sc.things, sc.acts, t - 0.01, sc.view(t - 0.01)).resize((SHEET_W, h), Image.LANCZOS)
         img.paste(frame, (44 + c * (SHEET_W + 4), 0))
         d.text((44 + c * (SHEET_W + 4) + 6, 6), str(c + 1), fill="black", font=font)
     return img
