@@ -61,6 +61,14 @@ def _error(message: str, status: int) -> JSONResponse:
     return JSONResponse({"error": message}, status)
 
 
+def _not_json(request: Request) -> Response | None:
+    """415 unless the body claims to be JSON (`; charset=...` is fine). Cookies are not port-scoped, so a page of another
+    service on this host (CMS-Admin on another port) is same-site and could POST `text/plain` with our cookie attached;
+    `application/json` cannot be sent cross-origin without a CORS preflight, which this server never approves."""
+    if request.headers.get("content-type", "").split(";")[0].strip().lower() != "application/json":
+        return _error("Chỉ nhận dữ liệu dạng JSON", 415)
+
+
 def _row(slug: str) -> dict | None:
     """The Row of one video. Through rows(): it never raises on a broken state.json, status() would."""
     if not queue.SLUG_RE.fullmatch(slug):
@@ -149,6 +157,8 @@ def video(request: Request) -> Response:
 
 
 async def login(request: Request) -> Response:
+    if (bad := _not_json(request)) is not None:
+        return bad
     try:
         body = await request.json()
     except ValueError:
@@ -253,7 +263,7 @@ async def _lifespan(app: Starlette):
 
 
 def _post(fn, *, run: bool = False):
-    """A POST route. In this order: the access code (403); for a video's route, that it has started (404) and that no
+    """A POST route. In this order: the access code (403); a JSON Content-Type (415); for a video's route, that it has started (404) and that no
     `vshort auto` holds it (409); the JSON object body, which may be left out (400). Then `fn(body)`, or
     `fn(slug, body)` for a video, in the threadpool."""
     def checked(slug, body):
@@ -268,6 +278,8 @@ def _post(fn, *, run: bool = False):
     async def endpoint(request: Request) -> Response:
         if not can_write(request):
             return _error("Cần mã truy cập", 403)
+        if (bad := _not_json(request)) is not None:
+            return bad
         raw = await request.body()
         try:
             body = json.loads(raw) if raw.strip() else {}
@@ -422,8 +434,18 @@ ROUTES = [
     Route("/api/runs/{slug}/approve", _post(approve, run=True), methods=["POST"]),
     Route("/api/runs/{slug}/retry", _post(retry, run=True), methods=["POST"]),
 ]
+class Dist(StaticFiles):
+    """The built UI. Assets have a hash in their name and may be cached; index.html names them, so it is revalidated
+    every time (it carries an ETag, so that costs a 304): else Safari keeps an old index pointing at deleted assets."""
+    def file_response(self, full_path, stat_result, scope, status_code=200):
+        r = super().file_response(full_path, stat_result, scope, status_code)
+        if Path(full_path).name == "index.html":
+            r.headers["Cache-Control"] = "no-cache"
+        return r
+
+
 # last, and only when built: StaticFiles on a missing folder answers 500 to everything it is asked
-STATIC = [Mount("/", StaticFiles(directory=DIST, html=True))] if DIST.is_dir() else []
+STATIC = [Mount("/", Dist(directory=DIST, html=True))] if DIST.is_dir() else []
 
 app = Starlette(routes=ROUTES + STATIC, lifespan=_lifespan, exception_handlers={HTTPException: _http_error, Exception: _crash})
 

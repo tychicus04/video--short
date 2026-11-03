@@ -4,11 +4,15 @@ import subprocess
 import time
 
 import pytest
+from starlette.applications import Starlette
+from starlette.routing import Mount
 from starlette.testclient import TestClient
 
 from vshort import auto, cli, queue, web
 from vshort.cli import RELOGIN
 from vshort.run import Run
+
+JSON = {"content-type": "application/json"}
 
 
 @pytest.fixture
@@ -175,7 +179,7 @@ def test_detail_of_a_finished_run(client, run_s):
 def test_detail_proposal_and_unknown_runs(client, run_s):
     run_s.file("script.proposed.json").write_text(json.dumps([{"id": 2, "phrases": "Tạm | biệt nhé", "note": "sửa"}]), encoding="utf-8")
     assert client.get("/api/runs/s").json()["proposed"] == [{"id": 2, "phrases": "Tạm | biệt nhé", "note": "sửa"}]
-    for slug in ("nope", "..", "S"):
+    for slug in ("nope", "a_b", "S"):
         r = client.get(f"/api/runs/{slug}")
         assert r.status_code == 404 and r.json()["error"]
 
@@ -207,6 +211,31 @@ def test_every_write_route_needs_the_code(client_anon, calls):
         r = client_anon.post(url, json={})
         assert (r.status_code, r.json()) == (403, {"error": "Cần mã truy cập"}), url
     assert calls == [] and not queue.runs_dir().joinpath("queue.json").exists()
+
+
+def test_a_post_that_is_not_json_is_refused_before_anything_is_read_or_changed(client, client_anon, calls):
+    """A form or `text/plain` POST needs no CORS preflight, so another service on this host could send one with our cookie."""
+    body = json.dumps({"items": [{"slug": "a", "topic": "A"}], "auto": False})
+    for url in ("/api/queue", "/api/queue/remove", "/api/resume", "/api/runs/s/brief", "/api/runs/s/brief_en", "/api/runs/s/script",
+                "/api/runs/s/proposal", "/api/runs/s/approve", "/api/runs/s/retry"):
+        for headers in ({"content-type": "text/plain"}, {"content-type": "application/x-www-form-urlencoded"}, {}):
+            r = client.post(url, content=body, headers=headers)
+            assert (r.status_code, r.json()) == (415, {"error": "Chỉ nhận dữ liệu dạng JSON"}), (url, headers)
+    r = client_anon.post("/api/login", content='{"token": "bi-mat"}', headers={"content-type": "text/plain"})
+    assert r.status_code == 415 and "set-cookie" not in r.headers
+    assert calls == [] and not queue.runs_dir().joinpath("queue.json").exists()
+    ok = client.post("/api/queue", content=body, headers={"content-type": "Application/JSON; charset=utf-8"})   # case and parameters are fine
+    assert ok.status_code == 200 and [i["slug"] for i in queue.load_queue().new] == ["a"]
+
+
+def test_the_built_page_is_revalidated_but_its_assets_are_not(tmp_path):
+    (tmp_path / "assets").mkdir()
+    (tmp_path / "index.html").write_text("<p>ui</p>")
+    (tmp_path / "assets" / "app-1a2b3c.js").write_text("1")
+    c = TestClient(Starlette(routes=[Mount("/", web.Dist(directory=tmp_path, html=True))]))
+    for url in ("/", "/index.html"):
+        assert c.get(url).headers["cache-control"] == "no-cache", url
+    assert "cache-control" not in c.get("/assets/app-1a2b3c.js").headers
 
 
 def test_queue_add_then_tick_starts_up_to_the_limit(client, calls, monkeypatch):
@@ -329,25 +358,25 @@ def test_approve_failure_is_a_400_with_the_cli_message_and_queues_nothing(client
 
 
 def test_retry_only_for_a_run_that_stopped(client, calls, run_s, run_relogin):
-    assert client.post("/api/runs/s/retry").status_code == 400    # done
+    assert client.post("/api/runs/s/retry", json={}).status_code == 400    # done
     assert queue.load_queue().resume == []
-    assert client.post("/api/runs/e/retry").status_code == 204    # error
+    assert client.post("/api/runs/e/retry", json={}).status_code == 204    # error
     assert queue.load_queue().resume == ["e"]
     run_s.file("auto.json").write_text(json.dumps({"state": "running", "message": "", "round": 0, "pid": 0}))
-    assert client.post("/api/runs/s/retry").status_code == 204    # "running" but the process is gone: dead
+    assert client.post("/api/runs/s/retry", json={}).status_code == 204    # "running" but the process is gone: dead
     assert queue.load_queue().resume == ["e", "s"]
 
 
 def test_run_routes_check_the_slug_before_the_lock_before_the_body(client, run_s):
-    for slug in ("nope", "..", "S"):
+    for slug in ("nope", "a_b", "S"):
         assert client.post(f"/api/runs/{slug}/brief_en", json={"en": "x"}).status_code == 404
     client.post("/api/queue", json={"items": [{"slug": "a", "topic": "A"}], "auto": False})
     assert client.post("/api/runs/a/brief_en", json={"en": "x"}).status_code == 404       # waiting in the queue: no folder to write to
     assert not queue.runs_dir().joinpath("a").exists()
     run_s.file("auto.lock").write_text(str(os.getpid()))
-    assert client.post("/api/runs/s/brief_en", content=b"{not json").status_code == 409
+    assert client.post("/api/runs/s/brief_en", content=b"{not json", headers=JSON).status_code == 409
     run_s.file("auto.lock").unlink()
-    assert client.post("/api/runs/s/brief_en", content=b"{not json").status_code == 400
+    assert client.post("/api/runs/s/brief_en", content=b"{not json", headers=JSON).status_code == 400
     assert client.post("/api/runs/s/brief_en", json=["en"]).status_code == 400
 
 
@@ -373,7 +402,7 @@ def test_queue_remove_only_takes_topics_that_have_not_started(client):
 def test_relogin_pauses_the_queue_until_resume(client, calls, run_relogin):
     client.post("/api/queue", json={"items": [{"slug": "a", "topic": "A"}], "auto": False})
     web.tick(); assert calls == []
-    assert client.post("/api/resume").status_code == 204
+    assert client.post("/api/resume", headers=JSON).status_code == 204       # no body at all is fine
     web.tick(); assert calls[0] == ["auto", str(queue.run_path("e"))]
 
 
