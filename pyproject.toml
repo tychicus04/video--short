@@ -9,7 +9,7 @@ dependencies = ["numpy", "pillow", "imageio-ffmpeg", "torch", "google-genai", "c
 vshort = "vshort.cli:main"
 
 [dependency-groups]
-dev = ["pytest", "httpx"]
+dev = ["pytest", "httpx2"]
 
 [build-system]
 requires = ["hatchling"]
