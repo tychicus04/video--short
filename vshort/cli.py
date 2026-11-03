@@ -13,12 +13,12 @@ from PIL import Image, ImageOps
 from vshort import auto, motion, shapes
 from vshort.captions import Fragment, detect_fragments, write_sheets
 from vshort.fit import Placement, build_narration, phrase_times, sequence, total
-from vshort.media import frame_at
+from vshort.media import frame_at, probe
 from vshort.plates import Plate, build_plates, scene_cuts
 from vshort.render import OUTRO, build_ass, clean_video, render_video, segments
 from vshort.run import Run, config
-from vshort.script import Sentence, check_brief, check_script, group_sentences, merge_text, merged
-from vshort.stills import contact_sheet, grid_image, pick_still, scene_of
+from vshort.script import Sentence, check_brief, check_script, check_style, group_sentences, merge_text, merged
+from vshort.stills import NLM_OUTRO, contact_sheet, grid_image, pick_still, scene_of
 from vshort.tts import (Clip, QuotaExceeded, clip_paths, gemini_speaker, load_api_key, synth_lines, synth_script,
                         zerotts_speaker)
 from vshort.visuals import patch_text, pencil, svg_frame, validate
@@ -137,7 +137,7 @@ def cmd_text(a) -> int:
 def cmd_check(a) -> int:
     run = Run(a.run)
     script = run.read("script.vi.json")
-    probs = check_script(_sentences(run), script)
+    probs = check_script(_sentences(run), script) + check_style(script)
     if run.file("brief.vi.md").exists():
         probs += check_brief(script, run.file("brief.vi.md").read_text(encoding="utf-8"))
     for p in probs:
@@ -168,11 +168,12 @@ def cmd_stills(a) -> int:
     clean = run.file("clean.mp4")
     clean_video(run.file("source.mp4"), plates, run.file("plates"), lines[-1].end, clean)
     cuts = scene_cuts(clean)
+    stop = probe(run.file("source.mp4")).duration - NLM_OUTRO
     out = run.file("stills")
     (out / "grid").mkdir(parents=True, exist_ok=True)
     rows, shots = [], []
     for s in lines:
-        t = pick_still(clean, s.start, s.end, cuts)
+        t = pick_still(clean, s.start, s.end, cuts, stop)
         img = Image.fromarray(frame_at(clean, t))
         img.save(out / f"{s.id}.png")
         grid_image(img).save(out / "grid" / f"{s.id}.png")

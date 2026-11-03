@@ -32,7 +32,10 @@ def scene_cuts(video: Path) -> list[float]:
     cuts, prev = [], None
     for t, f in iter_frames(video):
         small = f[::4, ::4].astype(np.int16)  # 180x320
-        if prev is not None and np.abs(small - prev).mean() > 25:
+        d = None if prev is None else np.abs(small - prev)
+        # a low-contrast cut (dark theme, NetamLoader 11.73 s: mean 24.9) still changes > 30 % of the pixels by > 20
+        # (cuts 28–96 %); a shape popping in mid-scene changes ~14 %, caption swaps ≤ 8 %
+        if d is not None and (d.mean() > 25 or (d > 20).mean() > 0.3):
             cuts.append(t)
         prev = small
     return cuts

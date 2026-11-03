@@ -55,7 +55,7 @@ def _frame(kind: str, t: float, t0: float, t1: float) -> np.ndarray:
     return np.broadcast_to(np.array(rgb, np.uint8), (H, W, 3)).copy()
 
 
-def _ass(captions) -> str:
+def _ass(captions, style: str = "Old") -> str:
     def ts(t):
         return f"{int(t // 3600)}:{int(t % 3600 // 60):02d}:{t % 60:05.2f}"
 
@@ -68,21 +68,23 @@ WrapStyle: 2
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Old,Be Vietnam Pro,52,&H00202020,&H00202020,&H00E6E6E6,&H00E6E6E6,0,0,0,0,100,100,0,0,3,12,0,5,0,0,0,1
+Style: Light,Be Vietnam Pro,52,&H00EEEEEE,&H00EEEEEE,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,5,0,0,0,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
     return head + "".join(
-        f"Dialogue: 0,{ts(a)},{ts(b)},Old,,0,0,0,,{{\\pos(360,{y})}}{text}\n" for a, b, y, text in captions
+        f"Dialogue: 0,{ts(a)},{ts(b)},{style},,0,0,0,,{{\\pos(360,{y})}}{text}\n" for a, b, y, text in captions
     )
 
 
 @pytest.fixture
 def make_video():
-    def make(tmp_path: Path, scenes, captions, fps: int = 30) -> Path:
+    def make(tmp_path: Path, scenes, captions, fps: int = 30, style: str = "Old") -> Path:
+        """style "Old": dark ink on a light box (light themes); "Light": bare light text (dark themes)."""
         out = tmp_path / f"v{len(list(tmp_path.glob('v*.mp4')))}.mp4"
         ass = tmp_path / f"{out.stem}.ass"
-        ass.write_text(_ass(captions), encoding="utf-8")
+        ass.write_text(_ass(captions, style), encoding="utf-8")
         dur = max(e for _, e, _ in scenes)
         p = subprocess.Popen(
             [imageio_ffmpeg.get_ffmpeg_exe(), "-loglevel", "error", "-y",

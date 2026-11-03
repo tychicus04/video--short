@@ -13,7 +13,18 @@ Bạn viết lời đọc tiếng Việt cho một video ngắn: cùng một ch�
 Ghi `RUN/script.vi.json`: `[{"id": 1, "phrases": "…", "note": ""}, …]` — đủ mọi id, đúng thứ tự.
 
 Quy tắc:
-1. **Dịch sát nghĩa** câu tiếng Anh; không thêm ý, không đoán nội dung.
+1. **Sát nghĩa, không sát chữ**: giữ đủ ý câu tiếng Anh, không thêm ý, không đoán nội dung, nhưng nói lại như người Việt
+   kể cho người nghe, không bám cấu trúc câu Anh. Câu Anh dài được tách thành hai câu Việt ngắn trong cùng một id.
+   Đọc thầm từng câu: người dẫn chương trình Việt không nói vậy thì viết lại. Văn dịch hay gặp (sai → đúng):
+   - "chấp nhận một cách mù quáng" → "cứ thế nhận" (bỏ "một cách + tính từ")
+   - "bị nhắm tới bởi các gói tin được thiết kế đặc biệt" → "kẻ tấn công gửi tới | những gói tin chế riêng" (bỏ bị động "bởi")
+   - "Hãy xét một máy chủ Linux công khai…" → "Thử hình dung một máy chủ Linux | mở ra Internet…"
+   - "Lấy “chỉ Kinh Thánh” làm ví dụ." → "Bắt đầu với “chỉ Kinh Thánh”."
+   - "Danh sách này thực sự được gom lại muộn hơn nhiều" → "Mãi về sau | danh sách này mới được gom lại" (bỏ "thực sự" dịch từ "actually")
+   - "Điều đó nghe như thể | mọi thứ khác phải bị loại bỏ" → "Nghe thì tưởng | mọi thứ khác đều phải bỏ"
+   - "chiếc máy chủ dễ tổn thương đó" → "cái máy chủ chưa vá lúc nãy" ("vulnerable" của máy là "có lỗ hổng", "chưa vá")
+   Không dùng sáo ngữ: "minh chứng cho", "đột phá", "toàn diện", "trong bối cảnh … hiện nay", "cuộc cách mạng".
+   `vshort check` bắt một phần các mẫu trên; mẫu nào phải giữ (brief viết đúng chữ đó) thì ghi `note` nhắc nó.
 2. **Brief thắng** khi câu tiếng Anh: sai dữ kiện so với nguồn, khẳng định điều brief ghi là tranh cãi/không được khẳng định,
    hoặc đổi câu móc/câu chốt/lời kêu gọi đã duyệt. Khi đó viết theo brief và ghi `note` ngắn: tiếng Anh nói gì, vì sao đổi.
    Không lệch thì `note` để `""`.

@@ -21,10 +21,21 @@ class Fragment:
     text: str | None = None
 
 
+def _frames(video: Path, **kw):
+    """Gray frames with captions as dark ink: a dark theme (light captions, seen on NetamLoader) is inverted.
+
+    The theme is the median grey of the caption width over one frame a second.
+    """
+    # ponytail: one theme per video; a video half light, half dark loses the other half's captions — decide per scene then
+    dark = np.median([np.median(f[:, X0:X1]) for _, f in iter_frames(video, fps=1)]) < 128
+    for t, f in iter_frames(video, **kw):
+        yield t, 255 - f if dark else f
+
+
 def find_bands(video: Path) -> list[tuple[int, int]]:
     """Row bands where dark ink comes and goes (captions); static art lines never toggle."""
     prev, toggles, n = None, None, 0
-    for _, f in iter_frames(video, fps=6):
+    for _, f in _frames(video, fps=6):
         ink = f[:, X0:X1] < INK
         if prev is not None:
             hit = (ink ^ prev).sum(1) > 12
@@ -53,7 +64,7 @@ def detect_fragments(video: Path) -> list[Fragment]:
     cur: list[Fragment | None] = [None] * len(bands)
     prev: list[np.ndarray | None] = [None] * len(bands)
     t = 0.0
-    for t, f in iter_frames(video):
+    for t, f in _frames(video):
         for k, (a, b) in enumerate(bands):
             r = f[a:b, X0:X1].astype(np.int16)
             on = int((r < INK).sum()) > 150

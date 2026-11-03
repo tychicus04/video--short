@@ -1,5 +1,5 @@
 from vshort.captions import Fragment
-from vshort.script import Sentence, check_brief, check_script, group_sentences, merge_text, merged, syllables
+from vshort.script import Sentence, check_brief, check_script, check_style, group_sentences, merge_text, merged, syllables
 
 
 def test_merge_drops_ui_label_and_scene_cut_duplicate():
@@ -94,3 +94,14 @@ def test_call_to_action_heading_may_be_marked_up():
     for head in ("## Lời kêu gọi", "**Lời kêu gọi**", "Lời kêu gọi:", "Lời kêu gọi\n"):
         brief = f'Câu chốt\nPhá cả hai phần.\n{head}\n"Hãy hỏi đội IT, và chia sẻ video này."\n'
         assert len(check_brief(script, brief)) == 1, head
+
+
+def test_translationese_needs_rewording_or_a_note():
+    script = [{"id": 2, "phrases": "phải chấp nhận một cách mù quáng | các yêu cầu TCP", "note": ""},
+              {"id": 3, "phrases": "bị nhắm tới bởi các gói tin | được thiết kế đặc biệt"},
+              {"id": 4, "phrases": "Lấy “chỉ Kinh Thánh” | làm ví dụ."},
+              {"id": 5, "phrases": "Có một cách khác, | bởi vì máy chủ | được vá bởi vì lỗi đã lộ."}]
+    assert [p.split(" là văn dịch")[0] for p in check_style(script)] == [
+        "Câu 2: 'một cách'", "Câu 3: 'bị nhắm tới bởi'", "Câu 4: 'lấy “chỉ kinh thánh” làm ví dụ'"]
+    script[0]["note"] = "Giữ 'một cách' vì brief dùng đúng chữ này."
+    assert len(check_style(script)) == 2

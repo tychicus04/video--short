@@ -26,6 +26,13 @@ def test_pick_still_skips_the_frames_right_after_a_cut(make_video, tmp_path):
     assert pick_still(v, 1.0, 2.0, [1.0]) >= 1.25  # the checkerboard at 1.0-1.2 scores highest but is a transition
 
 
+def test_pick_still_never_from_notebooklms_logo_outro(make_video, tmp_path):
+    v = make_video(tmp_path, scenes=[(0, 2, "drawn"), (2, 3, "flash")], captions=[])
+    # the last line runs into the outro (here a checkerboard that would score highest), and no cut was found there
+    assert 1.0 <= pick_still(v, 1.0, 3.0, [], stop=2.0) < 2.0
+    assert 1.0 <= pick_still(v, 2.2, 3.0, [], stop=2.0) < 2.0  # a line said wholly over the outro
+
+
 def test_scene_of():
     assert [scene_of(t, [1.0, 2.5]) for t in (0, 0.99, 1.0, 2.4, 2.5, 9)] == [0, 0, 1, 1, 2, 2]
 
@@ -33,7 +40,8 @@ def test_scene_of():
 def test_stills_cmd_one_still_per_spoken_line(make_video, tmp_path):
     run = tmp_path / "run"
     (run / "plates").mkdir(parents=True)
-    shutil.copy(make_video(tmp_path, scenes=[(0, 3, "drawn")], captions=[]), run / "source.mp4")
+    outro = [(3, 6.2, "#202020")]  # NotebookLM's logo after the last line
+    shutil.copy(make_video(tmp_path, scenes=[(0, 3, "drawn"), *outro], captions=[]), run / "source.mp4")
     (run / "plates" / "plates.json").write_text("[]")
     (run / "sentences.en.json").write_text(json.dumps(
         [{"id": i, "start": i - 1, "end": i, "en": "x."} for i in (1, 2, 3)]))

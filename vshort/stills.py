@@ -10,6 +10,7 @@ from vshort.textfit import FONTS
 FPS = 10  # sampling rate for the search
 AFTER, BEFORE = 0.25, 0.1  # around a cut the picture is still drawing in or already fading out
 BLANK = 8  # gray std under this is bare paper
+NLM_OUTRO = 3.1  # NotebookLM ends every video on ~3.06 s of its logo (three runs); the scene cut there is not always found
 TIE = 0.99  # scores within 1 % of the best count as equal; the later frame wins (more of it is drawn)
 GRID, LABEL = 40, 80
 SHEET_COLS, SHEET_W = 5, 288  # sheet.png: 5 stills per row, 288 px wide each
@@ -29,11 +30,16 @@ def _best(video: Path, a: float, b: float, cuts: list[float]) -> tuple[float, fl
     return top, max(t for s, t in scored if s >= top * TIE)
 
 
-def pick_still(video: Path, a: float, b: float, cuts: list[float]) -> float:
+def pick_still(video: Path, a: float, b: float, cuts: list[float], stop: float = float("inf")) -> float:
+    """Never at or after `stop`, where NotebookLM's logo outro starts (the last line may run into it)."""
+    b = min(b, stop)
+    if a >= b:  # said wholly over the outro: the last second before it
+        a = max(0.0, b - 1.0)
     best = _best(video, a, b, cuts)
     if best[0] < BLANK:  # the line's window is paper or a fade-in: take the drawn part of the same scene
         k = scene_of((a + b) / 2, cuts)
-        wide = _best(video, cuts[k - 1] if k else 0.0, cuts[k] if k < len(cuts) else probe(video).duration, cuts)
+        wide = _best(video, cuts[k - 1] if k else 0.0, min(cuts[k] if k < len(cuts) else probe(video).duration, stop),
+                     cuts)
         if wide[0] > best[0]:
             best = wide
     return best[1]

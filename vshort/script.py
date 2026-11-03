@@ -133,6 +133,29 @@ def _plain(text: str) -> str:
     return " ".join(text.replace("|", " ").split()).lower()
 
 
+# ponytail: patterns seen in the first two runs; add one when Tai flags another
+STIFF = {
+    r"\bmột cách\b(?! (?:khác|để|nào|mà)\b)": "bỏ 'một cách', dùng thẳng tính từ ('cứ thế nhận', 'chạy nhanh')",
+    r"\b(?:bị|được)\b[^,.;:?!]{0,40}?\bbởi\b(?! vì)": "bị động kiểu Anh: đưa người làm lên trước ('kẻ tấn công gửi tới…')",
+    r"\bhãy xét\b": "'Take a…' không phải 'hãy xét': 'Thử hình dung…', 'Ví dụ…'",
+    r"\blấy\b[^,.;:?!]{0,30}?\blàm ví dụ\b": "'Take X' không phải 'lấy X làm ví dụ': 'Bắt đầu với X.'",
+    r"\bdễ tổn thương\b": "'vulnerable' của máy/phần mềm là 'có lỗ hổng', 'chưa vá'",
+}
+
+
+def check_style(script: list[dict]) -> list[str]:
+    """Translationese a Vietnamese narrator would never say aloud; a note naming the words keeps them."""
+    probs = []
+    for row in script:
+        note = _plain(row.get("note", ""))
+        for pat, fix in STIFF.items():
+            m = re.search(pat, _plain(row["phrases"]))
+            if m and m.group(0) not in note:
+                probs.append(f"Câu {row['id']}: '{m.group(0)}' là văn dịch — {fix}; "
+                             f"hoặc ghi note nhắc '{m.group(0)}' và vì sao giữ")
+    return probs
+
+
 def check_brief(script: list[dict], brief: str) -> list[str]:
     """What only the brief can catch: absolute claims left unexplained, and an ending that is not the approved call to action."""
     probs = []

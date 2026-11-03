@@ -21,6 +21,13 @@ def test_detect_fragments_times_and_bands(make_video, tmp_path):
     assert fr[2].y0 < 1147 < fr[2].y1
 
 
+def test_light_captions_on_a_dark_theme(make_video, tmp_path):
+    v = make_video(tmp_path, scenes=[(0, 2, "#646464")], captions=CAPS, style="Light")
+    fr = detect_fragments(v)
+    assert [round(f.start, 2) for f in fr] == [0.0, 0.5, 1.0, 1.5]
+    assert fr[2].y0 < 1147 < fr[2].y1
+
+
 def test_write_sheets(make_video, tmp_path):
     v = make_video(tmp_path, scenes=[(0, 2, "#F3EFE6")], captions=CAPS)
     sheets = write_sheets(v, detect_fragments(v), tmp_path / "sheets", per_sheet=3)
