@@ -7,3 +7,7 @@ zerotts_voice = "quangminh"
 env_file = "~/Document/notebooklm-py-main/.env"
 notebooklm_dir = "~/Document/notebooklm-py-main"
 runs_dir = "~/notebooklm-videos"
+# the web control panel (`vshort web`): its port, how many videos it runs at once, where its login token lives
+web_port = 8770
+web_max_running = 3
+web_token_file = "~/.config/vshort/web_token"
