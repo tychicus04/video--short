@@ -28,7 +28,8 @@ Thiết kế: `~/video-pipeline/docs/superpowers/specs/2026-11-02-dieu-phoi-bang
      dán cả lời nhắn đó (so sánh cũ → mới). Tai sửa → sửa `$RUN/script.vi.json` (giữ dấu `|` chia cụm phụ đề). Tai đồng ý bản đề
      xuất → chép `script.proposed.json` đè lên `script.vi.json` rồi xóa `script.proposed.json`; không đồng ý → xóa nó. Rồi
      `vshort approve $RUN script` (mã 2 = `vshort check` trượt: đưa Tai lỗi, sửa, duyệt lại) → `vshort auto $RUN` → bước 2.
-   - **0 — xong**: dán nguyên lời nhắn (đường dẫn, lệnh `scp` — ghi rõ "gõ trong terminal Mac, không có dấu `!`" —, giọng, đoạn hình
+   - **0 — xong**: dán nguyên lời nhắn (đường dẫn, tiêu đề, ảnh bìa, thư mục Mac tự kéo về kèm lệnh `rsync` lấy ngay — ghi rõ
+     "gõ trong terminal Mac, không có dấu `!`" —, giọng, đoạn hình
      động, vá chữ/tư liệu, kết luận soát, chi phí).
    - **1, 2, 4, 75 — dừng vì lỗi**: dán nguyên lời nhắn. Mã 4 = hết phiên NotebookLM (lời nhắn có cách đăng nhập lại); mã 75 = hết
      hạn mức Gemini và ZeroTTS không chạy được. Khi nguyên nhân đã xử lý xong, `vshort auto $RUN` chạy tiếp từ bước dở → bước 2.

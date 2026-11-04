@@ -145,6 +145,21 @@ MOTION_BIND = ("Việc 2 — gắn nhịp vào lời. RUN={run}\n\nĐọc {run}/
                "{run}/motion.bind.json. Chạy `vshort motion {run}` tới khi mã 0.")
 VISUALS = ("RUN={run}\n\nĐọc {run}/motion.bind.json (lines) để biết câu nào đã có hình động (đừng chọn tư liệu cho các câu đó), "
            "{run}/sources.md (nguồn tư liệu thật) và {run}/brief.vi.md (mục \"Lưu ý độ chính xác\") khi vá chữ.")
+COVER = ("Việc riêng: chọn ảnh đại diện và viết tiêu đề đăng cho video, không làm gì khác (không tạo notebook, không nạp "
+         "nguồn, không sửa brief). RUN={run}. Chạy `vshort cover {run} --candidates`: nó tải ảnh đầu bài (og:image) của các "
+         "nguồn trong {run}/sources.md, ghép thành {run}/cover/sheet.jpg có đánh số. Xem ảnh đó, {run}/brief.vi.md và "
+         "{run}/script.vi.json (lời video thật sự nói). Chọn MỘT ảnh minh hoạ đúng chủ đề video: ưu tiên ảnh của nguồn "
+         "gốc/chính thức; bỏ logo, thẻ chỉ có tên hãng hay tên bài, sơ đồ kỹ thuật lộ tên tệp/công cụ mà brief cấm.\n\n"
+         "Rồi viết hai dòng chữ: \"title\" — tiêu đề đăng video (60–90 ký tự), giật tít, gây tò mò mà vẫn đúng sự thật và "
+         "có chất kỹ thuật: nêu tên sản phẩm/hãng, mã CVE, điểm CVSS hay con số cụ thể có trong script.vi.json, và hậu quả "
+         "người xem quan tâm (ví dụ \"Lỗ hổng CVSS 10 trong LXD: mạo danh client, chiếm cả cụm máy không cần khóa\"); "
+         "\"thumb\" — chữ in lên ảnh bìa (3–6 từ, ≤ 32 ký tự), đặt từ khóa đắt nhất trong dấu sao để tô vàng (ví dụ "
+         "\"*CVSS 10*: chiếm cụm không cần khóa\"). Chỉ dùng dữ kiện có trong script.vi.json; không bịa số; không tên "
+         "tệp/công cụ mà mục \"Lưu ý độ chính xác\" của brief cấm.\n\nGhi {run}/cover/pick.json: "
+         "{{\"n\": số hoặc null khi không ảnh nào hợp, \"why\": \"…\", \"title\": \"…\", \"thumb\": \"…\"}}. "
+         "Đừng chạy `vshort cover {run}` không có --candidates.")
+COVER_TIMEOUT = 600  # seconds: one sheet to look at
+MAC_DIR = "~/Movies/vshort"  # where the Mac's LaunchAgent (scripts/vn.tai.vshort-keo.plist) pulls */xuat/ to
 REVIEW = "RUN={run}. final.mp4 đã render. Soát video cuối; ghi {run}/review.md và {run}/review.json."
 RECHECK = ("Soát lại: chỉ các phần đã sửa.\n\nRUN={run}. review.md cũ: {run}/review.md. Đã sửa (lỗi, agent, câu, thời điểm):\n"
            "{fixed}\nGhi kết quả vào cuối review.md và ghi lại review.json cho lần soát này.")
@@ -351,10 +366,34 @@ def _voice(run: Run) -> str:
     return "ZeroTTS (hết lượt Gemini)" if made == local else "Gemini"
 
 
+def _cover(run: Run) -> str:
+    """The final message's title, cover and export lines. Never fails the video: a failed agent leaves the spoken
+    title on the video's own still. `vshort cover` reruns every time, so the export carries the last final.mp4."""
+    p = run.path
+    if not run.done("cover"):
+        try:
+            run_claude(run, "cover", "vs-researcher", COVER.format(run=p), COVER_TIMEOUT)
+        except AgentError as e:
+            print(f"Ảnh đại diện: {e}; dùng ảnh từ video.", flush=True)
+    run_vshort(["cover", str(p)])
+    if not run.file("cover/cover.json").exists():  # `vshort cover` writes it last, after the pictures
+        return f"Ảnh đại diện: chưa làm được, xem auto.log; làm lại: `vshort cover {p}`"
+    info = run.read("cover/cover.json")
+    where = f"{p}/cover/thumb-16x9.jpg, thumb-9x16.jpg (không chữ: anh-dai-dien-*.jpg)"
+    out = [f"Tiêu đề: {info['title']}",
+           f"Ảnh bìa: {where} — " + (f"ảnh của {info['page']} (ghi nguồn khi đăng)" if info["from"] == "source"
+                                      else f"ảnh từ video, nên thay ({info.get('why') or 'không nguồn nào có ảnh hợp'})")]
+    done = sorted(run.file("xuat").glob("*/"))
+    out.append(f"Về Mac: Mac tự kéo về {MAC_DIR}/{done[0].name}/ (lấy ngay, gõ trong terminal Mac: "
+               f"rsync -a 'pve2:{p}/xuat/' {MAC_DIR}/)" if done
+               else f"Thư mục xuất: chưa làm được, xem auto.log; làm lại: `vshort cover {p}`")
+    return "\n".join(out)
+
+
 def _finish(run: Run, rev: dict, rounds: int) -> None:
-    p, slug = run.path, run.path.name
+    p = run.path
     out = [f"Video: {p}/final.mp4",
-           f"Chép về Mac (gõ trong terminal Mac): scp tai@pve2:~/notebooklm-videos/{slug}/final.mp4 ~/Downloads/{slug}.mp4",
+           _cover(run),
            f"Giọng: {_voice(run)}"]
     bind = run.read("motion.bind.json") if _canvas(run) and run.file("motion.bind.json").exists() else None
     if isinstance(bind, dict) and bind.get("lines"):

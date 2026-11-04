@@ -10,7 +10,7 @@ from pathlib import Path
 
 from PIL import Image, ImageOps
 
-from vshort import auto, motion, shapes
+from vshort import auto, cover, motion, shapes
 from vshort.captions import Fragment, detect_fragments, write_sheets
 from vshort.fit import Placement, build_narration, phrase_times, sequence, total
 from vshort.media import frame_at, probe
@@ -183,6 +183,30 @@ def cmd_stills(a) -> int:
     run.write("stills.json", rows)
     run.mark("stills")
     print(f"{len(rows)} ảnh tĩnh; ảnh để xem: {out / 'sheet.png'}")
+    return OK
+
+
+def cmd_cover(a) -> int:
+    run = Run(a.run)
+    if a.candidates:
+        rows = cover.candidates(run.path)
+        for r in rows:
+            print(f"{r['n']}\t{r['size'][0]}×{r['size'][1]}\t{r['page']}")
+        print(f"ảnh để xem: {run.file('cover/sheet.jpg')}" if rows else "không nguồn nào có ảnh đủ lớn")
+        return OK
+    try:
+        info = cover.make(run.path)
+    except (OSError, ValueError, KeyError) as e:
+        _err(f"không làm được ảnh đại diện: {e}")
+        return BAD_INPUT
+    run.mark("cover")
+    print(f"{run.file('cover/thumb-16x9.jpg')}\n{run.file('cover/thumb-9x16.jpg')}\n"
+          + (f"nguồn: {info['page']}" if info["from"] == "source" else "ảnh từ video"))
+    try:
+        print(f"xuất: {cover.package(run.path)}")
+    except OSError as e:
+        _err(f"không xếp được thư mục xuất: {e}")
+        return BAD_INPUT
     return OK
 
 
@@ -541,12 +565,14 @@ def main(argv: list[str] | None = None) -> int:
     p.set_defaults(fn=cmd_fetch)
     for name, fn in [("detect", cmd_detect), ("text", cmd_text), ("check", cmd_check), ("plates", cmd_plates),
                      ("tts", cmd_tts), ("stills", cmd_stills), ("motion", cmd_motion), ("visuals", cmd_visuals), ("timeline", cmd_timeline),
-                     ("render", cmd_render), ("status", cmd_status)]:
+                     ("render", cmd_render), ("status", cmd_status), ("cover", cmd_cover)]:
         p = sub.add_parser(name)
         p.add_argument("run")
         p.set_defaults(fn=fn)
         if name == "motion":
             p.add_argument("--design", action="store_true", help="check the canvas against the brief, before the voice")
+        if name == "cover":
+            p.add_argument("--candidates", action="store_true", help="gather the sources' lead images for an agent to pick")
     p = sub.add_parser("approve")
     p.add_argument("run")
     p.add_argument("what", choices=["brief", "script"])

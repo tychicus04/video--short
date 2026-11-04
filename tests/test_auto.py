@@ -396,7 +396,7 @@ def test_pass_review_finishes_with_cost_summary(flow):
     assert auto.run_auto(run) == OK
     st = auto.get_state(run)
     assert st["state"] == "done"
-    for want in ("final.mp4", "scp", "câu 1", "$1.25", "Đạt"):
+    for want in ("final.mp4", "Ảnh", "câu 1", "$1.25", "Đạt"):
         assert want in st["message"], want
     assert "Vượt ngân sách" not in st["message"]
 

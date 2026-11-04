@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Mac kéo video xong từ pve2 về ~/Movies/vshort/<tiêu đề>/ mỗi 5 phút (và ngay khi mở máy).
+     Cài: cp scripts/vn.tai.vshort-keo.plist ~/Library/LaunchAgents/ &&
+          launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/vn.tai.vshort-keo.plist
+     Log: ~/Library/Logs/vshort-keo.log -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>vn.tai.vshort-keo</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/sh</string>
+    <string>-c</string>
+    <string>mkdir -p "$HOME/Movies/vshort" &amp;&amp; /usr/bin/rsync -a -e "ssh -o BatchMode=yes -o ConnectTimeout=20" 'pve2:notebooklm-videos/*/xuat/' "$HOME/Movies/vshort/" &gt;&gt; "$HOME/Library/Logs/vshort-keo.log" 2&gt;&amp;1</string>
+  </array>
+  <key>StartInterval</key>
+  <integer>300</integer>
+  <key>RunAtLoad</key>
+  <true/>
+</dict>
+</plist>
