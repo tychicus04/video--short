@@ -11,3 +11,5 @@ runs_dir = "~/notebooklm-videos"
 web_port = 8770
 web_max_running = 3
 web_token_file = "~/.config/vshort/web_token"
+# `vshort cms`: which CMS (dev/prod) and its ids; the machine token sits in a file of its own (mode 600) named there
+cms_file = "~/.config/vshort/cms.toml"

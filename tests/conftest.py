@@ -123,3 +123,14 @@ def no_network(monkeypatch):
         raise URLError(f"no network in tests: {url}")
 
     monkeypatch.setattr(cover, "fetch", fetch)
+
+
+@pytest.fixture(autouse=True)
+def no_real_cms(monkeypatch):
+    """No test may reach the real CMS (it would create articles): every network call fails."""
+    from vshort import cms
+
+    def http(method, url, headers, body, timeout):
+        raise AssertionError(f"no CMS in tests: {method} {url}")
+
+    monkeypatch.setattr(cms, "_http", http)
