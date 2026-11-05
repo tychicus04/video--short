@@ -76,12 +76,12 @@ def _id(v) -> bool:
 def load(env: str | None = None, ids: bool = True) -> tuple[Settings | None, list[str]]:
     """The settings of the set `use` names (or `env`), or what is missing (in Vietnamese, for the page). `ids=False`:
     only what a call needs (api, token, act_as, department_id), for `vshort cms-probe` to find the other ids."""
-    path = Path(config().get("cms_file", "~/.config/vshort/cms.toml")).expanduser()
+    path = config().get("cms_file", "~/.config/vshort/cms.toml")
     try:
-        doc = tomllib.loads(path.read_text(encoding="utf-8"))
+        doc = tomllib.loads(Path(path).expanduser().read_text(encoding="utf-8"))
     except FileNotFoundError:
         return None, [f"chưa có file cấu hình {path}"]
-    except (OSError, ValueError) as e:
+    except (OSError, ValueError, RuntimeError) as e:
         return None, [f"không đọc được {path}: {e}"]
     env = env or doc.get("use")
     if env not in ENVS:
@@ -108,13 +108,13 @@ def load(env: str | None = None, ids: bool = True) -> tuple[Settings | None, lis
         missing.append("thiếu bảng zernio = { facebook, youtube, tiktok } (để trống nền tảng không đăng)")
     if missing:
         return None, missing
-    tok = Path(sec["token_file"]).expanduser()
-    try:
+    try:  # not only OSError: a file that is not UTF-8, a "~user/" that does not exist. This runs on every page poll
+        tok = Path(sec["token_file"]).expanduser()
         if tok.stat().st_mode & 0o077:
             return None, ["token_file phải để quyền 600"]
         token = tok.read_text(encoding="utf-8").strip()
-    except OSError:
-        return None, [f"không có token_file {tok}"]
+    except (OSError, ValueError, RuntimeError):
+        return None, [f"không đọc được token_file {sec['token_file']}"]
     if not token:
         return None, ["token_file rỗng"]
     if not re.fullmatch(r"[!-~]+", token):  # http.client would quote the whole header, token and all, in its error

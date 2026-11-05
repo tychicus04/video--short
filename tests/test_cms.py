@@ -198,3 +198,14 @@ def test_a_header_http_refuses_never_carries_the_token():
     with pytest.raises(cms.CmsError) as e:
         REAL_HTTP("POST", "https://127.0.0.1:9/graphql", {"Authorization": f"Bearer {TOKEN}\nX: y"}, b"{}", 5)
     assert TOKEN not in str(e.value) and e.value.answered is False  # not sure what went out: never "refused"
+
+
+def test_load_never_raises(tmp_path, monkeypatch):
+    """load() runs on every /api/state poll: an odd token file must be a line on the CMS box, never a down home page."""
+    write_settings(tmp_path, monkeypatch)
+    (tmp_path / "cms-dev.token").write_bytes(b"\xff\xfe\x00bad")
+    s, missing = cms.load()
+    assert s is None and missing
+    write_settings(tmp_path, monkeypatch, token_file="~no-such-user-vshort/cms.token")
+    s, missing = cms.load()
+    assert s is None and missing

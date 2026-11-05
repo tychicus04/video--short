@@ -293,7 +293,7 @@ def _send(s: Settings, run_dir: Path, rec: dict, step) -> None:
     aid = rec["article_id"]
     current = None
     if aid:
-        rec["link"] = f"{s.admin}/article/edit/personal/1/{aid}"
+        rec["link"] = f"{s.admin}/article/edit/personal/{s.article_type_id}/{aid}"
         if (current := _article(s, rec)) is None:
             _save(run_dir, s.env, rec)
             return
@@ -336,7 +336,7 @@ def _send(s: Settings, run_dir: Path, rec: dict, step) -> None:
             return
         aid = int(out["articles_create"]["id"])
         rec.update(article_id=aid, article_files={k: files[k] for k in FILES}, creating=False,
-                   link=f"{s.admin}/article/edit/personal/1/{aid}")
+                   link=f"{s.admin}/article/edit/personal/{s.article_type_id}/{aid}")
         content = create_body(s, title, meta, files["video"]["url"], 0, 0)["content"]
         step("article", "done")
     elif all(rec["article_files"].get(k, {}).get("sha") == files[k]["sha"] for k in FILES):
