@@ -49,8 +49,8 @@ Top-right corner: a red badge with the bold text "{badge}".
 Lower third: a huge bold condensed Vietnamese headline, stacked and centered, with a thick black outline and drop shadow:
 {lines}
 
-Spell every Vietnamese text exactly as given, with correct diacritics. No other text, no real company or agency \
-logos, no watermark."""
+Spell every text exactly as given, Vietnamese with correct diacritics. No text other than what this prompt quotes, \
+no real company or agency logos, no watermark."""
 # pasted in the same Gemini chat once the 9:16 one is drawn: the article's lead image
 WIDE = """Now make the same poster as a horizontal 16:9 image: same scene and the same headline text, rearranged for the wide \
 frame, with the headline on the left half."""
