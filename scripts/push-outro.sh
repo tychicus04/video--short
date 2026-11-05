@@ -15,7 +15,6 @@ done
 
 git commit -q -m "outro: thay anm-outro.mp4" -- $f || exit 1
 git pull -q --rebase --autostash || { git rebase --abort 2>/dev/null; say "git pull lỗi, outro mới mới commit, chưa push"; exit 1; }
-[[ $(git rev-list --count "@{u}..HEAD") == 1 ]] || { say "main còn commit khác chưa push, outro mới mới commit, chưa push"; exit 1; }
 git push -q || { say "push lỗi, outro mới mới commit"; exit 1; }
 ssh -o BatchMode=yes -o ConnectTimeout=20 pve2 'systemctl --user is-active -q vshort-update ||
   systemd-run --user --unit vshort-update --collect -E PATH="$PATH" ~/video-pipeline/scripts/update-server.sh' >/dev/null 2>&1 \
