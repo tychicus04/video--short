@@ -100,9 +100,10 @@ def ensure_meta(run: Run) -> dict:
 
 
 def create_body(s: Settings, title: str, meta: dict, video_url: str, cover16_id: int, cover9_id: int) -> dict:
-    """A new personal article like 22457: the video alone in the body, both covers, its categories, genre, kind, tags."""
+    """A new personal article like 22457: the video alone in the body, both covers, its categories, genre, kind, tags,
+    and its "Loại bài viết" (icon_id)."""
     return {"title": title, "slug": "", "desc": meta["sapo"], "content": video_block(video_url),
-            "avatar1_id": cover16_id, "avatar2_id": cover9_id,
+            "avatar1_id": cover16_id, "avatar2_id": cover9_id, "icon_id": s.icon_id,
             "workflow_id": s.private_workflow_id, "article_type_id": s.article_type_id, "department_id": s.department_id,
             "article_categories": [{"category_id": c, "display_order": i, "is_major": i == 0}
                                    for i, c in enumerate(s.categories)],

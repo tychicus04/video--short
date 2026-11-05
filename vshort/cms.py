@@ -21,6 +21,7 @@ PUT_TIMEOUT = 600  # a 30 MB video to MinIO
 
 ARTICLE_FIELDS = ("id title slug content department_id article_type_id workflow_id avatar1_id avatar2_id updated_at "
                   "workflow { workflow_type_id name }")
+ARTICLE_TYPES = "query { article_types_all { id name department_id status_id } }"
 ARTICLE = f"query($id: Int!) {{ articles_detail(id: $id) {{ {ARTICLE_FIELDS} }} }}"
 CREATE = "mutation($b: ArticleSaveInputDto!) { articles_create(body: $b) { id } }"
 UPDATE = "mutation($id: Int!, $b: ArticleSaveInputDto!) { articles_update(id: $id, body: $b) { id } }"
@@ -31,7 +32,7 @@ WORKFLOWS = "query($b: BaseInput!) { workflows_all(body: $b) { id name type_id w
 ZERNIO = "query { zernio_accounts { id platform username displayName needsReauth } }"
 # skips the department check (@SkipDepartmentCheck): what department_id the act-as editor may use
 PROFILE = "query { auth_profile { id user_name userDepartments { department { id name } } } }"
-SAMPLE = (f"query($id: Int!) {{ articles_detail(id: $id) {{ {ARTICLE_FIELDS} desc "
+SAMPLE = (f"query($id: Int!) {{ articles_detail(id: $id) {{ {ARTICLE_FIELDS} desc icon_id icon {{ name }} "
           "articleCategories { category_id is_major category { name } } "
           "articleGenres { article_genre_id is_major articleGenre { name } } "
           "articleKinds { article_kind_id } articleTags { tag { name } } } }")
@@ -49,7 +50,8 @@ class Settings:
     article_type_id: int
     categories: list[int]
     genres: list[int]
-    kinds: list[int]
+    kinds: list[int]  # article_kind_ids (IMAGE 1, VIDEO 2…), may be empty
+    icon_id: int  # "Loại bài viết" in CMS-Admin (article_types_all), e.g. Short Video
     zernio: dict[str, str]
 
 
@@ -92,12 +94,14 @@ def load(env: str | None = None, ids: bool = True) -> tuple[Settings | None, lis
             missing.append(f"thiếu {k}")
     if isinstance(sec.get("api"), str) and sec["api"].strip() and not sec["api"].startswith("https://"):
         missing.append("api phải là https:// (token không được đi qua mạng dạng chữ trần)")
-    for k in ("department_id", "private_workflow_id", "article_type_id") if ids else ("department_id",):
+    for k in ("department_id", "private_workflow_id", "article_type_id", "icon_id") if ids else ("department_id",):
         if not _id(sec.get(k)):
             missing.append(f"{k} chưa điền (phải là số id > 0)")
-    for k in ("categories", "genres", "kinds") if ids else ():
+    for k in ("categories", "genres") if ids else ():
         if not (isinstance(sec.get(k), list) and sec[k] and all(_id(v) for v in sec[k])):
             missing.append(f"{k} chưa điền (danh sách id > 0)")
+    if ids and not (isinstance(sec.get("kinds", []), list) and all(_id(v) for v in sec.get("kinds", []))):
+        missing.append("kinds phải là danh sách id > 0 (để [] nếu bài mẫu không có)")
     zernio = sec.get("zernio") if ids else {}
     if not (isinstance(zernio, dict) and all(isinstance(zernio.get(p, ""), str) for p in PLATFORMS)):
         missing.append("thiếu bảng zernio = { facebook, youtube, tiktok } (để trống nền tảng không đăng)")
@@ -116,7 +120,7 @@ def load(env: str | None = None, ids: bool = True) -> tuple[Settings | None, lis
                     act_as=sec["act_as"].strip(), department_id=sec["department_id"],
                     private_workflow_id=sec.get("private_workflow_id", 0), article_type_id=sec.get("article_type_id", 0),
                     categories=list(sec.get("categories", [])), genres=list(sec.get("genres", [])),
-                    kinds=list(sec.get("kinds", [])), zernio={p: zernio.get(p, "").strip() for p in PLATFORMS}), []
+                    kinds=list(sec.get("kinds", [])), icon_id=sec.get("icon_id", 0), zernio={p: zernio.get(p, "").strip() for p in PLATFORMS}), []
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):

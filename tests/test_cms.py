@@ -32,7 +32,7 @@ def write_settings(tmp_path: Path, monkeypatch, *, use="dev", mode=0o600, token=
     os.chmod(tok, mode)
     sec = {"api": "https://api.dev.example", "admin": "https://cms.dev.example", "token_file": str(tok),
            "act_as": "phongvien01", "department_id": 1, "private_workflow_id": 7, "article_type_id": 1,
-           "categories": [11, 12], "genres": [21], "kinds": [31]} | over
+           "categories": [11, 12], "genres": [21], "kinds": [31], "icon_id": 41} | over
 
     def val(v):
         return json.dumps(v)  # TOML accepts JSON strings, ints and arrays of ints as they are
@@ -48,7 +48,8 @@ def write_settings(tmp_path: Path, monkeypatch, *, use="dev", mode=0o600, token=
 def settings(**over) -> cms.Settings:
     base = dict(env="dev", api="https://api.dev.example", admin="https://cms.dev.example", token=TOKEN,
                 act_as="phongvien01", department_id=1, private_workflow_id=7, article_type_id=1,
-                categories=[11, 12], genres=[21], kinds=[31], zernio={"facebook": "fb1", "youtube": "yt1", "tiktok": "tt1"})
+                categories=[11, 12], genres=[21], kinds=[31], icon_id=41,
+                zernio={"facebook": "fb1", "youtube": "yt1", "tiktok": "tt1"})
     return cms.Settings(**(base | over))
 
 
@@ -64,6 +65,14 @@ def test_load_reports_what_is_missing(tmp_path, monkeypatch):
     write_settings(tmp_path, monkeypatch, private_workflow_id=0)
     s, missing = cms.load()
     assert s is None and missing == [m for m in missing if "private_workflow_id" in m] and missing
+
+    write_settings(tmp_path, monkeypatch, icon_id=0)  # "Loại bài viết" of the sample (Short Video)
+    s, missing = cms.load()
+    assert s is None and missing == [m for m in missing if "icon_id" in m] and missing
+
+    write_settings(tmp_path, monkeypatch, kinds=[])  # article_kind_ids may be empty
+    s, missing = cms.load()
+    assert missing == [] and s.kinds == [] and s.icon_id == 41
 
     write_settings(tmp_path, monkeypatch, api="http://api.dev.example")  # the token would cross the LAN in clear
     s, missing = cms.load()

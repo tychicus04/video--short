@@ -38,7 +38,7 @@ def test_create_body_follows_the_sample():
     body = publish.create_body(settings(), "Tiêu đề đăng", META, URL, 101, 102)
     assert body == {
         "title": "Tiêu đề đăng", "slug": "", "desc": META["sapo"], "content": publish.video_block(URL),
-        "avatar1_id": 101, "avatar2_id": 102,
+        "avatar1_id": 101, "avatar2_id": 102, "icon_id": 41,
         "workflow_id": 7, "article_type_id": 1, "department_id": 1,
         "article_categories": [{"category_id": 11, "display_order": 0, "is_major": True},
                                {"category_id": 12, "display_order": 1, "is_major": False}],
@@ -480,6 +480,7 @@ def test_cli_cms_probe_prints_ids_never_the_token(monkeypatch, capsys):
         if query == cms.SAMPLE:
             return {"articles_detail": {
                 "id": 22457, "title": "Mẫu", "department_id": 3, "article_type_id": 1, "workflow_id": 40,
+                "icon_id": 50, "icon": {"name": "Short Video"},
                 "workflow": {"workflow_type_id": 1, "name": "Bài cá nhân"},
                 "articleCategories": [{"category_id": 11, "is_major": True, "category": {"name": "Chuyển động công nghệ"}}],
                 "articleGenres": [{"article_genre_id": 21, "is_major": True, "articleGenre": {"name": "Video ngắn"}}],
@@ -488,6 +489,8 @@ def test_cli_cms_probe_prints_ids_never_the_token(monkeypatch, capsys):
             assert variables["b"]["filters"] == ["department_id:=(3)", "type_id:=(1)", "workflow_type_id:=(1)"]
             return {"workflows_all": [{"id": 40, "name": "Bài cá nhân", "type_id": 1, "workflow_type_id": 1,
                                        "sub_type_id": None}]}
+        if query == cms.ARTICLE_TYPES:
+            return {"article_types_all": [{"id": 50, "name": "Short Video", "department_id": 3, "status_id": 2}]}
         if query == cms.ZERNIO:
             return {"zernio_accounts": [{"id": "acc-fb", "platform": "FACEBOOK", "username": "anm",
                                          "displayName": "ANM", "needsReauth": False}]}
@@ -497,6 +500,7 @@ def test_cli_cms_probe_prints_ids_never_the_token(monkeypatch, capsys):
     assert cli.main(["cms-probe", "22457", "--env", "dev"]) == cli.OK
     out = capsys.readouterr().out
     assert seen == [("dev", False)]
+    assert "icon_id = 50 (Short Video)" in out
     for part in ("phongvien01", "Ban Công nghệ", "Chuyển động công nghệ", "11", "Video ngắn", "21", "31", "binance", "40",
                  "acc-fb", "FACEBOOK"):
         assert part in out

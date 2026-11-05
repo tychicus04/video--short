@@ -610,8 +610,9 @@ def cmd_cms_probe(a) -> int:
             print(f"  chuyên mục {c['category_id']} {(c.get('category') or {}).get('name')}" + (" (chính)" if c.get("is_major") else ""))
         for g in x.get("articleGenres") or []:
             print(f"  thể loại {g['article_genre_id']} {(g.get('articleGenre') or {}).get('name')}" + (" (chính)" if g.get("is_major") else ""))
+        print(f"  icon_id = {x.get('icon_id')} ({(x.get('icon') or {}).get('name')})  ← \"Loại bài viết\"")
         for k in x.get("articleKinds") or []:
-            print(f"  loại bài viết {k['article_kind_id']}")
+            print(f"  kinds: article_kind_id {k['article_kind_id']} (1 ảnh, 2 video, 3 audio…)")
         print("  từ khóa: " + ", ".join((t.get("tag") or {}).get("name") or "" for t in x.get("articleTags") or []))
         workflows.update(department=x["department_id"], type=x["article_type_id"])
 
@@ -622,6 +623,10 @@ def cmd_cms_probe(a) -> int:
             print(f"  {w['id']} {w['name']} (type_id {w['type_id']}, workflow_type_id {w['workflow_type_id']}, "
                   f"sub_type_id {w.get('sub_type_id')})")
 
+    def types() -> None:
+        for x in cms.gql(s, cms.ARTICLE_TYPES, {})["article_types_all"]:
+            print(f"  {x['id']} {x['name']} (phòng ban {x['department_id']})")
+
     def zernio() -> None:
         for z in cms.gql(s, cms.ZERNIO, {})["zernio_accounts"]:
             print(f"  {z['platform']} {z['id']} @{z.get('username')} {z.get('displayName')!r}"
@@ -631,6 +636,7 @@ def cmd_cms_probe(a) -> int:
     show(f"Người đứng tên (act_as {s.act_as}) trên {s.env} ({s.api}):", profile)
     show(f"Bài {a.article_id}:", article)
     show("Chặng cá nhân (private_workflow_id):", private)
+    show("Loại bài viết (icon_id):", types)
     show("Tài khoản Zernio:", zernio)
     return OK
 
