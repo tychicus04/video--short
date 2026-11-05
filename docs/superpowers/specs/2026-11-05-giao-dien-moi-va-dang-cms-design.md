@@ -27,8 +27,9 @@ Tai làm khoảng 5 video mỗi ngày, mở trang trên **web** (Mac, Chrome, m�
   bao lâu), bước nào chờ Tai, và **còn khoảng bao lâu**. Cũng thấy được trên danh sách, không cần mở từng video.
 - **Giao diện theo phong cách bộ Figma "Clipcup"** mà Tai chọn
   (https://www.figma.com/design/QOnBzrx1gvfVn0GwRBaAP7/, node 65-400). Đây là bộ UI cho app điện thoại; ta mượn phong cách cho web:
-  nền gần đen, thẻ xám đậm bo tròn lớn, điểm nhấn tím, nút và tab dạng viên thuốc (tab chọn có nền trắng, chữ đen), nút chính tím
-  bo tròn hoàn toàn.
+  nền gần đen `#0E1015`, thẻ xám xanh `#21232C` bo 8 px, điểm nhấn tím `#6723FF`, nút bo 8–12 px. Tab là một rãnh tối, tab đang
+  chọn có nền trắng và chữ tối. Font Plus Jakarta Sans. Số đo đầy đủ: Global Constraints trong kế hoạch A (đọc qua Figma MCP
+  ngày 05/11/2026).
 - **Bản phác Tai đã duyệt ("oke rồi"):** https://claude.ai/artifact/GuGnqtfibBsV8AWYkoWEh5, gồm 3 màn:
   1. Trang chủ.
   2. Video đang chạy.
@@ -167,7 +168,8 @@ Theo bản phác. Những chỗ chính:
   - khung "Gửi lên CMS" (giai đoạn B; ở giai đoạn A thì ẩn).
 
 **Phong cách**
-- Nền tối, điểm nhấn tím. Chữ Be Vietnam Pro: repo đã có sẵn TTF ở `assets/fonts/`, dùng lại thay vì thêm gói mới.
+- Nền tối, điểm nhấn tím. Chữ Plus Jakarta Sans, font của Clipcup, có tiếng Việt: commit 3 file woff2 từ Google Fonts,
+  không thêm gói npm. Trước đây chọn Be Vietnam Pro (có sẵn ở `assets/fonts/`); đổi ngày 05/11/2026 để theo đúng Clipcup.
 - Tương phản chữ đạt 4.5:1, kể cả chữ phụ màu xám. Vùng bấm ≥ 44 px.
 - Bề ngang điện thoại: các cột xếp chồng, tab tự xuống dòng.
 

@@ -30,8 +30,10 @@ dùng bảng màu ở Global Constraints và mô tả màn hình trong spec.
   - Dòng cuối mỗi commit: `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 - **Thư viện và font**
   - Không thêm gói Python hay npm.
-  - Font Be Vietnam Pro lấy từ `assets/fonts/BeVietnamPro-{Regular,Bold,ExtraBold}.ttf`, nạp bằng `@font-face` trong `web/src/index.css`
-    (đường dẫn tương đối, Vite tự đóng gói).
+  - Font **Plus Jakarta Sans**, font của Clipcup, có bộ ký tự tiếng Việt (Google Fonts, giấy phép OFL).
+    - Tải 3 file woff2 (vietnamese, latin-ext, latin; trục độ đậm 500–700) từ
+      `https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500..700` vào `web/src/fonts/` và commit.
+    - Nạp bằng `@font-face` trong `web/src/index.css`, chép `unicode-range` từ CSS của Google. Không thêm gói npm.
 - **Chữ trên trang**
   - Mọi chữ hiện ra đều bằng tiếng Việt, gọi Tai là "bạn".
   - Thời gian ghi dạng "khoảng 21 phút", "dưới 1 phút", "lâu hơn thường lệ"; giờ dự kiến dạng "~14:33".
@@ -48,22 +50,32 @@ dùng bảng màu ở Global Constraints và mô tả màn hình trong spec.
   - Khổ `"9x16"` và `"16x9"`. Lệch tỉ lệ tối đa `RATIO_TOL = 0.05`.
   - Đổi sang JPEG, cạnh dài nhất ≤ `MAX_SIDE = 2048`. Ảnh gốc tối đa `MAX_UPLOAD = 15_000_000` byte.
   - Lưu tại `cover/gemini-9x16.jpg` và `cover/gemini-16x9.jpg`.
-- **Bảng màu** (từ bản phác; chỉ có giao diện tối):
+- **Bảng màu**: style đặt tên của Clipcup, đọc qua Figma MCP ngày 05/11/2026 ở màn Home `31324:1479` và Your Video `31335:2660`.
+  Chỉ có giao diện tối. Ô ghi "(không có trong Clipcup)" là màu tự thêm để chữ đủ tương phản.
 
   | Vai trò | Màu |
   |---|---|
-  | nền | `#0D0D12` |
-  | thẻ | `#16161E` |
-  | thẻ trong | `#1F1F29` |
-  | viền | `#23232E` / `#2E2E3B` |
-  | chữ | `#F4F4F6` |
-  | chữ phụ | `#A3A3B2` |
-  | nhấn | `#6D3CFF` (nút); chữ tím trên nền tối `#B7A3FF` |
-  | xong | chữ `#6EE7A0` trên `#0F2A1C`; chấm `#4ADE80` |
-  | chờ bạn | chữ `#FBBF24` trên `#2E2208` |
-  | lỗi | `#F87171` |
+  | nền | `#0E1015` (Main Colors/Primary) |
+  | thẻ | `#21232C` (Main Colors/DarkBlue) |
+  | ô nằm trên thẻ (chip thời lượng, nút biểu tượng, ô nhập) | `#0E1015`, tức màu nền |
+  | viền | Clipcup không dùng viền: các khối tách nhau bằng màu nền. Viền focus là vòng `#6723FF` |
+  | chữ | `#FEFEFE` (Additional Colors/White) |
+  | chữ phụ | `#9CA4AB` (Grayscale 60; 7,6:1 trên nền, 6,2:1 trên thẻ) |
+  | chữ mờ | `#66707A` (Grayscale 80). Chỉ dùng cho số phụ (như tổng thời lượng), không dùng cho chữ cần đọc: chỉ 3,8:1 |
+  | nhấn | nút `#6723FF` (Main Colors/third), chữ trên nút `#FEFEFE`; chữ tím trên nền tối `#B7A3FF` (không có trong Clipcup: `#6723FF` trên nền chỉ 3:1) |
+  | xong | `#4ADE80` (Alerts/Success), dùng cho chữ, chấm, và nền huy hiệu ở 15 % độ đục |
+  | chờ bạn | chữ `#FBBF24` trên `#2E2208` (không có trong Clipcup) |
+  | lỗi | chấm và nền `#F41F52` (Alerts/Error); chữ lỗi `#F87171` (`#F41F52` trên thẻ chỉ 3,9:1) |
 
-  - Thẻ bo 20–24 px. Nút và tab dạng viên thuốc (`rounded-full`); tab đang chọn có nền `#F4F4F6`, chữ `#0D0D12`.
+  - **Bo góc** (Clipcup): thẻ, ảnh thu nhỏ và nút nhỏ 8 px; nút chính và tab 12 px; huy hiệu dạng viên (30 px) chỉ cho nhãn nhỏ
+    kiểu "Become Pro"; nút nổi tròn hẳn. Không có nút hay tab dạng viên thuốc.
+  - **Tab**: một rãnh `#21232C`, bo 12 px, cao 50 px, chia đôi hoặc chia đều. Tab đang chọn có nền `#FEFEFE`, chữ `#21232C`
+    đậm 14 px, bóng `-20px 10px 30px rgba(0,0,0,.25)`. Tab khác chữ `#FEFEFE` nửa đậm 14 px.
+  - **Chữ** (thang của Clipcup, giãn chữ 0,5 %): 18/26 nửa đậm (tiêu đề khối); 16/24 đậm (tên mục); 14/22 nửa đậm hoặc đậm (nội dung);
+    12/20 vừa hoặc nửa đậm (nút, phụ đề). Clipcup có cỡ 10/18 cho điện thoại; trên web chữ cần đọc không nhỏ hơn 12 px.
+  - **Khoảng cách**: lề trang 24 px, giữa các khối 16 px, trong thẻ 8–12 px. Ảnh thu nhỏ phủ dải mờ
+    `linear-gradient(to bottom, rgba(33,35,44,0), rgba(33,35,44,.94) 75%)` để chữ trên ảnh đọc được.
+  - **Bóng**: nút nổi `0 10px 20px rgba(0,0,0,.2)`.
   - Tương phản chữ ≥ 4.5:1. Vùng bấm ≥ 44 px.
 - **Kiểm và deploy**
   - Test Python: `.venv/bin/python -m pytest -q`. Giao diện: `cd web && npm run build && npm run lint`.
@@ -337,9 +349,9 @@ dùng bảng màu ở Global Constraints và mô tả màn hình trong spec.
 ### Task 5: Giao diện nền: màu, font, khung trang
 
 **Files:**
-- Modify: `web/src/index.css` (thay token màu tối, `--radius`, `@font-face` Be Vietnam Pro, `--font-sans`), `web/src/App.tsx`
+- Modify: `web/src/index.css` (thay token màu tối, `--radius`, `@font-face` Plus Jakarta Sans, `--font-sans`; thêm `web/src/fonts/*.woff2`), `web/src/App.tsx`
   (header như bản phác: ô logo tím, "vshort", "Bảng điều khiển video", viên "Đang chạy n/3"), `web/src/components/ui/button.tsx`
-  (biến thể mặc định `rounded-full`, nút chính màu nhấn), `web/src/api.ts` (kiểu mới từ Task 3–4)
+  (nút bo `rounded-xl` ≈ 12 px, nút nhỏ `rounded-lg` 8 px, nút chính màu nhấn), `web/src/api.ts` (kiểu mới từ Task 3–4)
 - Test: build và lint
 
 **Interfaces:**
@@ -354,11 +366,11 @@ dùng bảng màu ở Global Constraints và mô tả màn hình trong spec.
 - [ ] **Step 1: Implement** the token change.
   - Trang chỉ có giao diện tối: đặt class `dark` cố định trên `<html>` trong `web/index.html` nếu chưa có.
   - Thay giá trị trong khối `.dark` bằng bảng màu Global Constraints (oklch hay hex đều được).
-  - `--radius: 1.25rem`.
+  - `--radius: 0.5rem`: `rounded-lg` = 8 px cho thẻ, `rounded-xl` = 11,2 px (gần với 12 px của Clipcup) cho nút và tab.
   - Bỏ `@import "@fontsource-variable/geist"` khỏi CSS. Gói vẫn để trong `package.json`, vì gỡ gói không thuộc việc này.
 - [ ] **Step 2: Implement** the header, the button change, the API types and the three formatters.
 - [ ] **Step 3: Run** `cd web && npm run build && npm run lint`. Expected: build OK, lint không có lỗi mới.
-- [ ] **Step 4: Commit** `feat(web): Clipcup-style dark theme, Be Vietnam Pro, new header` and push.
+- [ ] **Step 4: Commit** `feat(web): Clipcup dark theme, Plus Jakarta Sans, new header` and push.
 
 ### Task 6: Trang chủ
 
@@ -382,7 +394,7 @@ dùng bảng màu ở Global Constraints và mô tả màn hình trong spec.
      - tiêu đề đăng (thiếu thì slug), "$x · xong … trước";
      - nút "Đăng bài" (link trang video) và nút tải video.
 
-     Bộ lọc viên thuốc "Tất cả / Cần sửa". "Chưa đăng" để giai đoạn B.
+     Bộ lọc dạng tab Clipcup "Tất cả / Cần sửa". "Chưa đăng" để giai đoạn B.
   5. **"Chưa chạy tự động":** `<details>` thu gọn, liệt kê slug.
 - [ ] **Step 2: Run** `cd web && npm run build && npm run lint`. Expected: OK.
 - [ ] **Step 3: Commit** `feat(web): home page sections, running cards with time left, cover grid` and push.
@@ -432,7 +444,7 @@ dùng bảng màu ở Global Constraints và mô tả màn hình trong spec.
   - `POST /api/runs/{slug}/cover` (Task 4).
 
 - [ ] **Step 1: Implement** the tabs.
-  - Tab viên thuốc: "Đăng bài / Báo cáo soát / Các bước / Chi phí". Tab đang chọn nhớ theo video bằng `useKept(slug, "tab", "post")`.
+  - Tab kiểu Clipcup (rãnh `#21232C`, tab chọn nền trắng): "Đăng bài / Báo cáo soát / Các bước / Chi phí". Tab đang chọn nhớ theo video bằng `useKept(slug, "tab", "post")`.
   - Nội dung cũ chuyển vào tab tương ứng: `review.md` → Báo cáo soát, `CostTable` → Chi phí, `StageList` → Các bước.
   - Khối "Ghi chú của lần chạy" chuyển xuống cuối tab Báo cáo soát.
 - [ ] **Step 2: Implement** tab Đăng bài theo màn 3 của bản phác.
