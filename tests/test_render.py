@@ -126,8 +126,8 @@ def test_render_video_duration_audio_and_subs(tmp_path):
 
     assert is_(0.9, A) and is_(3.2, B)
     f = frame_at(out, 3.2)
-    assert f[1112, 360].min() > 200  # the light subtitle box, above the text
-    assert np.abs(f[1112, 100].astype(int) - B).max() < 12  # outside the box the frame shows
+    assert f[1058, 360].min() > 200  # the light subtitle box, above the text
+    assert np.abs(f[1058, 100].astype(int) - B).max() < 12  # outside the box the frame shows
 
 
 def test_no_corner_logo_then_the_outro(tmp_path):

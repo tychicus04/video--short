@@ -30,7 +30,7 @@ Mỗi chữ sai là một mục `patch`.
   Nếu chữ nằm chỗ khác ở vài ảnh, tách thành mục riêng cho nhóm ảnh đó.
 - `box` `[x0, y0, x1, y1]` (px, ảnh 720×1280): chỉ ôm chữ cũ cộng 4–8 px giấy quanh nó. **Không để viền, đường kẻ,
   nét đứt hay nét nào khác trong box**: chúng bị đo như mực của chữ cũ nên làm sai cỡ chữ vá, rồi bị phủ mất.
-  Box không được chạm dải phụ đề y 1094–1206 hay góc watermark cũ x 483–706, y 1214–1270.
+  Box không được chạm vùng phụ đề y 1046–1280 (hộp phụ đề và phần tên kênh/mô tả các nền tảng in đè bên dưới).
 - `text`: một dòng, ngắn bằng chữ cũ hoặc hơn chút. Nếu giống địa chỉ web thì phải kết thúc bằng `.example`, `.test` hoặc
   `.invalid` (ví dụ `tin-tuc.example`); không bao giờ viết một trang có thật.
 - Code tự lấy nền từ mép box, cỡ chữ từ chiều cao x-height của chữ cũ, màu mực của chữ cũ, và vẽ bằng Be Vietnam Pro
@@ -62,7 +62,7 @@ phiên bản nào bị ảnh hưởng, đã có bản vá. Ghi mọi thứ đã 
   điểm nhấn xanh lơ nhạt. Chữ viết tay dùng font `Patrick Hand`, chữ giao diện dùng `Be Vietnam Pro`; chỉ hai font này có sẵn.
 - Giao diện iOS dùng nhãn tiếng Việt thật có trong chính trang `source` ("Cài đặt › Cài đặt chung › Cập nhật phần mềm");
   trang nguồn không có thì đừng vẽ giao diện đó.
-- Giữ chữ trong x 40–680, y 60–1050: hình tham chiếu phóng 1,08 lần quanh tâm nên mép trên/dưới bị cắt khoảng 47 px, và dải phụ đề nằm ở y 1094–1206.
+- Giữ chữ trong x 40–680, y 60–1050: hình tham chiếu phóng 1,08 lần quanh tâm nên mép trên/dưới bị cắt khoảng 47 px, và vùng phụ đề bắt đầu từ y 1046.
 - `<image>` chỉ vẽ được khi `href` là `data:` URI; file liên kết ra trống trơn. Nhúng ảnh bằng `data:` hoặc đừng dùng ảnh trong SVG.
 - Chỉ dùng hình cơ bản (`rect`, `path`, `line`, `circle`, `text`); tránh `filter`, `foreignObject`, CSS phức tạp.
 - Tự vẽ một dòng nguồn nhỏ trong chính SVG, nằm phía trên y 1050 (y ≤ 1050), trong x 40–680 (ví dụ "Nguồn: Google Threat Intelligence").

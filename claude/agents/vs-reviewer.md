@@ -45,7 +45,7 @@ Kiểm:
 6. **Chỗ vá chữ**: với mỗi mục `patch`, xem khung của `final.mp4` tại các câu thuộc `ids` (tra `timeline.json`; đừng chỉ xem `frames/`) và một câu cùng cảnh không vá nếu có.
    Chữ vá phải đọc tự nhiên như chữ gốc: không viền hộp, không mảng nền khác màu, không vệt chữ cũ, cỡ và độ đậm hợp chữ quanh nó,
    cùng một chữ trên mọi khung của cảnh; chữ thay không phải địa chỉ web thật (chỉ `.example`, `.test`, `.invalid`).
-7. **Phụ đề mới**: hộp xám chữ viết tay, luôn ở cùng một chỗ (tâm y≈1150), đọc được, không tràn mép; câu đầu là tiêu đề
+7. **Phụ đề mới**: hộp xám chữ viết tay, luôn ở cùng một chỗ (đáy hộp y≈1140, trên phần tên kênh/mô tả mà TikTok, Reels, Shorts in đè từ y 1151; chữ không quá x 618, chỗ cột nút bắt đầu), đọc được, không tràn mép; câu đầu là tiêu đề
    trong brief và hiện trọn; chữ khớp `script.vi.json` (bỏ dấu `|`).
 8. **Hình và lời**: chi tiết còn lại trong hình mâu thuẫn với lời Việt/brief (phiên bản, con số, ngày, tên) mà chưa được vá —
    ghi thời điểm và đề xuất.

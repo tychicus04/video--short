@@ -3,7 +3,7 @@ import pytest
 from PIL import Image, ImageDraw, ImageFont
 
 from vshort.textfit import FONTS
-from vshort.visuals import PAPER, patch_text, pencil, svg_frame, validate
+from vshort.visuals import PAPER, SUBTITLE, patch_text, pencil, svg_frame, validate
 
 PAGE = (243, 239, 230)
 
@@ -117,7 +117,7 @@ def test_pencil_fits_any_photo():
         assert f.shape == (1280, 720, 3)
         assert np.abs(f[bottom + 6:bottom + 60] - bare[bottom + 6:bottom + 60]).max() > 40  # credit just under it
         assert np.array_equal(f[bottom + 60:], bare[bottom + 60:])  # and nowhere else
-        assert np.abs(f[1094:] - PAPER).max() <= 6  # subtitle band and below stay clear
+        assert np.abs(f[SUBTITLE[1]:] - PAPER).max() <= 6  # the caption box and what the platforms draw stay clear
 
 
 def test_pencil_keeps_the_edges_of_a_photo():

@@ -97,7 +97,8 @@ thời gian, file giọng đọc, `visuals.json` (chỗ vá chữ và hình tư 
 - **Model của subagent** theo quy ước của Tai: viết/sửa file → Sonnet; soát cuối → Opus.
 - **Kiểu chữ** (Tai đổi sau lần chạy thử 31/10): giữ kiểu phụ đề của NotebookLM — hộp xám nhạt
   vuông góc, chữ xám đậm kiểu viết tay (font Patrick Hand, đủ dấu tiếng Việt); không thanh tiêu đề,
-  không tô màu từ khóa; mọi hộp đặt cố định, tâm ở y=1150 (dải phụ đề thấp của NotebookLM).
+  không tô màu từ khóa; mọi hộp đặt cố định, đáy ở y=1140 (từ 05/11/2026; trước đó tâm ở y=1150, dải phụ đề thấp của NotebookLM,
+  nhưng nửa dưới bị tên kênh/mô tả của TikTok/Reels/Shorts che), chữ rộng tối đa 516 px để không lấn cột nút.
   Câu đầu là tiêu đề trong brief, hiện trọn câu; các câu tiếng Anh liền sau chỉ lặp ý mà nó đã nói
   thì để trống (khung giờ của chúng vẫn là nguồn ảnh cho tiêu đề). Các câu sau thành cụm
   một dòng ngắt ở chỗ tự nhiên.

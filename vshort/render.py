@@ -15,7 +15,7 @@ from vshort.fit import Placement
 from vshort.media import FF, iter_frames, probe
 from vshort.motion import Scene
 from vshort.plates import Plate
-from vshort.textfit import FONTS, MAX_TEXT_W, text_width
+from vshort.textfit import FONTS, MAX_TEXT_W, UI_BOTTOM, text_width
 
 W, H = 720, 1280
 FPS = 30
@@ -25,7 +25,8 @@ MIN_ZOOM = 1.01  # NotebookLM frames carry ~2 px of black at the left and right 
 EDGE = W * (1 - 1 / MIN_ZOOM) / 2  # px each side that MIN_ZOOM crops away; a pan stays this far from the image edges
 EM = 1000 / 1354  # libass sizes fonts by win ascent+descent; Patrick Hand's em is 0.739 of that
 LINE_H, CAP_EM, PAD_X, PAD_Y = 62, 50, 22, 12
-SUB_Y = 1150  # every caption box is centred here, on NotebookLM's own low caption band
+SUB_BOTTOM = UI_BOTTOM - 11  # every caption box stands on this line, clear of the platforms' description (was centred
+# at 1150, half under it); a two-line title grows upwards
 INK, BOX = "3A3434", "D6DEE2"  # ASS BGR, sampled from NotebookLM's captions: dark grey ink on a light grey box
 WATERMARK = "delogo=x=524:y=1232:w=180:h=32"
 LOGO = Path(__file__).resolve().parent.parent / "assets" / "brand" / "anm-logo.png"
@@ -132,7 +133,7 @@ def build_ass(phrases: list[tuple[float, float, str]]) -> str:
         lines = _balanced(t.replace("*", ""))
         h = len(lines) * LINE_H + 2 * PAD_Y
         w = round(max(text_width(ln) for ln in lines) + 2 * PAD_X)
-        x0, y0 = round((W - w) / 2), round(SUB_Y - h / 2)
+        x0, y0 = round((W - w) / 2), SUB_BOTTOM - h
         ev.append(_shape(start, end, BOX, _rect(x0, y0, x0 + w, y0 + h)))
         for i, ln in enumerate(lines):
             ev.append(_text(start, end, W // 2, y0 + PAD_Y + LINE_H * i + LINE_H // 2, ln))
