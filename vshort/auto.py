@@ -418,6 +418,8 @@ def _finish(run: Run, rev: dict, rounds: int) -> None:
     else:
         out.append("Hình động: không có" + (" (motion.json không qua kiểm, xem motion.loi.json)"
                                              if run.file("motion.loi.json").exists() else ""))
+    fx = run.read("sfx.json") if run.file("sfx.json").exists() else []
+    out.append("Hiệu ứng âm thanh: " + (", ".join(f"{c['name']} {c['at']:.1f} s" for c in fx) or "không có"))
     out.append(publish_shapes(run))
     for v in run.read("visuals.json") if run.file("visuals.json").exists() else []:
         out.append(f"- {v.get('kind')} câu {v.get('ids') or v.get('id')}: "

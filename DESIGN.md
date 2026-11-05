@@ -53,7 +53,9 @@ thời gian, file giọng đọc, `visuals.json` (chỗ vá chữ và hình tư 
 
 ## Không làm (non-goals)
 
-- Nhạc nền, hiệu ứng âm thanh.
+- Nhạc nền (bản quyền, Content ID). Hiệu ứng âm thanh thì có từ 05/11/2026 (Tai chọn), nhưng chỉ tối đa 3
+  điểm nhấn tự đặt theo hình: vào khung vẽ tay, lúc khung vẽ đầu tiên chuyển đỏ, lúc tư liệu đầu tiên hiện
+  (`vshort/sound.py`, file CC0 trong `assets/sfx/`).
 - Vẽ lại hình bằng AI tạo ảnh (Gemini image) hoặc video AI.
 - Giữ lại animation gốc của NotebookLM ở bất kỳ đoạn nào.
 - Sửa nét vẽ sai (không phải chữ) trong hình NotebookLM: chỉ báo cáo. Chữ sai thì `vs-visuals` vá,

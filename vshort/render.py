@@ -302,7 +302,10 @@ def render_video(segs: list[Segment], ass: Path, narration: Path, total: float, 
     last = end = None
     tmp = out.resolve().with_name(f"{out.stem}.tmp{out.suffix}")  # a failed render must not replace a good `out`
     cmd = [FF, "-loglevel", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", str(FPS),
-           "-i", "-", "-i", str(narration.resolve()), "-vf", f"ass={ass.name}:fontsdir={FONTS}", "-af", "apad",
+           "-i", "-", "-i", str(narration.resolve()),
+           # BT.709 matrix and tags: untagged HD plays as 709 in browsers and phones, swscale's default is 601
+           "-vf", f"ass={ass.name}:fontsdir={FONTS},scale=out_color_matrix=bt709:out_range=tv,"
+                  "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv", "-af", "apad",
            "-map", "0:v", "-map", "1:a", "-t", str(total + extra), "-c:v", "libx264", "-crf", "18", "-preset", "medium",
            "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(tmp)]
     try:

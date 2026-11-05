@@ -10,7 +10,7 @@ from pathlib import Path
 
 from PIL import Image, ImageOps
 
-from vshort import auto, cover, motion, shapes
+from vshort import auto, cover, motion, shapes, sound
 from vshort.captions import Fragment, detect_fragments, write_sheets
 from vshort.fit import Placement, build_narration, phrase_times, sequence, total
 from vshort.media import frame_at, probe
@@ -472,8 +472,11 @@ def cmd_render(a) -> int:
     ass.write_text(build_ass(phrase_times(placements, script)), encoding="utf-8")
     if not OUTRO.exists():
         export_outro()
-    render_video(segments(placements, frames, run.path, fitted["total"], animated), ass, run.file("narration.wav"),
-                 fitted["total"], run.file("final.mp4"), scenes, OUTRO)
+    segs = segments(placements, frames, run.path, fitted["total"], animated)
+    fx = sound.cues(segs, scenes)
+    run.write("sfx.json", [asdict(c) for c in fx])
+    sound.master(run.file("narration.wav"), fx, fitted["total"], run.file("mix.wav"))
+    render_video(segs, ass, run.file("mix.wav"), fitted["total"], run.file("final.mp4"), scenes, OUTRO)
     run.mark("render")
     print(run.file("final.mp4"))
     return OK
