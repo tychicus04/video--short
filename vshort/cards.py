@@ -189,6 +189,11 @@ class Card:
         self.pieces: list[Piece] = [Piece(*times[id(l)], l.box, l is outline) for l in order]
         self._timed = [(l, times[id(l)]) for l in layers]  # painted in the file's order
 
+    @property
+    def done(self) -> float:
+        """From this time on `frame(t)` is the finished card, whatever t is."""
+        return max([p.t1 for p in self.pieces] + [self._settled])
+
     def frame(self, t: float) -> Image.Image:
         img = Image.new("RGB", (W * SS, H * SS), PAPER)
         for lay, (t0, t1) in self._timed:

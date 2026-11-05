@@ -156,3 +156,14 @@ def test_one_card_is_rendered_once(tmp_path, monkeypatch):
     monkeypatch.setattr(cards.cairosvg, "svg2png", lambda *a_, **k: calls.append(1) or real(*a_, **k))
     b = Card(path, 5.0, 8.0, 0.4)  # the same file on another line: not drawn again
     assert calls == [] and [p.box for p in a.pieces] == [p.box for p in b.pieces]
+
+
+def test_done_is_when_the_card_stops_changing(tmp_path):
+    card = Card(_svg(tmp_path, BORDER, LINES, DOT, SOURCE), 1.0, 4.0, 0.4)
+    assert card.done == max(p.t1 for p in card.pieces) < 4.0
+    assert not np.array_equal(np.asarray(card.frame(card.done - 0.05)), np.asarray(card.frame(4.0)))
+    for later in (card.done, card.done + 0.5, 9.0):
+        assert np.array_equal(np.asarray(card.frame(later)), np.asarray(card.frame(4.0)))
+    quick = Card(_svg(tmp_path, BORDER, name="q.svg"), 1.0, 1.1, 0.4)  # the frame settles into the SVG's rect last
+    assert quick.done == pytest.approx(1.1)
+    assert np.array_equal(np.asarray(quick.frame(quick.done)), np.asarray(quick.frame(2.0)))

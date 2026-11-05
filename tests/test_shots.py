@@ -6,7 +6,7 @@ from vshort.fit import Placement
 from vshort.render import EDGE, H, MIN_ZOOM, W
 from vshort.shots import (CREEP, DRAW, FADE, KEEP, LEAD, POP_PEAK, POP_T, SHAPES, SNAP, Beat, beats, camera_at, changes,
                           draw_overlays, frame_box, gap_problems, image_problems, ink_share, overlay_bbox, overlay_strokes,
-                          schema_problems, to_screen)
+                          schema_problems, settled, to_screen)
 from vshort.visuals import PAPER
 
 SCRIPT = [
@@ -464,3 +464,16 @@ def test_the_pencil_colour_follows_the_reference_picture():
     bs = [beat(5.0, mark={"shape": "underline", "box": box})]
     out = draw_overlays(inked(box), bs, 7.0, ref=dark_picture())  # the finished card is dark: light pencil
     assert np.asarray(out.crop((100, 540, 500, 580))).max() > 200
+
+
+def test_settled_is_when_the_overlays_stop_changing():
+    bs = [beat(5.0, mark={"shape": "circle", "box": [200, 500, 500, 700]}),
+          beat(7.0, mark={"shape": "underline", "box": [200, 800, 500, 850]}, pop={"text": "2024", "box": [400, 200, 600, 280]}),
+          beat(9.0, focus=None)]  # nothing to draw
+    img = paper()
+    done = settled(bs)
+    assert done == pytest.approx(7.0 - LEAD + DRAW) and settled([beat(4.0, pop=POP)]) == pytest.approx(4.0 - LEAD + POP_T)
+    assert settled([beat(4.0, focus=FOCUS)]) == settled([]) == 0
+    assert changed(draw_overlays(img, bs, done - 0.05), draw_overlays(img, bs, done)) > 0  # still moving a hair before
+    for later in (done + 0.01, done + 1, 30):
+        assert changed(draw_overlays(img, bs, done), draw_overlays(img, bs, later), tol=0) == 0

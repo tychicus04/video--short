@@ -3,14 +3,15 @@ the ANM outro in place of NotebookLM's (the only logo), new voice."""
 import math
 import os
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
 from itertools import groupby
 from pathlib import Path
 
 from PIL import Image
 
-from vshort import kit
+from vshort import kit, shots
+from vshort.cards import Card, cap as card_cap
 from vshort.fit import Placement
 from vshort.media import FF, iter_frames, probe
 from vshort.motion import Scene
@@ -179,19 +180,33 @@ class Segment:
     file: Path
     group: str  # consecutive segments with the same group are one camera shot
     scene: int | None = None  # animated: drawn from this motion scene, no camera
+    plan: tuple[shots.Beat, ...] | None = field(default=None, compare=False)  # its beats: a Beat holds dicts, so no hashing
+    card: Path | None = None  # the svg that writes itself out in place of `file`, only on a line with a plan
+    cap: float = shots.MAX_ZOOM_STILL  # the most its planned camera may zoom
 
 
 def segments(placements: list[Placement], frames: list[dict], run_dir: Path, total: float,
-             animated: dict[int, int] | None = None) -> list[Segment]:
+             animated: dict[int, int] | None = None, planned: dict[int, tuple[shots.Beat, ...]] | None = None,
+             cards: dict[int, Path] | None = None) -> list[Segment]:
     """One segment per voice; a cut sits in the middle of the gap between two voices.
 
-    `animated` maps a line id to the motion scene that draws it.
+    `animated` maps a line id to the motion scene that draws it; `planned` a line id to its beats, `cards` the planned
+    lines that are a reference card to the svg.
     """
-    by_id, animated = {f["id"]: f for f in frames}, animated or {}
+    by_id, animated, planned, cards = {f["id"]: f for f in frames}, animated or {}, planned or {}, cards or {}
     cuts = [0.0] + [(a.start + a.dur + b.start) / 2 for a, b in zip(placements, placements[1:])] + [total]
-    return [Segment(p.id, s, e, run_dir / by_id[p.id]["file"],
-                    f"m{animated[p.id]}" if p.id in animated else by_id[p.id]["group"], animated.get(p.id))
-            for p, s, e in zip(placements, cuts, cuts[1:])]
+    out = []
+    for p, s, e in zip(placements, cuts, cuts[1:]):
+        file, group, scene = run_dir / by_id[p.id]["file"], by_id[p.id]["group"], animated.get(p.id)
+        if scene is not None:
+            out.append(Segment(p.id, s, e, file, f"m{scene}", scene))
+        elif p.id in planned:
+            svg = cards.get(p.id)
+            out.append(Segment(p.id, s, e, file, f"n{p.id}", None, planned[p.id], svg,
+                               card_cap(Card(svg, s, e, XF)) if svg else shots.MAX_ZOOM_STILL))
+        else:
+            out.append(Segment(p.id, s, e, file, group))
+    return out
 
 
 def _kinds(groups: list[str]) -> list[int]:
@@ -199,12 +214,12 @@ def _kinds(groups: list[str]) -> list[int]:
 
     Stills rotate through the four, skipping the move the shot before them made. References only zoom (a pan at ZOOM
     shows 667 of 720 px and would cut their credit line): opposite to the shot before, or to the last reference
-    when that shot panned. Animated shots have no camera and leave the rotation alone.
+    when that shot panned. Animated shots have no camera and a planned line (n) has its own: both leave the rotation alone.
     """
     kinds, turn, last_ref = [], 0, 1
     for g in groups:
         prev = kinds[-1] if kinds else None
-        if g.startswith("m"):
+        if g.startswith(("m", "n")):
             k = -1
         elif g.startswith("v"):
             k = last_ref = 1 - (prev if prev in (0, 1) else last_ref)
@@ -221,8 +236,10 @@ def _kinds(groups: list[str]) -> list[int]:
 def _camera(segs: list[Segment], k: int, t: float) -> tuple[float, float, float]:
     """(scale, cx, cy) of the shot segment k belongs to: window centre in frame pixels, linear in time over the shot.
 
-    A shot under 3 s moves proportionally less, so it never rushes.
+    A shot under 3 s moves proportionally less, so it never rushes. A planned line follows its beats instead.
     """
+    if segs[k].plan is not None:
+        return shots.camera_at(segs[k].plan, t, segs[k].start - XF / 2, segs[k].cap)
     lo = hi = k
     while lo and segs[lo - 1].group == segs[k].group:
         lo -= 1
@@ -274,10 +291,35 @@ def draw(img: Image.Image, scale: float, cx: float, cy: float) -> Image.Image:
     return img.resize((W, H), Image.BICUBIC, box=box)
 
 
+class _Planned:
+    """The picture of a line with a beat plan, before the camera: its frame (a card writes itself out) with the pencil of
+    the beats drawn on. Everything is judged by the finished card, as `vshort shots` judged it. Once nothing on it moves
+    any more it is composited one last time and kept: drawing the pencil costs ~20 ms a frame. (ponytail: between two
+    beats it is drawn every frame too; keep it across each such pause if renders get slow.)"""
+
+    def __init__(self, seg: Segment, still: Image.Image | None, run_dir: Path | None):
+        self.seg, self.run_dir, self.kept = seg, run_dir, None
+        self.card = Card(seg.card, seg.start, seg.end, XF) if seg.card else None
+        self.still = still if self.card is None else self.card.frame(seg.end)  # a card's finished picture is its still
+        self.ref = self.still if self.card else None  # stills and photos judge themselves
+        self.done = max(shots.settled(seg.plan), self.card.done if self.card else 0.0)
+
+    def picture(self, t: float) -> Image.Image:
+        if self.kept is None:
+            base = self.card.frame(t) if self.card and t < self.card.done else self.still
+            img = shots.draw_overlays(base, self.seg.plan, t, self.run_dir, ref=self.ref)
+            if t < self.done:
+                return img
+            self.kept = img
+        return self.kept
+
+
 def render_video(segs: list[Segment], ass: Path, narration: Path, total: float, out: Path,
-                 scenes: list[Scene] = (), outro: Path | None = None) -> None:
-    """`total` s of lines, then the `outro` clip faded in from the last frame, silent."""
+                 scenes: list[Scene] = (), outro: Path | None = None, run_dir: Path | None = None) -> None:
+    """`total` s of lines, then the `outro` clip faded in from the last frame, silent. `run_dir`: where the run's own
+    shapes are, for the doodles of planned lines."""
     cache: dict[Path, Image.Image] = {}
+    planned: dict[int, _Planned] = {}  # the lines on screen that have a plan, by id
 
     def load(f: Path) -> Image.Image:
         if f not in cache:
@@ -285,13 +327,19 @@ def render_video(segs: list[Segment], ass: Path, narration: Path, total: float, 
         return cache[f]
 
     def image(s: Segment, cam, t: float) -> Image.Image:
-        if s.scene is None:
+        if s.scene is not None:
+            sc = scenes[s.scene]
+            return kit.draw(sc.things, sc.acts, t)
+        if s.plan is None:
             return draw(load(s.file), *cam)
-        sc = scenes[s.scene]
-        return kit.draw(sc.things, sc.acts, t)
+        if s.id not in planned:
+            planned[s.id] = _Planned(s, None if s.card else load(s.file), run_dir)
+        return draw(planned[s.id].picture(t), *cam)
 
     def frame(t: float) -> Image.Image:
         parts = view(segs, t)
+        for gone in planned.keys() - {s.id for s, _, _ in parts}:
+            del planned[gone]  # past (the video only goes forward): its pictures are not needed any more
         if len(parts) == 2 and parts[0][0].scene is not None and parts[0][0].scene == parts[1][0].scene:
             parts = parts[1:]  # two lines of one scene: the same picture, drawn once
         imgs = [(image(s, cam, t), w) for s, w, cam in parts]

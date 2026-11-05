@@ -7,11 +7,13 @@ import pytest
 from conftest import write_silence
 from PIL import Image
 
+from vshort import cards, render, shots
 from vshort.fit import Placement
 from vshort.media import FF, frame_at, probe
 from vshort.kit import Act
 from vshort.motion import Scene
 from vshort.render import FPS, H, OUTRO_S, W, Segment, _kinds, build_ass, draw, export_outro, render_video, segments, view
+from vshort.shots import KEEP, Beat
 
 
 def test_build_ass_layout():
@@ -295,3 +297,107 @@ def test_two_lines_of_the_canvas_never_crossfade_to_their_stills(tmp_path):
     at_cut = frame_at(tmp_path / "out.mp4", 2.5).astype(int)
     assert abs(at_cut[300, 100] - (238, 234, 226)).max() < 12  # paper, not the black still behind line 3
     assert at_cut[500, 360, 0] > 150 and at_cut[500, 360, 1] < 90  # the dot stays
+
+
+# ---- lines with a beat plan ----
+
+PAPER = (243, 239, 230)
+
+
+def _planned_seg(*beats, **kw):
+    return Segment(1, 0, 3, Path("f.png"), "n1", None, tuple(beats), **kw)
+
+
+def test_planned_line_snaps_to_focus():
+    focus = (100, 300, 500, 500)
+    seg = _planned_seg(Beat(1.0, focus, None, None, None))
+    assert view([seg], 1.0 - shots.LEAD + shots.SNAP)[0][2] == pytest.approx(shots.frame_box(focus, 1.5))  # the planned camera, not the rotation's
+    assert view([seg], 0.2)[0][2] == pytest.approx((1.01, 360, 640), abs=0.01)  # before the first beat: the wide shot
+    near = Segment(1, 0, 3, Path("f.png"), "n1", None, seg.plan, cap=1.2)  # a card's cap, not the stills'
+    assert view([near], 1.0 - shots.LEAD + shots.SNAP)[0][2][0] == pytest.approx(1.2)
+
+
+def test_planned_line_leaves_the_rotation_of_the_others_alone():
+    plain = _kinds(["s0", "s1", "s2"])
+    assert _kinds(["s0", "n2", "s1", "s2"]) == [plain[0], -1, plain[1], plain[2]]
+    assert _kinds(["s0", "v1", "n2", "s3", "v4"]) == _kinds(["s0", "v1", "m2", "s3", "v4"])  # a planned line is like an animated one
+
+
+def test_a_segment_with_a_plan_can_still_be_hashed_and_compared():
+    a, b = _planned_seg(Beat(1.0, KEEP, {"shape": "tick", "box": [1, 2, 3, 4]}, None, None)), _planned_seg()
+    assert hash(a) == hash(b) and a == b  # Beat holds dicts: the plan is not part of what a Segment is
+
+
+def test_segments_give_planned_lines_their_own_group_plan_card_and_cap(tmp_path):
+    svg = tmp_path / "c.svg"
+    svg.write_text('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 1280" width="720" height="1280">'
+                   '<rect x="60" y="300" width="600" height="400" fill="none" stroke="#4a4a4a" stroke-width="3"/></svg>')
+    pl = [Placement(1, 0.2, 1.0), Placement(3, 1.5, 1.0), Placement(4, 2.8, 1.0), Placement(5, 4.0, 1.0)]
+    frames = [{"id": i, "file": f"frames/{i}.png", "group": "s0"} for i in (1, 3, 4, 5)]
+    plan = (Beat(1.6, KEEP, None, None, {"text": "a", "box": [1, 2, 3, 4]}),)
+    segs = segments(pl, frames, tmp_path, 5.3, {4: 0}, {3: plan, 5: plan}, {3: svg})
+    assert [(s.group, s.scene) for s in segs] == [("s0", None), ("n3", None), ("m0", 0), ("n5", None)]
+    assert [s.plan for s in segs] == [None, plan, None, plan] and [s.card for s in segs] == [None, svg, None, None]
+    assert [s.cap for s in segs] == [1.5, cards.cap(cards.Card(svg, 1.0, 2.0, render.XF)), 1.5, shots.MAX_ZOOM_STILL]
+
+
+def _line(tmp_path, plan, *, total=3.0, planned=True, **kw):
+    """One line of `total` s on a blank paper picture, rendered; the video's path."""
+    Image.new("RGB", (W, H), PAPER).save(tmp_path / "1.png")
+    segs = segments([Placement(1, 0.0, total)], [{"id": 1, "file": "1.png", "group": "s0"}], tmp_path, total,
+                    planned={1: plan} if planned else None, **kw)
+    write_silence(tmp_path / "n.wav", total)
+    ass = tmp_path / "s.ass"
+    ass.write_text(build_ass([]), encoding="utf-8")
+    out = tmp_path / ("planned.mp4" if planned else "plain.mp4")
+    render_video(segs, ass, tmp_path / "n.wav", total, out, run_dir=tmp_path)
+    return out
+
+
+def _ink(video, t, box=(120, 440, 600, 680)):
+    """How many pixels of the frame at t, inside box (x0, y0, x1, y1), are pencil-dark."""
+    x0, y0, x1, y1 = box
+    return int((frame_at(video, t)[y0:y1, x0:x1].min(axis=2) < 170).sum())
+
+
+def test_render_with_shots_draws_the_mark(tmp_path):
+    plan = (Beat(1.5, KEEP, {"shape": "circle", "box": [200, 500, 520, 600]}, None, None),)  # starts to draw at 1.3 s
+    planned, plain = _line(tmp_path, plan), _line(tmp_path, plan, planned=False)
+    assert _ink(planned, 1.0) == _ink(plain, 1.0) == 0  # before its time the mark is not there
+    assert _ink(planned, 2.6) > 200 and _ink(plain, 2.6) == 0  # drawn round the box, and only in the planned video
+
+
+def test_a_line_that_has_stopped_changing_is_composited_once(tmp_path, monkeypatch):
+    plan = (Beat(1.5, KEEP, {"shape": "circle", "box": [200, 500, 520, 600]}, None, None),
+            Beat(1.9, KEEP, None, None, {"text": "Hà Nội", "box": [200, 700, 520, 780]}))
+    seen, real = [], shots.draw_overlays
+    monkeypatch.setattr(shots, "draw_overlays", lambda *a, **k: seen.append(a[2]) or real(*a, **k))
+    out = _line(tmp_path, plan, total=4.0)
+    done = shots.settled(list(plan))
+    assert done == pytest.approx(1.9 - shots.LEAD + shots.POP_T) and max(seen) < done + 2 / FPS  # not asked again once it is whole
+    assert len(seen) > 30 and _ink(out, 3.8) > 200 and _ink(out, 3.8, (200, 690, 520, 790)) > 100  # and still there to the end
+
+
+CARD = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 1280" width="720" height="1280">'
+        '<rect x="60" y="300" width="600" height="600" rx="12" fill="none" stroke="#4a4a4a" stroke-width="3"/>'
+        '<rect x="100" y="360" width="520" height="70" fill="#444"/><rect x="100" y="700" width="520" height="70" fill="#444"/></svg>')
+
+
+def test_a_card_line_writes_itself_out_and_is_built_once(tmp_path, monkeypatch):
+    svg = tmp_path / "c.svg"
+    svg.write_text(CARD)
+    plan = (Beat(2.4, KEEP, {"shape": "underline", "box": [100, 780, 620, 830]}, None, None),)
+    Image.new("RGB", (W, H), PAPER).save(tmp_path / "1.png")
+    segs = segments([Placement(1, 0.0, 3.0)], [{"id": 1, "file": "1.png", "group": "v1"}], tmp_path, 3.0, None, {1: plan}, {1: svg})
+    built, real = [], render.Card
+    monkeypatch.setattr(render, "Card", lambda *a: built.append(a) or real(*a))
+    write_silence(tmp_path / "n.wav", 3.0)
+    ass = tmp_path / "s.ass"
+    ass.write_text(build_ass([]), encoding="utf-8")
+    render_video(segs, ass, tmp_path / "n.wav", 3.0, tmp_path / "o.mp4", run_dir=tmp_path)
+    assert len(built) == 1  # one Card for the whole line, not one a frame
+    early, late = frame_at(tmp_path / "o.mp4", 0.3), frame_at(tmp_path / "o.mp4", 2.9)
+    top, bottom = (slice(360, 410), slice(140, 580)), (slice(710, 765), slice(140, 580))  # inside the blocks at any zoom
+    assert early[top].min() < 120 and early[bottom].min() > 200  # the second block is still to come at 0.3 s
+    assert late[top].max() < 120 and late[bottom].max() < 120  # both there by the end
+    assert (late[800:900, 100:620].min(axis=2) < 170).sum() > 100  # and the mark is under the second

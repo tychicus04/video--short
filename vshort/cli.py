@@ -675,6 +675,27 @@ def cmd_timeline(a) -> int:
     return OK
 
 
+def _beat_plan(run: Run, placements: list[Placement], script: list[dict], frames: list[dict]):
+    """({line id: beats}, {line id: svg of a card line}) of the lines `vshort shots` passed; both empty with no
+    shots/ok.json. None (after saying why) when its stamp is not what the run's files give now: the beats were timed
+    and checked against other words, pictures, cards or timeline."""
+    path = run.file("shots/ok.json")
+    if not path.exists():
+        return {}, {}
+    try:
+        ok = json.loads(path.read_text(encoding="utf-8"))
+        lines, fresh = ok["lines"], _shots_stamp(run, ok["lines"]) == ok["stamp"]
+    except (OSError, ValueError, KeyError, TypeError):  # not what `vshort shots` writes
+        fresh = False
+    if not fresh:
+        _err("kịch bản hoặc khung hình đã đổi sau lần kiểm nhịp hình cuối (chạy lại `vshort shots`)")
+        return None
+    say, at, refs = {r["id"]: r["phrases"] for r in script}, {p.id: p for p in placements}, _refs(_quiet(run, "visuals.json"))
+    planned = {int(i): tuple(shots.beats(rows, say[int(i)], at[int(i)])) for i, rows in lines.items()}
+    return planned, {f["id"]: run.file(refs[f["id"]]["file"]) for f in frames
+                     if f["id"] in planned and _shot_kind(f["group"], refs.get(f["id"])) == "svg"}
+
+
 def cmd_render(a) -> int:
     run = Run(a.run)
     fitted = run.read("timeline.json")
@@ -720,15 +741,17 @@ def cmd_render(a) -> int:
             return BAD_INPUT
         scenes = [motion.bind_timed(doc, bind, placements, script, run.path)]
     animated = {i: k for k, sc in enumerate(scenes) for i in sc.lines}
+    if (plan := _beat_plan(run, placements, script, frames)) is None:
+        return BAD_INPUT
     ass = run.file("subs.ass")
     ass.write_text(build_ass(phrase_times(placements, script)), encoding="utf-8")
     if not OUTRO.exists():
         export_outro()
-    segs = segments(placements, frames, run.path, fitted["total"], animated)
-    fx = sound.cues(segs, scenes)
+    segs = segments(placements, frames, run.path, fitted["total"], animated, *plan)
+    fx = sound.cues(segments(placements, frames, run.path, fitted["total"], animated), scenes)  # a planned reference is still one
     run.write("sfx.json", [asdict(c) for c in fx])
     sound.master(run.file("narration.wav"), fx, fitted["total"], run.file("mix.wav"))
-    render_video(segs, ass, run.file("mix.wav"), fitted["total"], run.file("final.mp4"), scenes, OUTRO)
+    render_video(segs, ass, run.file("mix.wav"), fitted["total"], run.file("final.mp4"), scenes, OUTRO, run_dir=run.path)
     run.mark("render")
     print(run.file("final.mp4"))
     return OK

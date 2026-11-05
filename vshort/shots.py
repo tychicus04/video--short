@@ -405,6 +405,13 @@ def _live(bs: list[Beat], t: float) -> list[tuple[Beat, str, float, float]]:
     return out
 
 
+def settled(bs: list[Beat]) -> float:
+    """From this time on draw_overlays gives the same picture whatever t is: every mark and doodle drawn on, every pop
+    bounced in. A mark that gives way to the next one is gone before that one is drawn on (FADE < DRAW)."""
+    return max([b.t - LEAD + max(DRAW * (b.mark is not None or b.doodle is not None), POP_T * (b.pop is not None))
+                for b in bs if b.mark or b.doodle or b.pop], default=0.0)
+
+
 def _paint(d: ImageDraw.ImageDraw, strokes, q: float, width: int, opacity: float, seed: int) -> None:
     """The first fraction q of the strokes, one after another in proportion to their length, as a double pencil line: a
     paler thinner one under the main one."""

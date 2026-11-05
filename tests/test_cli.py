@@ -981,3 +981,73 @@ def test_ok_json_is_written_before_the_sheet_is_drawn(tmp_path, capsys, monkeypa
     with pytest.raises(RuntimeError):
         _shots(tmp_path, _good_plan(tmp_path), capsys)
     assert list(_ok_lines(tmp_path)) == ["1", "2", "3"]  # the verdicts are not lost with the sheet
+
+
+# ---- render follows shots/ok.json ----
+
+STALE = {  # what a fix-up of the translation, the pictures or the timeline does after `vshort shots`
+    "script": lambda p: (p / "script.vi.json").write_text(json.dumps(
+        [{"id": i, "phrases": t.replace("Hà Nội", "Đà Nẵng")} for i, t in SHOT_SAY.items()]), encoding="utf-8"),
+    "picture": lambda p: Image.new("RGB", (720, 1280), (1, 2, 3)).save(p / "frames" / "1.png"),
+    "card": lambda p: (p / "visuals" / "3.svg").write_text(SHOT_CARD.replace("hôm nay", "hôm qua"), encoding="utf-8"),
+    "timeline": lambda p: (p / "timeline.json").write_text(json.dumps({"total": 15.6, "placements": [
+        {"id": i, "start": s + (0.1 if i == 2 else 0), "dur": d} for i, (s, d) in SHOT_AT.items()]})),
+    "ok.json": lambda p: (p / "shots" / "ok.json").write_text("{oops"),
+}
+
+
+def _planned_run(tmp_path, capsys):
+    _shots_run(tmp_path)
+    write_silence(tmp_path / "narration.wav", 15.6)
+    assert _shots(tmp_path, _good_plan(tmp_path), capsys)[0] == 0
+    capsys.readouterr()
+    return tmp_path
+
+
+@pytest.mark.parametrize("what", STALE)
+def test_stale_shots_stop_the_render(tmp_path, capsys, what):
+    _planned_run(tmp_path, capsys)
+    STALE[what](tmp_path)
+    (tmp_path / "final.mp4").write_bytes(b"good")
+    assert main(["render", str(tmp_path)]) == 2
+    err = capsys.readouterr().err
+    assert "vshort shots" in err and "đã đổi sau lần kiểm nhịp hình cuối" in err and "Traceback" not in err
+    assert (tmp_path / "final.mp4").read_bytes() == b"good" and not Run(tmp_path).done("render")
+    assert not (tmp_path / "subs.ass").exists() and not (tmp_path / "sfx.json").exists()  # nothing was started
+
+
+def test_a_line_without_beats_may_change_after_shots(tmp_path, capsys, monkeypatch):
+    _planned_run(tmp_path, capsys)
+    Image.new("RGB", (720, 1280), (1, 2, 3)).save(tmp_path / "frames" / "4.png")  # line 4 has no beats to go stale
+    monkeypatch.setattr(cli, "render_video", lambda *a, **k: None)
+    assert main(["render", str(tmp_path)]) == 0
+
+
+def test_render_gives_the_planned_lines_their_beats_and_cards(tmp_path, capsys, monkeypatch):
+    from vshort import cards, render
+    seen = []
+    monkeypatch.setattr(cli, "render_video", lambda segs, *a, **k: seen.append((segs, k)))
+    _shots_run(tmp_path)
+    write_silence(tmp_path / "narration.wav", 15.6)
+    assert main(["render", str(tmp_path)]) == 0  # no shots/ok.json: as before
+    plain, _ = seen.pop()
+    assert [(s.group, s.plan, s.card) for s in plain] == [("s0", None, None), ("s0", None, None), ("v3", None, None), ("v4", None, None)]
+    pop_at = json.loads((tmp_path / "sfx.json").read_text())
+    assert [c["name"] for c in pop_at] == ["pop"] and pop_at[0]["at"] == pytest.approx(SHOT_SEG[3][0])  # the cut into card 3
+    plan = _good_plan(tmp_path)
+    assert _shots(tmp_path, plan, capsys)[0] == 0
+    assert main(["render", str(tmp_path)]) == 0
+    segs, kw = seen.pop()
+    assert [s.group for s in segs] == ["n1", "n2", "n3", "v4"] and [s.id for s in segs] == [1, 2, 3, 4]
+    assert segs[0].plan == tuple(shots_beats(plan["1"], 1)) and len(segs[1].plan) == 3 and segs[3].plan is None
+    assert [s.card for s in segs] == [None, None, tmp_path / "visuals" / "3.svg", None]  # a photo and a still draw their frame
+    assert segs[2].cap == cards.cap(cards.Card(segs[2].card, *SHOT_SEG[3], render.XF)) and segs[0].cap == 1.5 == segs[3].cap
+    assert (segs[2].start, segs[2].end) == pytest.approx(SHOT_SEG[3]) and kw["run_dir"] == tmp_path
+    assert json.loads((tmp_path / "sfx.json").read_text()) == pop_at  # the pop still lands on the cut into the first reference
+
+
+def shots_beats(rows, i):
+    from vshort import shots
+    from vshort.fit import Placement
+    start, dur = SHOT_AT[i]
+    return shots.beats(rows, SHOT_SAY[i], Placement(i, start, dur))
