@@ -1,12 +1,30 @@
 """`vshort cms`: a finished video as a personal (PRIVATE), unpublished article on the CMS, shaped like Tai's sample
 article 22457, plus one social-post proposal that Tai approves in the CMS. Never publishes, never approves."""
+import hashlib
 import html
 import json
+import os
 import re
+from pathlib import Path
 
-from vshort import auto
+from vshort import auto, cms, cover
 from vshort.cms import CmsError, Settings
 from vshort.run import Run
+
+FILE = "cms.json"
+STEPS = [("meta", "Viết sapo và từ khóa"), ("cover16", "Tải ảnh ngang 16:9"), ("cover9", "Tải ảnh dọc 9:16"),
+         ("video", "Tải video"), ("article", "Tạo bài cá nhân"), ("social", "Viết lời mạng xã hội"),
+         ("propose", "Đề xuất Facebook, YouTube, TikTok")]
+UPDATE_LABEL = "Cập nhật ảnh và video"
+FILES = ("cover16", "cover9", "video")
+MIME = {"cover16": "image/jpeg", "cover9": "image/jpeg", "video": "video/mp4"}
+PRIVATE = 1  # workflow_type_id of the personal (PRIVATE) step
+# the CMS's social AI presets (AI_SOCIAL_PRESETS) by target type, and the Zernio platform each one goes to
+TARGETS = [(9002, "facebook"), (9003, "youtube"), (9004, "tiktok")]
+UNSURE = "Không chắc bài đã được tạo: mở CMS xem trong bài cá nhân; chưa có thì bấm Tạo bài mới"
+OLD_VIDEO = "Đề xuất mạng xã hội đang dùng video cũ, sửa trong CMS"
+UNSURE_PROPOSAL = "Không chắc đề xuất mạng xã hội đã gửi: xem trong CMS, máy không gửi lại"
+NO_BLOCK = "Bài trên CMS không còn khối video máy chèn (có thể bạn đã thay video): máy không sửa nội dung bài"
 
 META = "cover/cms-meta.json"
 META_TIMEOUT = 600  # seconds
@@ -100,3 +118,229 @@ def update_body(current: dict, avatar1_id: int, avatar2_id: int, content: str) -
             "article_type_id": current["article_type_id"], "workflow_id": current["workflow_id"],
             "content": content, "avatar1_id": avatar1_id, "avatar2_id": avatar2_id, "submit_type": "save",
             "expected_updated_at": current.get("updated_at")}
+
+
+# --- the send ------------------------------------------------------------------------------------------------------
+
+def _all(run_dir: Path) -> dict:
+    try:
+        doc = json.loads((Path(run_dir) / FILE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return doc if isinstance(doc, dict) else {}
+
+
+def read(run_dir: Path, env: str) -> dict:
+    """The record of one CMS (dev or prod) in RUN/cms.json, or {}."""
+    rec = _all(run_dir).get(env)
+    return rec if isinstance(rec, dict) else {}
+
+
+def _save(run_dir: Path, env: str, rec: dict) -> None:
+    """After every step, whole file or nothing (as Run._save): a send that dies resumes from here."""
+    f = Path(run_dir) / FILE
+    doc = _all(run_dir) | {env: rec}
+    tmp = f.with_name(f".{FILE}.{os.getpid()}.tmp")
+    tmp.write_text(json.dumps(doc, ensure_ascii=False, indent=1), encoding="utf-8")
+    tmp.replace(f)
+
+
+def _sha(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def _paths(run_dir: Path) -> dict[str, Path]:
+    """The cover Tai drew in Gemini when there is one, the one made from the video otherwise; final.mp4."""
+    c = Path(run_dir) / "cover"
+
+    def pick(shape: str) -> Path:
+        return c / cover.GEMINI[shape] if (c / cover.GEMINI[shape]).is_file() else c / f"thumb-{shape}.jpg"
+
+    return {"cover16": pick("16x9"), "cover9": pick("9x16"), "video": Path(run_dir) / "final.mp4"}
+
+
+def _article(s: Settings, rec: dict) -> dict | None:
+    """The article as the CMS has it now, or None after setting the record to deleted / left (nothing is written then)."""
+    try:
+        a = cms.gql(s, cms.ARTICLE, {"id": rec["article_id"]})["articles_detail"]
+    except CmsError as e:
+        if not e.not_found:
+            raise
+        rec.update(state="deleted", link=None, message=f"Bài số {rec['article_id']} không còn trên CMS (đã bị xóa). Bấm Tạo bài mới "
+                                            "để tạo lại.")
+        return None
+    wf = a.get("workflow") or {}
+    rec["workflow"] = wf.get("name") or ""
+    if wf.get("workflow_type_id") != PRIVATE:
+        rec.update(state="left", message=f"Bài đã rời luồng cá nhân (chặng {rec['workflow'] or 'khác'}), sửa trong CMS")
+        return None
+    return a
+
+
+def _has(content: str, url: str | None) -> bool:
+    return bool(url) and html.escape(url, quote=True) in (content or "")
+
+
+def send(run_dir: Path, recreate: bool = False) -> dict:
+    """Send one finished video to the CMS the settings name, step by step; the record (also in RUN/cms.json).
+    Safe to run again: an article is created once, never written after it left the personal step, and only its
+    pictures and video change on later sends. Never raises for the CMS or the agent: the record says what failed."""
+    run_dir = Path(run_dir)
+    s, missing = cms.load()
+    if s is None:
+        return {"state": "error", "message": "Thiếu cấu hình CMS: " + "; ".join(missing), "steps": []}
+    rec = {"files": {}, "creating": False, "proposing": False, "article_id": None, "article_files": {}, "workflow": "",
+           "social": {}, "proposal": None} | read(run_dir, s.env)
+    if recreate:
+        if rec.get("state") not in ("deleted", "unsure"):
+            rec.update(state="error", message="Chỉ tạo bài mới khi bài cũ đã bị xóa hoặc không chắc đã tạo")
+            _save(run_dir, s.env, rec)
+            return rec
+        rec.update(article_id=None, article_files={}, creating=False, proposing=False, proposal=None, social={})
+    if rec["creating"] and not rec["article_id"]:
+        rec.update(state="unsure", message=UNSURE)
+        _save(run_dir, s.env, rec)
+        return rec
+    rec.update(state="running", message="", warning=None, link=None,
+               steps=[{"key": k, "label": UPDATE_LABEL if k == "article" and rec["article_id"] else label,
+                       "status": "next"} for k, label in STEPS])
+    _save(run_dir, s.env, rec)
+    at = {"key": None}
+
+    def step(key: str, status: str = "running") -> None:
+        at["key"] = key if status == "running" else None
+        next(x for x in rec["steps"] if x["key"] == key)["status"] = status
+        _save(run_dir, s.env, rec)
+
+    try:
+        _send(s, run_dir, rec, step)
+    except (CmsError, auto.AgentError) as e:
+        if at["key"]:
+            next(x for x in rec["steps"] if x["key"] == at["key"])["status"] = "error"
+        rec.update(state="error", message=e.message if isinstance(e, CmsError) else str(e))
+        _save(run_dir, s.env, rec)
+    return rec
+
+
+def _send(s: Settings, run_dir: Path, rec: dict, step) -> None:
+    aid = rec["article_id"]
+    current = None
+    if aid:
+        rec["link"] = f"{s.admin}/article/edit/personal/1/{aid}"
+        if (current := _article(s, rec)) is None:
+            _save(run_dir, s.env, rec)
+            return
+        step("meta", "skip")
+    else:
+        try:
+            title = json.loads((run_dir / "cover" / "cover.json").read_text(encoding="utf-8"))["title"]
+        except (OSError, ValueError, KeyError, TypeError):
+            raise CmsError("Chưa có tiêu đề đăng (cover/cover.json): làm lại bước ảnh bìa trước") from None
+        step("meta")
+        meta = ensure_meta(Run(run_dir))
+        step("meta", "done")
+
+    paths = _paths(run_dir)
+    for k in FILES:
+        step(k)
+        if not paths[k].is_file():
+            raise CmsError(f"Thiếu file {paths[k].relative_to(run_dir)}")
+        sha = _sha(paths[k])
+        if rec["files"].get(k, {}).get("sha") == sha:
+            step(k, "skip")
+            continue
+        rec["files"][k] = {"sha": sha} | cms.upload(s, paths[k], MIME[k])
+        step(k, "done")
+    files = rec["files"]
+
+    step("article")
+    if not aid:
+        rec["creating"] = True
+        _save(run_dir, s.env, rec)
+        try:
+            out = cms.gql(s, cms.CREATE, {"b": create_body(s, title, meta, files["video"]["url"], files["cover16"]["id"],
+                                                         files["cover9"]["id"])})
+        except CmsError as e:
+            if e.answered:  # the CMS said no: nothing was made
+                rec["creating"] = False
+                raise
+            rec.update(state="unsure", message=f"{UNSURE} ({e.message})")
+            step("article", "error")
+            return
+        aid = int(out["articles_create"]["id"])
+        rec.update(article_id=aid, article_files={k: files[k] for k in FILES}, creating=False,
+                   link=f"{s.admin}/article/edit/personal/1/{aid}")
+        content = create_body(s, title, meta, files["video"]["url"], 0, 0)["content"]
+        step("article", "done")
+    elif all(rec["article_files"].get(k, {}).get("sha") == files[k]["sha"] for k in FILES):
+        content = current["content"]
+        step("article", "skip")
+    else:
+        # read again: Tai may have sent the article on while the files went up, and the update carries its step
+        if (current := _article(s, rec)) is None:
+            _save(run_dir, s.env, rec)
+            return
+        content = current["content"]
+        old = rec["article_files"].get("video", {}).get("url")
+        if rec["article_files"].get("video", {}).get("sha") != files["video"]["sha"] and _has(content, old):
+            content = swap_video(content, old, files["video"]["url"])
+        if (content, files["cover16"]["id"], files["cover9"]["id"]) != (
+                current["content"], current.get("avatar1_id"), current.get("avatar2_id")):
+            cms.gql(s, cms.UPDATE, {"id": aid, "b": update_body(current, files["cover16"]["id"], files["cover9"]["id"],
+                                                                content)})
+        rec["article_files"] = {k: files[k] for k in FILES}
+        step("article", "done")
+    warnings = [] if _has(content, files["video"]["url"]) else [NO_BLOCK]
+
+    platforms = [(t, p) for t, p in TARGETS if s.zernio.get(p)]
+    if rec["proposal"] or rec["proposing"] or not platforms:
+        step("social", "skip")
+    else:
+        step("social")
+        for t, _ in platforms:
+            if str(t) not in rec["social"]:
+                out = cms.gql(s, cms.TRANSFORM, {"b": {"target_type": t, "sources": [{"article_id": aid,
+                                                                                       "role": "primary"}]}})
+                r = out["articles_transform_preview"]
+                rec["social"][str(t)] = {"title": r.get("title") or "", "caption": r.get("caption") or "",
+                                         "hashtags": [h for h in r.get("hashtags") or [] if isinstance(h, str)]}
+                _save(run_dir, s.env, rec)
+        step("social", "done")
+
+    if rec["proposal"]:
+        step("propose", "skip")
+        if rec["proposal"].get("video_sha") != files["video"]["sha"]:
+            warnings.append(OLD_VIDEO)
+    elif rec["proposing"]:  # died after asking: Zernio may have it already
+        step("propose", "skip")
+        warnings.append(UNSURE_PROPOSAL)
+    elif not platforms:
+        step("propose", "skip")
+    else:
+        step("propose")
+        texts = {p: rec["social"][str(t)] for t, p in platforms}
+        first = texts.get("facebook") or texts[platforms[0][1]]
+        rec["proposing"] = True
+        _save(run_dir, s.env, rec)
+        try:
+            out = cms.gql(s, cms.PROPOSE, {"i": {
+                "articleId": aid, "content": first["caption"],
+                "mediaItems": [{"type": "video", "fileId": files["video"]["id"]}],
+                "platforms": [{"platform": p.upper(), "accountId": s.zernio[p],
+                               "customContent": (x["caption"] + "\n\n" + " ".join(x["hashtags"])).strip(),
+                               **({"platformSpecificData": {"title": x["title"][:100]}} if p == "youtube" and x["title"]
+                                  else {})}
+                              for p, x in texts.items()]}})
+        except CmsError as e:
+            if e.answered:
+                rec["proposing"] = False
+            raise
+        rec.update(proposal={"publishId": str(out["propose_zernio_post"]["publishId"]), "video_sha": files["video"]["sha"]},
+                   proposing=False)
+        step("propose", "done")
+    rec.update(state="done", message="", warning="\n".join(warnings) or None)
+    _save(run_dir, s.env, rec)
