@@ -138,7 +138,9 @@ BRIEF_CHECK = (
     "RUN={run}. Chế độ tự động: Tai không duyệt brief. Soát brief ({run}/brief.vi.md và {run}/brief.en.md) với {run}/sources.md: "
     "dữ kiện, ngày, điểm tranh cãi. Soát cả mục \"Cơ chế từng bước\" theo luật an toàn: chỉ mức khái niệm, không tên lỗ hổng/"
     "kỹ thuật/công cụ, không mã hay lệnh. Mục đó mở bằng bước 0 \"Bình thường: …\" (bản Anh \"0. Normally: …\") trừ khi "
-    "ghi Không có; thiếu thì thêm vào cả hai bản. Lệch thì sửa ở cả hai bản. Không tạo notebook mới, không nạp nguồn mới.")
+    "ghi Không có; thiếu thì thêm vào cả hai bản. \"Ý chính\" có một ý về cái giá hay giới hạn (một câu, đúng nguồn) và "
+    "\"Câu chốt\" trả lời lại câu mở đầu theo nghĩa mới; thiếu thì thêm vào cả hai bản. Lệch thì sửa ở cả hai bản. "
+    "Không tạo notebook mới, không nạp nguồn mới.")
 AN_DU = "RUN={run}. Đọc {run}/brief.vi.md, viết {run}/an-du.md."
 TRANSCRIBE = ("RUN={run}. Đọc các ảnh mảnh phụ đề {sheets} ({n} mảnh, chỉ số 0–{last}, theo {run}/fragments.json) "
               "và ghi {run}/fragments_text.json.")

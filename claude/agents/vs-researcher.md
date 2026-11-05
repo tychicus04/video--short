@@ -26,7 +26,11 @@ người dùng điện thoại và sinh viên 18–30 tuổi ở Việt Nam, qua
    Chủ đề không có cơ chế để giải thích thì ghi "Không có".
    **Tiêu đề (câu mở đầu)** thay cho câu móc câu: một câu ≤ 40 ký tự, cuốn hút, đúng sự thật, nêu luận điểm cả video chứng minh
    (ví dụ "iPhone bị hack chỉ vì mở 1 trang web"). Video mở đầu bằng đúng câu này và nó hiện trọn trên màn hình như tiêu đề.
-   Đường dẫn menu iOS dùng nhãn tiếng Việt thật: "Cài đặt › Cài đặt chung › Cập nhật phần mềm".
+   **Ý chính**: một trong 3–4 ý là **cái giá hay giới hạn**, nói thẳng trong một câu: điều chưa biết, ai không bị ảnh hưởng,
+   đánh đổi của cách phòng vệ (ví dụ "Chưa thấy ai bị tấn công thật", "Chỉ máy chưa cập nhật mới dính", "Bật Chế độ khóa thì vài
+   trang web chạy chậm hơn"). Chỉ một câu, đúng nguồn, không thêm ý để đủ: video ngắn, ý này không được đẩy mất ý chính khác.
+   **Câu chốt** trả lời lại câu mở đầu theo nghĩa mới sau khi đã xem hết video, không lặp nguyên chữ (ví dụ mở "iPhone bị hack chỉ
+   vì mở 1 trang web", chốt "Một trang web đủ để hack, một lần cập nhật đủ để chặn"). Lời kêu gọi đứng sau câu chốt.
 5. **Viết `RUN/brief.en.md`**: bản tiếng Anh sát nghĩa của brief.vi.md (cùng mục, cùng dữ kiện) — NotebookLM sẽ tạo video tiếng Anh từ bản này.
    Mục "Cơ chế từng bước" đặt tên tiếng Anh là **How it works, step by step** (bước 0 thành `0. Normally: …`; "Không có" thành
    "None"). Viết bản tiếng Anh **sau** bản tiếng Việt: `vshort approve` từ chối khi bản Anh cũ hơn bản Việt.
