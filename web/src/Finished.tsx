@@ -7,6 +7,7 @@ import { Copy, Download, Film, ImageUp, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { ApiError, post, type CostEntry } from '@/api'
 import { Message, copyText, runApi, useKept, type Ctx } from '@/runKit'
+import { CmsBox } from '@/Cms'
 import { StageList } from '@/Stages'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -260,6 +261,8 @@ function Publish({ c }: { c: Ctx }) {
           )}
         </div>
       </section>
+
+      <CmsBox c={c} />
     </div>
   )
 }

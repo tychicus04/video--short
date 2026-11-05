@@ -187,6 +187,7 @@ function Finished({ row }: { row: Row }) {
         </a>
         <div className="text-sm text-muted-foreground">
           {money(row.cost)} · {ago === 'vừa xong' ? ago : `xong ${ago}`}
+          {row.posted && <span className="font-semibold text-ok"> · Đã gửi CMS</span>}
         </div>
         <div className="mt-auto flex gap-2 pt-1">
           <Button asChild className="flex-1">
@@ -204,7 +205,7 @@ function Finished({ row }: { row: Row }) {
 }
 
 export function RunList({ rows, canWrite, refresh }: { rows: Row[] | null; canWrite: boolean; refresh: () => void }) {
-  const [filter, setFilter] = useState<'all' | 'fix'>('all')
+  const [filter, setFilter] = useState<'all' | 'unposted' | 'fix'>('all')
 
   if (rows === null)
     return (
@@ -224,7 +225,8 @@ export function RunList({ rows, canWrite, refresh }: { rows: Row[] | null; canWr
   const queued = of('queued')
   const done = of('done')
   const toFix = done.filter((r) => r.verdict && r.verdict !== 'Đạt')
-  const shown = filter === 'fix' ? toFix : done
+  const unposted = done.filter((r) => !r.posted)
+  const shown = filter === 'fix' ? toFix : filter === 'unposted' ? unposted : done
   const idle = of('idle')
 
   return (
@@ -272,6 +274,7 @@ export function RunList({ rows, canWrite, refresh }: { rows: Row[] | null; canWr
               onChange={setFilter}
               options={[
                 ['all', 'Tất cả'],
+                ['unposted', `Chưa đăng (${unposted.length})`],
                 ['fix', `Cần sửa (${toFix.length})`],
               ]}
             />
@@ -284,7 +287,7 @@ export function RunList({ rows, canWrite, refresh }: { rows: Row[] | null; canWr
               ))}
             </div>
           ) : (
-            <p className="text-muted-foreground">Không có video nào cần sửa.</p>
+            <p className="text-muted-foreground">{filter === 'fix' ? 'Không có video nào cần sửa.' : 'Video nào cũng đã gửi CMS.'}</p>
           )}
         </Section>
       )}

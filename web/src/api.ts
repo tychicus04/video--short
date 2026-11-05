@@ -61,6 +61,7 @@ export interface Row {
   removable: boolean // a topic still in the queue: no folder yet
   progress: Progress | null // running, waiting for Tai, failed or stopped
   cover: { name: string; v: number } | null // the card's picture: Tai's Gemini cover, else the composed one
+  posted: boolean // sent to the CMS in use: it has an article there
 }
 
 export interface State {
@@ -111,6 +112,29 @@ export interface Detail {
   progress: StageView
   now: number // the server's clock, epoch seconds
   gemini: { '9x16': number | null; '16x9': number | null } // mtime of cover/gemini-<shape>.jpg, null when not uploaded
+  cms: CmsInfo
+}
+
+export type CmsStepStatus = 'done' | 'running' | 'error' | 'next' | 'skip'
+
+/** RUN/cms.json for the CMS in use (vshort/publish.py); {} before the first send. Never holds the token. */
+export interface CmsRecord {
+  state?: 'running' | 'done' | 'error' | 'left' | 'deleted' | 'unsure'
+  message?: string
+  steps?: { key: string; label: string; status: CmsStepStatus }[]
+  article_id?: number | null
+  workflow?: string // the CMS's name of the step the article is at
+  proposal?: { publishId: string; video_sha: string } | null
+  warning?: string | null // several lines
+  link?: string | null // the article in CMS-Admin
+}
+
+export interface CmsInfo {
+  configured: boolean // the server has its cms.toml and token
+  missing: string[] // what it lacks, in Vietnamese
+  env: 'dev' | 'prod' | null
+  running: boolean // a `vshort cms` is sending this video now
+  record: CmsRecord
 }
 
 /** `error` is the Vietnamese message; `data` the parsed body, e.g. {errors: [...]} of a 400 from /api/queue. */
