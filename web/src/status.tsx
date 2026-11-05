@@ -76,6 +76,20 @@ export function fmtDuration(s: number): string {
   return `${Math.floor(m / 60)} giờ ${String(m % 60).padStart(2, '0')} phút`
 }
 
+/** Time left, coarse: "khoảng 21 phút", "khoảng 1 giờ 5 phút", "dưới 1 phút", "—" when unknown. */
+export function fmtLeft(seconds: number | null): string {
+  if (seconds == null) return '—'
+  if (seconds < 60) return 'dưới 1 phút'
+  const m = Math.round(seconds / 60)
+  return m < 60 ? `khoảng ${m} phút` : `khoảng ${Math.floor(m / 60)} giờ${m % 60 ? ` ${m % 60} phút` : ''}`
+}
+
+/** When something `seconds` from now happens, on the viewer's clock: "~14:33". The server's `now` is not needed: the
+ * seconds count from the moment the page was read, a few seconds ago at most. */
+export function fmtClock(seconds: number): string {
+  return '~' + new Date(Date.now() + seconds * 1000).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+}
+
 /** How long ago an epoch-seconds time was, coarse: "vừa xong", "5 phút trước", "3 giờ trước", "2 ngày trước". */
 export function fmtAgo(since: number | null): string {
   if (since == null) return ''

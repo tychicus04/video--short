@@ -2,6 +2,48 @@
 
 export type RowState = 'queued' | 'running' | 'dead' | 'wait_brief' | 'wait_script' | 'error' | 'done' | 'idle'
 
+/** The ten stages (vshort/stages.py): worked out by the server, the page only shows them. */
+export type StageStatus = 'done' | 'running' | 'you' | 'error' | 'next'
+
+export interface Eta {
+  stop: string | null // label of the next stage that waits for Tai; null: none left
+  until_stop: number | null // seconds until then (until done when stop is null)
+  after_stop: number | null // seconds from Tai's approval to done; null when stop is null
+}
+
+/** A row's card: the stage it is at. */
+export interface Progress {
+  percent: number
+  n: number // 1–10
+  label: string
+  status: StageStatus
+  eta: Eta
+}
+
+export interface StageStep {
+  step: string
+  label: string
+  status: 'done' | 'running' | 'next'
+}
+
+export interface Stage {
+  key: string
+  label: string
+  what: string
+  status: StageStatus
+  seconds: number | null // done: time it took; running: time so far
+  typical: number // seconds, median of the last finished runs
+  overdue: boolean // running longer than typical
+  steps: StageStep[] // only for the running stage
+}
+
+export interface StageView {
+  stages: Stage[]
+  current: number | null // index of the running / waiting / failed stage
+  percent: number
+  eta: Eta
+}
+
 export interface Row {
   slug: string
   topic: string // "" for a folder that has no run.json
@@ -16,6 +58,8 @@ export interface Row {
   seconds: number | null // length of the finished video
   relogin: boolean // stopped because NotebookLM wants a new login
   removable: boolean // a topic still in the queue: no folder yet
+  progress: Progress | null // running, waiting for Tai, failed or stopped
+  cover: { name: string; v: number } | null // the card's picture: Tai's Gemini cover, else the composed one
 }
 
 export interface State {
@@ -63,6 +107,9 @@ export interface Detail {
   cover_v: number | null // mtime of cover/cover.json: the headline covers exist, ?v= on their address
   prompt: string | null // cover/prompt.txt: what Tai pastes into the Gemini app for a poster cover
   prompt_wide: string // pasted next in the same Gemini chat: the 16:9 one
+  progress: StageView
+  now: number // the server's clock, epoch seconds
+  gemini: { '9x16': number | null; '16x9': number | null } // mtime of cover/gemini-<shape>.jpg, null when not uploaded
 }
 
 /** `error` is the Vietnamese message; `data` the parsed body, e.g. {errors: [...]} of a 400 from /api/queue. */

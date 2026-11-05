@@ -143,21 +143,21 @@ export default function App() {
 
   return (
     <div className="min-h-svh bg-background">
-      <header className="sticky top-0 z-20 border-b bg-background/85 backdrop-blur">
-        <div className="mx-auto flex h-14 max-w-4xl items-center gap-3 px-4">
-          <a href="#/" className="flex min-w-0 items-center gap-2.5 outline-none">
-            <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-foreground text-background">
-              <Clapperboard className="size-4" />
+      <header className="sticky top-0 z-20 border-b bg-background/90 backdrop-blur">
+        <div className="mx-auto flex min-h-18 max-w-6xl flex-wrap items-center gap-3 px-6 py-3">
+          <a href="#/" className="flex min-w-0 items-center gap-3 rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+            <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-brand text-white">
+              <Clapperboard className="size-5" />
             </span>
             <span className="min-w-0 leading-tight">
-              <span className="block text-sm font-semibold tracking-tight">vshort</span>
-              <span className="block truncate text-xs text-muted-foreground">Bảng điều khiển video</span>
+              <span className="block text-base font-bold">vshort</span>
+              <span className="block truncate text-sm text-muted-foreground">Bảng điều khiển video</span>
             </span>
           </a>
-          <div className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">
+          <div className="ml-auto flex items-center gap-4 text-sm text-muted-foreground">
             {state && (
-              <span className="flex items-center gap-1.5">
-                <span className={running ? 'size-2 rounded-full bg-sky-400' : 'size-2 rounded-full bg-zinc-600'} aria-hidden />
+              <span className="flex items-center gap-2 rounded-full bg-card px-3 py-1.5">
+                <span className={running ? 'size-2 rounded-full bg-brand-text' : 'size-2 rounded-full bg-faint'} aria-hidden />
                 Đang chạy {running}/{state.max_running}
               </span>
             )}
@@ -180,7 +180,7 @@ export default function App() {
         )}
       </header>
 
-      <main className="mx-auto max-w-4xl space-y-6 px-4 py-6">
+      <main className="mx-auto max-w-6xl space-y-6 px-6 py-6">
         {state && state.relogin.length > 0 && <ReloginBanner state={state} refresh={refresh} />}
         {state && !state.can_write && <AccessCode tokenSet={state.token_set} refresh={refresh} />}
 
