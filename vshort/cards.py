@@ -12,12 +12,15 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from vshort import kit
-from vshort.visuals import PAPER
+from vshort.visuals import MIN_CONTRAST, PAPER
 
 ET.register_namespace("", "http://www.w3.org/2000/svg")  # so a re-serialised element keeps its plain name
 ET.register_namespace("xlink", "http://www.w3.org/1999/xlink")
 W, H, SS = kit.W, kit.H, kit.SS
-ALWAYS = {"defs", "style", "title", "desc", "metadata"}  # in every state, never an element of their own
+# in every render, never an element of their own: they paint nothing, but what is drawn may refer to them
+ALWAYS = {"defs", "style", "title", "desc", "metadata", "linearGradient", "radialGradient", "pattern", "marker", "clipPath",
+          "mask", "symbol", "filter"}
+LEAD_INK = 0.01  # with no frame, the first elements are there at the cut until they cover this share of the card's box
 SHARE = 0.6  # the elements are written out within this share of the line, so the card is whole well before it ends
 WIPE = 0.5  # the longest one element takes to be wiped in
 EDGE = 36  # the soft edge of a wipe, in 2x pixels
@@ -141,34 +144,50 @@ def _wiped(lay: _Layer, p: float) -> Image.Image:
     return Image.fromarray((lay.alpha * ramp[None, :]).astype(np.uint8))
 
 
+def _leading(layers: list[_Layer], box) -> int:
+    """How many of the first elements, in file order, it takes to put LEAD_INK of `box` in ink (all of them if never)."""
+    x0, y0, x1, y1 = (int(v * SS) for v in box)
+    img = Image.new("RGB", (W * SS, H * SS), PAPER)
+    for n, lay in enumerate(layers, 1):
+        img.paste(lay.rgb, (lay.x, lay.y), lay.mask)
+        ink = np.abs(np.asarray(img.crop((x0, y0, x1, y1))).astype(int) - PAPER).max(2) > MIN_CONTRAST
+        if ink.mean() >= LEAD_INK:
+            return n
+    return len(layers)
+
+
 class Card:
     """A reference card as a sequence: `pieces` say when each element is written, `frame(t)` is the card at t (1440×2560, on paper).
 
     The border takes [start - xf/2, start], so it is whole when the render cuts to the card (the picture before it is
     still fading out for half of xf); the other elements share the first SHARE of [start, end]. A card with no border
-    has its first element there from start - xf/2. At and after `end` the card is whole."""
+    has its first elements there from start - xf/2, as many as it takes to fill LEAD_INK of its box. At and after `end` the
+    card is whole."""
 
     def __init__(self, svg: Path, start: float, end: float, xf: float):
         self.svg, self.start, self.end, self.xf = Path(svg), start, end, xf
         st = self.svg.stat()
         layers = _layers(str(self.svg.resolve()), st.st_mtime_ns, st.st_size)
         outline = next((l for l in layers if l.pencil), None)
-        order = ([outline] if outline else []) + [l for l in layers if l is not outline]  # the order they are written in
         lead = start - xf / 2
-        slot = SHARE * (end - start) / max(len(order) - 1, 1)
+        boxes = [l.box for l in layers]
+        self.ink_box = (min(b[0] for b in boxes), min(b[1] for b in boxes), max(b[2] for b in boxes),
+                        max(b[3] for b in boxes)) if boxes else (0.0, 0.0, float(W), float(H))
+        here = 1 if outline else _leading(layers, self.ink_box)  # written at once: the frame, or the first elements
+        order = ([outline] if outline else []) + [l for l in layers if l is not outline]  # the order they are written in
+        slot = SHARE * (end - start) / max(len(order) - here, 1)
         times = {}
         for n, lay in enumerate(order):
-            if n == 0:
-                times[id(lay)] = (lead, start if outline else lead)
+            if n == 0 and outline:
+                times[id(lay)] = (lead, start)
+            elif n < here:
+                times[id(lay)] = (lead, lead)
             else:
-                t0 = start + (n - 1) * slot
+                t0 = start + (n - here) * slot
                 times[id(lay)] = (t0, t0 + min(WIPE, slot))
         self._settled = min(start + SETTLE, end)  # the frame is the SVG's own rect from here on
         self.pieces: list[Piece] = [Piece(*times[id(l)], l.box, l is outline) for l in order]
         self._timed = [(l, times[id(l)]) for l in layers]  # painted in the file's order
-        boxes = [l.box for l in layers]
-        self.ink_box = (min(b[0] for b in boxes), min(b[1] for b in boxes), max(b[2] for b in boxes),
-                        max(b[3] for b in boxes)) if boxes else (0.0, 0.0, float(W), float(H))
 
     def frame(self, t: float) -> Image.Image:
         img = Image.new("RGB", (W * SS, H * SS), PAPER)

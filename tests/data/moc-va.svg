@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 1280" width="720" height="1280">
+  <line x1="140" y1="460" x2="140" y2="820" stroke="#4a4a4a" stroke-width="3"/>
+  <circle cx="140" cy="480" r="14" fill="#bfe9f0" stroke="#4a4a4a" stroke-width="3"/>
+  <circle cx="140" cy="790" r="14" fill="#bfe9f0" stroke="#4a4a4a" stroke-width="3"/>
+  <g font-family="Be Vietnam Pro, sans-serif" fill="#222">
+    <text x="190" y="478" font-size="30" font-weight="bold">October 29, 2026</text>
+    <text x="190" y="520" font-size="26">Synology has identified threat actors</text>
+    <text x="190" y="552" font-size="26">exploiting a vulnerability patched in</text>
+    <text x="190" y="584" font-size="26">December 2024</text>
+    <text x="190" y="788" font-size="30" font-weight="bold">Synology-SA-24:20</text>
+    <text x="190" y="830" font-size="26">Publish Time:</text>
+    <text x="190" y="862" font-size="26">2024-11-05 15:15:05 UTC+8</text>
+  </g>
+  <text x="40" y="1010" font-family="Be Vietnam Pro, sans-serif" font-size="22" fill="#4a4a4a">Nguồn: Synology, 29/10/2026; SA-24:20</text>
+</svg>

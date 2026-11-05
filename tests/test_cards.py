@@ -1,9 +1,14 @@
+import io
+from pathlib import Path
+
+import cairosvg
 import numpy as np
 import pytest
+from PIL import Image
 
 from vshort import cards
 from vshort.cards import Card, cap
-from vshort.visuals import PAPER, svg_frame
+from vshort.visuals import PAPER
 
 HEAD = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 1280" width="720" height="1280">'
 BORDER = '<rect x="60" y="400" width="600" height="380" rx="18" fill="none" stroke="#4a4a4a" stroke-width="3"/>'
@@ -32,9 +37,12 @@ def _sides(ink):
     return ink[:12], ink[-12:], ink[:, :12], ink[:, -12:]
 
 
-def _gap(card, img):
-    ref = np.asarray(svg_frame(card.svg)).astype(int)
-    return np.abs(np.asarray(img.reduce(2)).astype(int) - ref).mean()
+def _off(card, img):
+    """The most any pixel of `img` differs from a whole 2x render of the card's SVG on paper: a missing element shows."""
+    png = cairosvg.svg2png(url=str(card.svg), output_width=1440, output_height=2560)
+    art = Image.open(io.BytesIO(png)).convert("RGBA")
+    whole = Image.alpha_composite(Image.new("RGBA", art.size, PAPER + (255,)), art).convert("RGB")
+    return np.abs(np.asarray(img).astype(int) - np.asarray(whole).astype(int)).max()
 
 
 def test_card_reveals_in_order_and_ends_whole(tmp_path):
@@ -57,7 +65,7 @@ def test_card_reveals_in_order_and_ends_whole(tmp_path):
     assert left.sum() > right.sum()
     end = card.frame(4.0)
     assert end.mode == "RGB" and end.size == (1440, 2560)
-    assert _gap(card, end) < 1
+    assert _off(card, end) <= 4
     assert np.array_equal(np.asarray(card.frame(9.0)), np.asarray(end))  # after the line it stays whole
 
 
@@ -66,9 +74,19 @@ def test_card_never_blank_at_the_cut(tmp_path):
     x0, y0, x1, y1 = card.ink_box
     area = (x1 - x0) * (y1 - y0) * 4
     assert _ink(card.frame(2.0), card.ink_box).sum() >= 0.01 * area
-    bare = Card(_svg(tmp_path, LINES, SOURCE, name="bare.svg"), 2.0, 5.0, 0.4)  # no border: the first element is there early
+    bare = Card(_svg(tmp_path, LINES, SOURCE, name="bare.svg"), 2.0, 5.0, 0.4)  # no border: the first elements are there early
     assert bare.pieces[0].t0 == 1.8 and not any(p.border for p in bare.pieces)
-    assert _ink(bare.frame(2.0), bare.pieces[0].box).any()
+    assert _ink(bare.frame(2.0), bare.ink_box).mean() >= 0.01
+
+
+def test_a_borderless_timeline_is_not_nearly_blank_at_the_cut():
+    card = Card(Path(__file__).parent / "data" / "moc-va.svg", 2.0, 5.0, 0.4)  # a real card: a line, two dots, texts, a source
+    assert not any(p.border for p in card.pieces)
+    assert _ink(card.frame(1.8), card.ink_box).mean() >= 0.01  # from the moment the cut starts
+    assert _ink(card.frame(2.0), card.ink_box).mean() >= 0.01
+    first, last = card.pieces[0], card.pieces[-1]
+    assert first.t0 == first.t1 == 1.8 and last.t1 > 2.0  # something is still written out after the cut
+    assert _off(card, card.frame(5.0)) <= 4
 
 
 @pytest.mark.parametrize("parts", [
@@ -84,26 +102,43 @@ def test_card_without_border_or_with_groups_still_ends_whole(tmp_path, parts):
     assert card.pieces and not any(p.border for p in card.pieces)
     assert _ink(card.frame(1.0)).any()
     assert [p.t0 for p in card.pieces] == sorted(p.t0 for p in card.pieces)
-    assert _gap(card, card.frame(3.0)) < 1
+    assert _off(card, card.frame(3.0)) <= 4
 
 
 def test_border_is_the_first_unfilled_wide_rect_even_when_not_first(tmp_path):
     card = Card(_svg(tmp_path, '<rect x="80" y="420" width="560" height="300" fill="#eee"/>', BORDER, LINES), 1.0, 3.0, 0.4)
     assert card.pieces[0].border and card.pieces[0].t0 == 0.8
     assert card.frame(3.0).getpixel((1440 // 2, 2 * 440)) == (238, 238, 238)  # the filled rect is there, the border over it
-    assert _gap(card, card.frame(3.0)) < 1
+    assert _off(card, card.frame(3.0)) <= 4
+
+
+MARKER = ('<marker id="m" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">'
+          '<path d="M0,0 L8,4 L0,8 z" fill="#c43028"/></marker>')
+GRADIENT = ('<linearGradient id="g"><stop offset="0" stop-color="#bfe9f0"/><stop offset="1" stop-color="#e8b0a0"/></linearGradient>')
+CLIP = '<clipPath id="c"><rect x="100" y="500" width="200" height="100"/></clipPath>'
+
+
+@pytest.mark.parametrize("defs, user", [
+    (MARKER, '<line x1="100" y1="700" x2="500" y2="700" stroke="#4a4a4a" stroke-width="4" marker-end="url(#m)"/>'),
+    (GRADIENT, '<rect x="100" y="300" width="500" height="120" fill="url(#g)"/>'),
+    (CLIP, '<circle cx="200" cy="550" r="120" fill="#bfe9f0" stroke="#4a4a4a" stroke-width="3" clip-path="url(#c)"/>'),
+])
+def test_definitions_outside_defs_are_not_elements_and_reach_what_uses_them(tmp_path, defs, user):
+    card = Card(_svg(tmp_path, BORDER, defs, user, LINES), 1.0, 3.0, 0.4)  # as top-level children, not inside <defs>
+    assert len(card.pieces) == 3  # the frame, what uses the definition, the text: the definition itself is no piece
+    assert _off(card, card.frame(3.0)) <= 4
 
 
 def test_a_border_on_the_edge_of_the_picture_is_drawn_and_ends_whole(tmp_path):
     card = Card(_svg(tmp_path, '<rect x="0" y="0" width="720" height="1280" fill="none" stroke="#4a4a4a" stroke-width="3"/>', DOT), 1.0, 3.0, 0.4)
-    assert card.pieces[0].border and _ink(card.frame(1.0)).any() and _gap(card, card.frame(3.0)) < 1
+    assert card.pieces[0].border and _ink(card.frame(1.0)).any() and _off(card, card.frame(3.0)) <= 4
 
 
 def test_blank_and_zero_length_cards_do_not_fail(tmp_path):
     blank = Card(_svg(tmp_path), 1.0, 3.0, 0.4)
     assert blank.pieces == [] and not _ink(blank.frame(2.0)).any() and cap(blank) > 0
     quick = Card(_svg(tmp_path, BORDER, LINES, SOURCE, name="q.svg"), 1.0, 1.0, 0.4)  # start == end
-    assert _ink(quick.frame(1.0)).any() and _gap(quick, quick.frame(1.0)) < 1
+    assert _ink(quick.frame(1.0)).any() and _off(quick, quick.frame(1.0)) <= 4
 
 
 def test_cap_keeps_the_card_text_inside(tmp_path):
