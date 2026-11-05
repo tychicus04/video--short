@@ -486,6 +486,29 @@ def test_the_pencil_colour_follows_the_reference_picture():
     assert np.asarray(out.crop((100, 540, 500, 580))).max() > 200
 
 
+def pencil_mean(img, b, ref=None):
+    """Mean colour (0-255 grey) of the pixels the overlays of beat `b` changed in `img`."""
+    out = draw_overlays(img, [b], 7.0, ref=ref)
+    a, was = np.asarray(out).astype(int), np.asarray(img).astype(int)
+    drawn = np.abs(a - was).max(2) > 2
+    assert drawn.sum() > 150
+    return a[drawn].mean()
+
+
+def test_the_pencil_follows_the_colour_it_is_drawn_on_not_the_whole_picture():
+    badge = [150, 350, 450, 550]
+    tick = beat(5.0, mark={"shape": "tick", "box": [200, 400, 400, 500]})
+    assert pencil_mean(inked(badge), tick) > 150  # a tick in a dark badge on a light picture: light pencil
+    assert pencil_mean(dark_picture(), tick) < 100  # a tick on a light screen in a dark picture: graphite
+    assert pencil_mean(paper(), beat(5.0, mark={"shape": "circle", "box": [200, 800, 400, 960]})) < 100  # plain paper: graphite
+    assert pencil_mean(dark_picture(), beat(5.0, mark={"shape": "circle", "box": [200, 800, 400, 960]})) > 150  # plain dark: light
+    # a circle round the badge, or a line under it, is on the paper round it: graphite, though the box itself is dark
+    for shape in ("circle", "underline"):
+        assert pencil_mean(inked(badge), beat(5.0, mark={"shape": shape, "box": badge})) < 100
+    # a card's finished frame (2x) is what the colour is judged on, at its own pixels: the tick is on its light shape
+    assert pencil_mean(paper(1440, 2560), tick, ref=dark_picture().resize((1440, 2560))) < 100
+
+
 def test_settled_is_when_the_overlays_stop_changing():
     bs = [beat(5.0, mark={"shape": "circle", "box": [200, 500, 500, 700]}),
           beat(7.0, mark={"shape": "underline", "box": [200, 800, 500, 850]}, pop={"text": "2024", "box": [400, 200, 600, 280]}),

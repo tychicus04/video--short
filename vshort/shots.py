@@ -441,37 +441,58 @@ def _grain(size: tuple[int, int]) -> Image.Image:
     return Image.fromarray((205 + 50 * np.random.default_rng(3).uniform(size=(size[1], size[0]))).astype(np.uint8))
 
 
-def _pencil(pic: Image.Image) -> tuple[int, int, int]:
-    """Graphite on a light picture, paper-coloured pencil on a dark one."""
-    return kit.INK if _background(pic) @ LUMA >= 128 else PAPER
+def _pencil(pic: Image.Image, pts: list[tuple[float, float]]) -> tuple[int, int, int]:
+    """Graphite or paper-coloured pencil, whichever is farther in luma from the picture where the pencil goes: the median
+    of `pic` at `pts` (frame pixels). A tick in a dark badge on a light picture is light, one on a light screen in a dark
+    picture is dark; a circle round the badge is on the paper round it. The picture's own colour if there are no points."""
+    kx, ky = pic.width / _frame()[0], pic.height / _frame()[1]
+    rgb = pic if pic.mode == "RGB" else pic.convert("RGB")
+    here = [rgb.getpixel((min(int(x * kx), pic.width - 1), min(int(y * ky), pic.height - 1))) for x, y in pts]
+    local = (np.median(here, axis=0) if here else _background(pic)) @ LUMA
+    return max((kit.INK, PAPER), key=lambda c: abs(np.array(c) @ LUMA - local))
+
+
+def _along(strokes) -> list[tuple[float, float]]:
+    """Every vertex of the strokes and the middle of each of their segments."""
+    return [p for s in strokes for a, b in zip(s, s[1:]) for p in (a, ((a[0] + b[0]) / 2, (a[1] + b[1]) / 2))]
 
 
 def draw_overlays(img: Image.Image, bs: list[Beat], t: float, run_dir=None, ref: Image.Image | None = None) -> Image.Image:
     """A copy of `img` (720x1280, or a card frame at 2x) with every mark, doodle and pop showing at t drawn on in pencil:
     marks and doodles draw on over DRAW from LEAD before their word, a pop bounces in. `img` itself if none is showing.
-    Where an arrow comes from and whether the pencil is graphite or light is judged by `ref` (a card's finished frame,
-    so they do not change while it writes itself out), or by `img` without one."""
+    Where an arrow comes from and whether each item is in graphite or light pencil (by what is under it: see `_pencil`) is
+    judged by `ref` (a card's finished frame, so they do not change while it writes itself out), or by `img` without one."""
     live = _live(bs, t)
     if not live:
         return img
     pic = ref if ref is not None else img
     W, H, *_ = _frame()
-    mask = Image.new("L", (W * kit.SS, H * kit.SS))
-    d = ImageDraw.Draw(mask)
+    layers: dict[tuple, tuple[Image.Image, ImageDraw.ImageDraw]] = {}  # a mask for each colour of pencil in use
+
+    def layer(pts):
+        col = _pencil(pic, pts)
+        if col not in layers:
+            mask = Image.new("L", (W * kit.SS, H * kit.SS))
+            layers[col] = mask, ImageDraw.Draw(mask)
+        return layers[col]
+
     for b, kind, start, opacity in sorted((e for e in live if e[1] != "pop"), key=lambda e: e[3]):  # the fading ones under
         item = getattr(b, kind)
-        _paint(d, _strokes(kind, item, run_dir, pic), _out((t - start) / DRAW), _width(kind), opacity,
+        strokes = _strokes(kind, item, run_dir, pic)
+        _paint(layer(_along(strokes))[1], strokes, _out((t - start) / DRAW), _width(kind), opacity,
                zlib.crc32(f"{kind}{item['shape']}{item['box']}".encode()))
     for b, _, start, _ in (e for e in live if e[1] == "pop"):
         u = (t - start) / POP_T
         lay = _pop_layer(b.pop, _bounce(u)).point(lambda v: round(v * kit.clamp(u / 0.3)))
         (x0, y0, x1, y1) = b.pop["box"]
-        mask.paste(255, (round((x0 + x1) / 2 * kit.SS - lay.width / 2), round((y0 + y1) / 2 * kit.SS - lay.height / 2)), lay)
-    mask = ImageChops.multiply(mask.resize(img.size, Image.BOX), _grain(img.size))
-    if mask.getbbox() is None:
-        return img
-    out = img.copy()
-    out.paste(_pencil(pic), mask=mask)
+        grid = [(x0 + (x1 - x0) * i / 4, y0 + (y1 - y0) * j / 4) for i in range(5) for j in range(5)]  # blank paper: its own colour
+        layer(grid)[0].paste(255, (round((x0 + x1) / 2 * kit.SS - lay.width / 2), round((y0 + y1) / 2 * kit.SS - lay.height / 2)), lay)
+    out = img
+    for col, (mask, _) in layers.items():
+        mask = ImageChops.multiply(mask.resize(img.size, Image.BOX), _grain(img.size))
+        if mask.getbbox() is not None:
+            out = out.copy() if out is img else out
+            out.paste(col, mask=mask)
     return out
 
 
