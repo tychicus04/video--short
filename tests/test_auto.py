@@ -729,6 +729,38 @@ def test_a_crash_in_the_check_after_the_agent_still_renders(flow, monkeypatch):
     assert "Nhịp hình: không có" in auto.get_state(run)["message"]
 
 
+def test_a_crash_in_a_planned_render_renders_again_on_the_old_camera(flow, monkeypatch, capsys):
+    run, fk = flow
+    _approved(run)
+    inner = fk.vshort
+
+    def vshort(args):
+        if args[0] == "shots" and "--prep" not in args:  # the check passes some lines
+            run.file("shots").mkdir(exist_ok=True)
+            run.write("shots/ok.json", {"stamp": {}, "lines": {"1": [{"phrase": 1, "focus": None}]}})
+        if args[0] == "render" and run.file("shots/ok.json").exists():
+            fk.cmds.append("render")
+            raise RuntimeError("thẻ không vẽ được")  # code only the planned lines run
+        return inner(args)
+    monkeypatch.setattr(auto, "run_vshort", vshort)
+    assert auto.run_auto(run) == OK
+    assert fk.cmds.count("render") == 2 and not run.file("shots/ok.json").exists() and run.done("render")
+    err = capsys.readouterr()
+    assert "Traceback" in err.err and "thẻ không vẽ được" in err.err and "camera cũ" in err.out
+    assert auto.run_auto(run) == OK and fk.cmds.count("render") == 2  # a resume does not render (or crash) again
+
+
+def test_a_crash_in_render_without_a_plan_is_not_hidden(flow, monkeypatch):
+    run, fk = flow
+    _approved(run)
+    fk.boom = {"render"}
+    assert not run.file("shots/ok.json").exists()
+    assert auto.run_auto(run) == FAILED and fk.cmds.count("render") == 1  # as before: no plan to blame, no second try
+    assert "render hỏng" in auto.get_state(run)["message"]
+    with pytest.raises(RuntimeError):
+        auto._render(run)
+
+
 def test_the_shots_timer_is_closed_before_the_agent_runs(flow, monkeypatch):
     from vshort import timing
     run, fk = flow

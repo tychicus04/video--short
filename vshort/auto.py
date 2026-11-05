@@ -615,9 +615,26 @@ def _tts_result(run: Run, code: int) -> None:
         raise Stop(code, f"`vshort tts` lỗi (mã {code}); xem auto.log")
 
 
+def _vshort_render(run: Run) -> int:
+    """`vshort render`: its exit code. It runs in this process, so a bug in what only a planned line runs (a card, the
+    pencil) raises through here instead of coming back as a code. With a plan (shots/ok.json) that is not allowed to stop
+    the video, nor to come back on every resume: the plan goes to auto.log with the traceback and the video is rendered
+    once more on the old camera. Without one, the crash is raised as it always was."""
+    ok = run.file("shots/ok.json")
+    try:
+        return run_vshort(["render", str(run.path)])
+    except Exception:
+        if not ok.exists():
+            raise
+        traceback.print_exc()
+        print("Nhịp hình: dựng video bằng nhịp hình hỏng (traceback ở trên); bỏ nhịp hình và dựng lại bằng camera cũ.", flush=True)
+        ok.unlink()
+        return run_vshort(["render", str(run.path)])
+
+
 def _render(run: Run) -> None:
     if not run.done("render"):
-        if run_vshort(["render", str(run.path)]) == 2:
+        if _vshort_render(run) == 2:
             # as the skill did: check motion again (it may only be stale), drop it only if it no longer passes
             if run_vshort(["motion", str(run.path)]):
                 _no_motion(run)
