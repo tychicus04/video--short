@@ -1,5 +1,6 @@
 """Turn stills into frames: patch wrong on-screen text, redraw references as SVG or pencil-filtered photos."""
 import io
+import math
 import re
 import unicodedata
 from datetime import date
@@ -10,7 +11,7 @@ import cairosvg
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 
-from vshort.textfit import FONTS
+from vshort.textfit import FONTS, UI_RIGHT, UI_RIGHT_FROM, UI_TOP
 
 PAPER = (238, 234, 226)
 W, H = 720, 1280
@@ -21,8 +22,16 @@ WATERMARK = (483, 1214, 706, 1270)  # around NotebookLM's watermark, which rende
 MIN_PATCH_EM = 14
 MIN_CONTRAST = 40  # colour distance from the fill that counts as old ink
 MIN_SPAN, MIN_BAND, MIN_EM = 6, 4, 8  # old ink thinner than this is a rule or speck, not text; smallest font drawn
-SLOT = (640, 920)  # photos fit inside this, centred at (360, 520); the credit goes 14 px under the photo (<= y 1030)
-CREDIT_EM, MIN_CREDIT_EM, CREDIT_W = 26, 14, 680
+ZOOM = 1.08  # render.ZOOM: the camera pushes a reference this far in about the frame's centre (360, 640)
+# A reference keeps out of these, so that pushed in it clears what the platforms draw (textfit.UI_*) and the caption box
+REF_TOP = math.ceil(640 - (640 - UI_TOP) / ZOOM)  # 178
+REF_RIGHT = math.floor(360 + (UI_RIGHT - 360) / ZOOM)  # 598, from y REF_RIGHT_FROM down
+REF_RIGHT_FROM = math.ceil(640 - (640 - UI_RIGHT_FROM) / ZOOM)  # 543
+REF_BOTTOM = math.floor(640 + (SUBTITLE[1] - 640) / ZOOM)  # 1015
+FRAME, CREDIT_GAP, CREDIT_H = 3, 14, 32  # a photo's frame line; its credit starts this far under it, this tall
+SLOTS = ((640, REF_RIGHT_FROM - REF_TOP - 2 * FRAME),  # (w, h) under REF_TOP: full width above the button column,
+         (2 * (REF_RIGHT - 360 - FRAME), REF_BOTTOM - REF_TOP - FRAME - CREDIT_GAP - CREDIT_H))  # or narrower beside it
+CREDIT_EM, MIN_CREDIT_EM, CREDIT_W = 26, 14, 2 * (REF_RIGHT - 360)
 SAFE_TLDS = (".example", ".test", ".invalid")  # reserved, never a real site
 REAL_TLDS = {"com", "net", "org", "io", "co", "vn", "gov", "edu", "info", "app", "dev", "site", "xyz", "me", "ai"}
 LUMA = np.array([0.299, 0.587, 0.114])
@@ -107,22 +116,33 @@ def patch_text(img: Image.Image, box: tuple[int, int, int, int], text: str, bold
 def pencil(photo: Image.Image, credit: str) -> Image.Image:
     """Photo as a pencil sketch (gray, inverted blur, colour dodge) on paper with a thin frame and a credit line."""
     flat = Image.alpha_composite(Image.new("RGBA", photo.size, "white"), photo.convert("RGBA")).convert("L")
-    flat = ImageOps.contain(flat, SLOT, Image.LANCZOS)
+    slot = max(SLOTS, key=lambda s: min(s[0] / flat.width, s[1] / flat.height))  # the one that shows it larger
+    flat = ImageOps.contain(flat, slot, Image.LANCZOS)
     g = np.asarray(flat).astype(float)
     blur = np.asarray(ImageOps.invert(flat).filter(ImageFilter.GaussianBlur(10))).astype(float)
     sketch = np.clip(g * 255 / np.maximum(255 - blur, 1), 0, 255)
     rgb = (sketch[..., None] * np.array(PAPER) / 255).astype(np.uint8)  # white becomes paper
     canvas = Image.new("RGB", (W, H), PAPER)
-    x, y = 360 - flat.width // 2, 520 - flat.height // 2
+    x, y = 360 - flat.width // 2, REF_TOP + FRAME + (slot[1] - flat.height) // 2
     canvas.paste(Image.fromarray(rgb), (x, y))
     d = ImageDraw.Draw(canvas)
-    d.rectangle((x - 3, y - 3, x + flat.width + 2, y + flat.height + 2), outline=(140, 140, 140), width=2)
+    d.rectangle((x - FRAME, y - FRAME, x + flat.width + FRAME - 1, y + flat.height + FRAME - 1), outline=(140, 140, 140),
+                width=2)
     em = CREDIT_EM
     while em > MIN_CREDIT_EM and _font("PatrickHand-Regular.ttf", em).getlength(credit) > CREDIT_W:
         em -= 1
-    d.text((W / 2, y + flat.height + 14), credit, fill=(74, 74, 74), font=_font("PatrickHand-Regular.ttf", em),
+    d.text((W / 2, y + flat.height + CREDIT_GAP), credit, fill=(74, 74, 74), font=_font("PatrickHand-Regular.ttf", em),
            anchor="mt")
     return canvas
+
+
+def ui_problems(frame: Image.Image) -> list[str]:
+    """Where a reference has ink that, once the camera pushes in, the platforms or the caption box would cover."""
+    ink = np.abs(np.asarray(frame.convert("RGB")).astype(int) - PAPER).max(2) > MIN_CONTRAST
+    zones = {f"y < {REF_TOP} (thanh trên của TikTok/Reels/Shorts)": ink[:REF_TOP],
+             f"x > {REF_RIGHT} từ y {REF_RIGHT_FROM} trở xuống (cột nút like/bình luận)": ink[REF_RIGHT_FROM:, REF_RIGHT + 1:],
+             f"y > {REF_BOTTOM} (hộp phụ đề và tên kênh/mô tả)": ink[REF_BOTTOM + 1:]}
+    return [f"có nét vẽ ở {name}; camera phóng {ZOOM} lần nên phải chừa vùng này" for name, z in zones.items() if z.any()]
 
 
 def svg_frame(path: Path) -> Image.Image:

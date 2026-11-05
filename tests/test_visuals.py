@@ -3,7 +3,8 @@ import pytest
 from PIL import Image, ImageDraw, ImageFont
 
 from vshort.textfit import FONTS
-from vshort.visuals import PAPER, SUBTITLE, patch_text, pencil, svg_frame, validate
+from vshort.visuals import (PAPER, REF_RIGHT, REF_RIGHT_FROM, SUBTITLE, patch_text, pencil, svg_frame, ui_problems,
+                            validate)
 
 PAGE = (243, 239, 230)
 
@@ -110,14 +111,28 @@ def test_patch_text_ink_matches_the_old_ink_on_a_dark_button():
     assert (out[96:144, 96:404].sum(2) > 600).any()  # light text on the dark fill
 
 
-def test_pencil_fits_any_photo():
-    for size, bottom in [((1600, 900), 700), ((200, 300), 980)]:  # y where the fitted photo ends
+def test_pencil_fits_any_photo_clear_of_the_platforms():
+    for size, wide in [((1600, 900), True), ((200, 300), False)]:
         f = np.asarray(pencil(Image.new("RGB", size, "gray"), "Nguồn: Google")).astype(int)
-        bare = np.asarray(pencil(Image.new("RGB", size, "gray"), "")).astype(int)
+        bare = np.asarray(pencil(Image.new("RGB", size, "gray"), "")).astype(int)  # flat gray turns to paper: the frame
         assert f.shape == (1280, 720, 3)
+        ink = np.abs(bare - PAPER).max(2) > 40
+        rows, cols = np.nonzero(ink.any(1))[0], np.nonzero(ink.any(0))[0]
+        assert (cols[-1] - cols[0] > 600) == wide  # a wide photo keeps the full width, above the button column
+        bottom = rows[-1]
         assert np.abs(f[bottom + 6:bottom + 60] - bare[bottom + 6:bottom + 60]).max() > 40  # credit just under it
         assert np.array_equal(f[bottom + 60:], bare[bottom + 60:])  # and nowhere else
-        assert np.abs(f[SUBTITLE[1]:] - PAPER).max() <= 6  # the caption box and what the platforms draw stay clear
+        assert ui_problems(Image.fromarray(f.astype(np.uint8))) == []  # pushed in, nothing under the platforms
+        assert np.abs(f[SUBTITLE[1]:] - PAPER).max() <= 6
+
+
+def test_reference_ink_where_the_platforms_draw_is_flagged():
+    img = Image.new("RGB", (720, 1280), PAPER)
+    d = ImageDraw.Draw(img)
+    d.rectangle((60, 300, 680, 520), outline=(74, 74, 74), width=2)  # full width, above the button column: fine
+    assert ui_problems(img) == []
+    d.rectangle((60, 560, 610, 900), outline=(74, 74, 74), width=2)  # beside the buttons but 12 px too far right
+    assert [p.split(" (")[0] for p in ui_problems(img)] == [f"có nét vẽ ở x > {REF_RIGHT} từ y {REF_RIGHT_FROM} trở xuống"]
 
 
 def test_pencil_keeps_the_edges_of_a_photo():

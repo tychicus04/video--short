@@ -22,7 +22,7 @@ from vshort.script import (Sentence, check_brief, check_numbers, check_script, c
 from vshort.stills import NLM_OUTRO, contact_sheet, grid_image, pick_still, scene_of
 from vshort.tts import (Clip, QuotaExceeded, clip_paths, gemini_speaker, load_api_key, synth_lines, synth_script,
                         zerotts_speaker)
-from vshort.visuals import patch_text, pencil, svg_frame, validate
+from vshort.visuals import patch_text, pencil, svg_frame, ui_problems, validate
 
 ROOT = Path(__file__).resolve().parent.parent
 OK, FAILED, BAD_INPUT, AUTH, QUOTA = 0, 1, 2, 4, 75
@@ -336,6 +336,9 @@ def cmd_visuals(a) -> int:
                 ImageOps.exif_transpose(Image.open(run.file(it["file"]))), it["credit"])
         except Exception as e:  # agent-made file: any decoder error is a bad item
             probs.append(f"visuals.json mục {n} ({it['kind']}): không đọc/vẽ được {it['file']}: {e}")
+            continue
+        if it["kind"] == "svg":  # a photo is laid out clear of them by pencil()
+            probs += [f"visuals.json mục {n} (svg): {p}" for p in ui_problems(refs[it["id"]])]
     for p in probs:
         _err(p)
     if probs:

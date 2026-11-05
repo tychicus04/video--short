@@ -215,3 +215,12 @@ def test_a_dropped_move_that_leaves_the_actor_off_its_next_path_is_reported(desi
 def test_bind_survives_a_thing_id_that_is_not_a_string(design, tmp_path):
     design["things"][1]["id"] = ["srv"]
     assert motion.bind_problems(design, BIND, SCRIPT, tmp_path)
+
+
+def test_ui_problems_keep_the_canvas_clear_of_the_platforms():
+    doc = {"things": [{"id": "a", "kind": "box", "box": [60, 300, 680, 500], "label": "A", "beat": 1},  # wide, above the buttons
+                      {"id": "b", "kind": "box", "box": [60, 600, 640, 800], "beat": 1},  # into the button column
+                      {"id": "c", "kind": "box", "box": [60, 100, 300, 200], "beat": 1},  # under the top bar
+                      {"id": "d", "kind": "dot", "xy": [300, 900], "beat": 1}],
+           "beats": [{"acts": [{"do": "move", "thing": "d", "to": [650, 900]}]}]}
+    assert [p.split(":")[0] for p in motion.ui_problems(doc)] == ["thing 'b'", "thing 'c'", "nhịp 1"]

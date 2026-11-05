@@ -62,10 +62,12 @@ phiên bản nào bị ảnh hưởng, đã có bản vá. Ghi mọi thứ đã 
   điểm nhấn xanh lơ nhạt. Chữ viết tay dùng font `Patrick Hand`, chữ giao diện dùng `Be Vietnam Pro`; chỉ hai font này có sẵn.
 - Giao diện iOS dùng nhãn tiếng Việt thật có trong chính trang `source` ("Cài đặt › Cài đặt chung › Cập nhật phần mềm");
   trang nguồn không có thì đừng vẽ giao diện đó.
-- Giữ chữ trong x 40–680, y 60–1050: hình tham chiếu phóng 1,08 lần quanh tâm nên mép trên/dưới bị cắt khoảng 47 px, và vùng phụ đề bắt đầu từ y 1046.
+- **Mọi nét** (chữ, viền thẻ, dòng nguồn) nằm trong y 178–1015, và từ y 543 trở xuống chỉ tới x 598 (phía trên y 543 được rộng tới
+  x 680). Camera phóng hình tham chiếu 1,08 lần quanh tâm; sau khi phóng, TikTok/Reels/Shorts che thanh trên, cột nút like/bình luận
+  bên phải và phần dưới cùng (hộp phụ đề, tên kênh). Cách dễ nhất: cả thẻ trong x 60–590, y 190–1000. `vshort visuals` kiểm từng nét.
 - `<image>` chỉ vẽ được khi `href` là `data:` URI; file liên kết ra trống trơn. Nhúng ảnh bằng `data:` hoặc đừng dùng ảnh trong SVG.
 - Chỉ dùng hình cơ bản (`rect`, `path`, `line`, `circle`, `text`); tránh `filter`, `foreignObject`, CSS phức tạp.
-- Tự vẽ một dòng nguồn nhỏ trong chính SVG, nằm phía trên y 1050 (y ≤ 1050), trong x 40–680 (ví dụ "Nguồn: Google Threat Intelligence").
+- Tự vẽ một dòng nguồn nhỏ trong chính SVG, cũng trong vùng trên (ví dụ "Nguồn: Google Threat Intelligence").
 
 **Ảnh thật → `photo`**: tải về từ trang chính thức hoặc báo chí bằng `curl -L -o RUN/visuals/<tên>.jpg <url>`
 (đổi đuôi theo định dạng; kiểm bằng Read rằng ảnh mở được và đủ nét). Code tự chuyển thành nét chì, đặt trên giấy trong khung mảnh

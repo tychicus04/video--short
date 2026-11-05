@@ -300,10 +300,29 @@ Khối video trong nội dung của bài mẫu (bỏ link):
   làm.
 - Thiếu file cấu hình thì khung "Gửi lên CMS" ghi rõ thiếu gì, không hiện lỗi khó hiểu.
 
+### Môi trường làm và thử
+
+Hai câu trả lời của Tai sau buổi soát:
+
+- **"Tài khoản CMS prod của Tai có phải super admin?": "ko".** Vậy `x-mcp-act-as` đứng tên Tai được trên prod. Header này từ chối
+  super admin (`jwt-auth.guard.ts:158`) và bắt người được đứng tên phải thuộc phòng ban gửi kèm. Lần gửi prod đầu tiên kiểm luôn việc
+  Tai thuộc phòng ban đã cấu hình; lỗi về phòng ban phải hiện rõ.
+- **Có bản dev:** https://cms.dev.mediasoft.com.vn. Tài khoản phóng viên thử là `phongvien01`, dùng làm `x-mcp-act-as` trên dev.
+  Máy không cần mật khẩu của tài khoản này, nên không lưu nó.
+
+Vì vậy:
+- File cấu hình có **hai bộ**: dev và prod, mỗi bộ đủ các mục ở "Cấu hình và bí mật". Một khóa chọn bộ đang dùng, mặc định là dev.
+  Trang hiện rõ đang gửi lên bản nào.
+- Mọi việc làm và thử giai đoạn B, kể cả kiểm video phát được ở trang đọc, làm trên **dev** trước.
+- Test tự động dùng một CMS giả, không gọi CMS thật.
+- **Không bao giờ** gọi `approve_zernio_post`, không dùng `publishNow`, không đặt `scheduledFor`: máy chỉ đề xuất, kể cả trên dev.
+- Chỉ chuyển sang prod khi dev đã chạy trọn. Lần gửi prod đầu tiên làm cùng Tai: một bài cá nhân và một đề xuất, Tai xem trong CMS
+  rồi tự xử lý (giữ hoặc xóa).
+- Địa chỉ API của bản dev (khác địa chỉ trang `cms.dev…`) và token dev: Tai đặt vào file cấu hình như với prod.
+
 ## Tai cần chuẩn bị (giai đoạn B)
 
-- Token máy của CMS prod, đặt vào file cấu hình trên pve2. Không gửi qua chat.
-- Địa chỉ API của CMS prod.
+- Token máy và địa chỉ API của bản **dev** trước, rồi của **prod**, đặt vào file cấu hình trên pve2. Không gửi qua chat.
 - Tài khoản Zernio đã nối với Facebook, YouTube, TikTok, kèm id tài khoản.
 - Đổi mật khẩu CMS vì đã dán vào chat ngày 05/11.
 

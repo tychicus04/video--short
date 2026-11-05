@@ -12,6 +12,7 @@ EX = Path(__file__).resolve().parent.parent / "examples" / "motion"
 def test_example_binds_and_draws(name, tmp_path):
     doc, bind, script = (json.loads((EX / f"{name}{x}.json").read_text()) for x in ("", ".bind", ".script"))
     assert motion.bind_problems(doc, bind, script, tmp_path) == []
+    assert motion.ui_problems(motion.bound(doc, bind)) == []  # the agents copy these: they keep clear of the platforms
     img = motion.bind_sheet(doc, bind, script, tmp_path)
     assert img.width > len(doc["beats"]) * motion.SHEET_W
 
@@ -28,7 +29,11 @@ def test_agent_instructions_quote_the_limits_the_code_checks():
     assert f"đáy hộp y≈{render.SUB_BOTTOM}" in reviewer_md and f"chữ không quá x {textfit.UI_RIGHT}" in reviewer_md
     visuals_md = (agents / "vs-visuals.md").read_text(encoding="utf-8")
     assert f"vùng phụ đề y {visuals.SUBTITLE[1]}–{visuals.SUBTITLE[3]}" in visuals_md
-    assert f"vùng phụ đề bắt đầu từ y {visuals.SUBTITLE[1]}" in visuals_md
+    assert (f"y {visuals.REF_TOP}–{visuals.REF_BOTTOM}, và từ y {visuals.REF_RIGHT_FROM} trở xuống chỉ tới x {visuals.REF_RIGHT}"
+            in visuals_md)
+    assert (f"y {textfit.UI_TOP}–{kit.SAFE[3]}** (khung 720×1280), và **không vào góc\n  x > {textfit.UI_RIGHT} từ y "
+            f"{textfit.UI_RIGHT_FROM} trở xuống**" in motion_md)
+    assert visuals.ZOOM == render.ZOOM  # visuals cannot import render (render -> motion -> visuals)
 
 
 def test_captions_and_patches_stay_clear_of_what_the_platforms_draw():
