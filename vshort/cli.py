@@ -544,7 +544,7 @@ def cmd_shots(a) -> int:
     except ValueError as e:
         _err(f"shots.json không phải JSON hợp lệ: {e}")
         return BAD_INPUT
-    probs = shots.schema_problems(doc, w.script, set(w.kind), lambda s: shapes.find(s, run.path) is not None)
+    probs = shots.schema_problems(doc, w.script, set(w.kind), lambda s: (d := shapes.find(s, run.path)) is not None and not shapes.problems(d, s))
     if not isinstance(doc, dict):
         for p in probs:
             _err(p)

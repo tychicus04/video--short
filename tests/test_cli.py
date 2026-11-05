@@ -920,3 +920,14 @@ def test_shots_names_a_missing_frame_file_like_render_does(tmp_path, capsys):
     assert main(["shots", str(tmp_path), "--prep"]) == 2
     err = capsys.readouterr().err
     assert "frames/2.png" in err and "vshort visuals" in err
+
+
+def test_a_broken_run_shape_is_not_a_doodle_to_draw(tmp_path, capsys):
+    _shots_run(tmp_path)
+    (tmp_path / "shapes").mkdir()
+    (tmp_path / "shapes" / "rong.json").write_text(json.dumps({"name": "rỗng", "strokes": []}))  # parses, draws nothing
+    plan = _good_plan(tmp_path)
+    plan["2"][2] = {"phrase": 3, "doodle": {"shape": "rong", "box": [200, 700, 400, 800]}}
+    code, out = _shots(tmp_path, plan, capsys)
+    assert code == 2 and "Traceback" not in out.err and "doodle shape 'rong'" in out.err
+    assert list(_ok_lines(tmp_path)) == ["1", "3"]
