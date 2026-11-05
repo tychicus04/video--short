@@ -29,6 +29,8 @@ TRANSFORM = ("mutation($b: ArticleTransformPreviewInput!) { articles_transform_p
 PROPOSE = "mutation($i: ProposeZernioPostInput!) { propose_zernio_post(input: $i) { publishId status } }"
 WORKFLOWS = "query($b: BaseInput!) { workflows_all(body: $b) { id name type_id workflow_type_id sub_type_id } }"
 ZERNIO = "query { zernio_accounts { id platform username displayName needsReauth } }"
+# skips the department check (@SkipDepartmentCheck): what department_id the act-as editor may use
+PROFILE = "query { auth_profile { id user_name userDepartments { department { id name } } } }"
 SAMPLE = (f"query($id: Int!) {{ articles_detail(id: $id) {{ {ARTICLE_FIELDS} desc "
           "articleCategories { category_id is_major category { name } } "
           "articleGenres { article_genre_id is_major articleGenre { name } } "

@@ -594,6 +594,12 @@ def cmd_cms_probe(a) -> int:
         except cms.CmsError as e:
             print(f"  không đọc được: {e.message}")
 
+    def profile() -> None:
+        x = cms.gql(s, cms.PROFILE, {})["auth_profile"]
+        print(f"  {x['id']} {x['user_name']}")
+        for u in x.get("userDepartments") or []:
+            print(f"  phòng ban {u['department']['id']} {u['department']['name']}")
+
     def article() -> None:
         x = cms.gql(s, cms.SAMPLE, {"id": a.article_id})["articles_detail"]
         wf = x.get("workflow") or {}
@@ -622,7 +628,8 @@ def cmd_cms_probe(a) -> int:
                   + (" (cần đăng nhập lại)" if z.get("needsReauth") else ""))
 
     workflows = {"department": s.department_id, "type": 1}
-    show(f"Bài {a.article_id} trên {s.env} ({s.api}):", article)
+    show(f"Người đứng tên (act_as {s.act_as}) trên {s.env} ({s.api}):", profile)
+    show(f"Bài {a.article_id}:", article)
     show("Chặng cá nhân (private_workflow_id):", private)
     show("Tài khoản Zernio:", zernio)
     return OK

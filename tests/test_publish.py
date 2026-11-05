@@ -474,6 +474,9 @@ def test_cli_cms_probe_prints_ids_never_the_token(monkeypatch, capsys):
     monkeypatch.setattr(cms, "load", lambda env=None, ids=True: (seen.append((env, ids)) or settings(), []))
 
     def gql(s, query, variables):
+        if query == cms.PROFILE:
+            return {"auth_profile": {"id": 77, "user_name": "phongvien01",
+                                     "userDepartments": [{"department": {"id": 3, "name": "Ban Công nghệ"}}]}}
         if query == cms.SAMPLE:
             return {"articles_detail": {
                 "id": 22457, "title": "Mẫu", "department_id": 3, "article_type_id": 1, "workflow_id": 40,
@@ -494,6 +497,7 @@ def test_cli_cms_probe_prints_ids_never_the_token(monkeypatch, capsys):
     assert cli.main(["cms-probe", "22457", "--env", "dev"]) == cli.OK
     out = capsys.readouterr().out
     assert seen == [("dev", False)]
-    for part in ("Chuyển động công nghệ", "11", "Video ngắn", "21", "31", "binance", "40", "acc-fb", "FACEBOOK"):
+    for part in ("phongvien01", "Ban Công nghệ", "Chuyển động công nghệ", "11", "Video ngắn", "21", "31", "binance", "40",
+                 "acc-fb", "FACEBOOK"):
         assert part in out
     assert "BI-MAT-123" not in out
