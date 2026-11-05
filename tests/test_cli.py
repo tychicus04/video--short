@@ -1064,6 +1064,24 @@ def test_render_gives_the_planned_lines_their_beats_and_cards(tmp_path, capsys, 
     assert json.loads((tmp_path / "sfx.json").read_text()) == pop_at  # the pop still lands on the cut into the first reference
 
 
+def test_the_sound_cues_get_the_plain_segments_not_the_wide_ones(tmp_path, capsys, monkeypatch):
+    # the card (3) and the photo (4) are one reference group and only the photo has beats: line 3 renders wide as n3, but the
+    # pop still lands on the cut into the first reference, which the cues find in the segments without any plan
+    _shots_run(tmp_path)
+    frames = json.loads((tmp_path / "frames.json").read_text())
+    (tmp_path / "frames.json").write_text(json.dumps([r | {"group": "v4"} if r["id"] == 3 else r for r in frames]))
+    mark = lambda phrase, shape, box: {"phrase": phrase, "mark": {"shape": shape, "box": box}}  # noqa: E731
+    plan = {"4": [mark(1, "circle", [120, 320, 480, 480]), mark(2, "underline", [150, 330, 420, 470]), mark(3, "tick", [150, 350, 450, 450])]}
+    assert _shots(tmp_path, plan, capsys)[0] == 0
+    seen = []
+    monkeypatch.setattr(cli, "render_video", lambda segs, *a, **k: seen.append(segs))
+    write_silence(tmp_path / "narration.wav", 15.6)
+    assert main(["render", str(tmp_path)]) == 0
+    assert [s.group for s in seen[0]] == ["s0", "s0", "n3", "n4"] and seen[0][2].plan == ()
+    (cue,) = json.loads((tmp_path / "sfx.json").read_text())
+    assert cue["name"] == "pop" and cue["at"] == pytest.approx(SHOT_SEG[3][0])
+
+
 def shots_beats(rows, i):
     from vshort import shots
     from vshort.fit import Placement

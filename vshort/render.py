@@ -3,7 +3,7 @@ the ANM outro in place of NotebookLM's (the only logo), new voice."""
 import math
 import os
 import subprocess
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from functools import lru_cache
 from itertools import groupby
 from pathlib import Path
@@ -191,9 +191,12 @@ def segments(placements: list[Placement], frames: list[dict], run_dir: Path, tot
     """One segment per voice; a cut sits in the middle of the gap between two voices.
 
     `animated` maps a line id to the motion scene that draws it; `planned` a line id to its beats, `cards` the planned
-    lines that are a reference card to the svg.
+    lines that are a reference card to the svg. A line without a plan but in a scene (frames group) that has a planned line
+    gets an empty plan: the planned camera with no beats, wide, so it matches its neighbour at the cut.
     """
     by_id, animated, planned, cards = {f["id"]: f for f in frames}, animated or {}, planned or {}, cards or {}
+    # a scene with a planned line: its other lines are wide too, or the picture they share doubles at the cut
+    planned_scenes = {by_id[p.id]["group"] for p in placements if p.id in planned and animated.get(p.id) is None}
     cuts = [0.0] + [(a.start + a.dur + b.start) / 2 for a, b in zip(placements, placements[1:])] + [total]
     out = []
     for p, s, e in zip(placements, cuts, cuts[1:]):
@@ -204,6 +207,8 @@ def segments(placements: list[Placement], frames: list[dict], run_dir: Path, tot
             svg = cards.get(p.id)
             out.append(Segment(p.id, s, e, file, f"n{p.id}", None, planned[p.id], svg,
                                card_cap(Card(svg, s, e, XF)) if svg else shots.MAX_ZOOM_STILL))
+        elif group in planned_scenes:
+            out.append(Segment(p.id, s, e, file, f"n{p.id}", None, ()))
         else:
             out.append(Segment(p.id, s, e, file, group))
     return out
@@ -243,7 +248,11 @@ def _kinds(groups: list[str]) -> list[int]:
 
 def planned_camera(bs: list[shots.Beat], t: float, start: float, end: float, cap: float) -> tuple[float, float, float]:
     """(scale, cx, cy) of a line from `start` to `end` that follows its beats `bs`: it is back on the wide shot when the
-    crossfade to the next line starts. The render and `vshort shots` both ask here, so the checks see what is rendered."""
+    crossfade to the next line starts. No move begins before the crossfade into the line is over (a framing that snaps while
+    the line before still shows through would double the picture). The render and `vshort shots` both ask here, so the
+    checks see what is rendered."""
+    first = start + XF / 2 + shots.LEAD  # a beat's word at the earliest: its move then begins as the fade ends
+    bs = [replace(b, t=max(b.t, first)) for b in bs]
     return shots.camera_at(bs, t, start - XF / 2, cap, wide_by=end - XF / 2)
 
 

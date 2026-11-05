@@ -343,6 +343,54 @@ def test_a_planned_line_is_back_on_the_wide_shot_when_the_crossfade_out_starts()
     assert view(segs, 5.0)[0][2][0] > 1.4  # it did zoom in on the focus, mid-line
 
 
+def test_the_first_focus_of_a_line_waits_for_the_cut_into_it_to_finish_fading_in():
+    focus = (100, 300, 500, 500)
+    plan = (Beat(3.1, focus, None, None, None),)  # phrase 1: its move would start at 2.9, in the middle of the crossfade 2.8-3.2
+    cam = lambda t, bs=plan: render.planned_camera(bs, t, 3.0, 6.0, 1.5)  # noqa: E731
+    for t in (2.8, 3.0, 3.0 + render.XF / 2):
+        assert cam(t) == pytest.approx(cam(t, ()))  # still the wide shot: the line before it is fading out behind it
+    assert cam(3.0 + render.XF / 2 + shots.SNAP / 2)[0] > cam(3.0 + render.XF / 2, ())[0] + 0.01  # on its way
+    assert cam(3.0 + render.XF / 2 + shots.SNAP) == pytest.approx(shots.frame_box(focus, 1.5))  # SNAP later it has arrived
+    late = (Beat(4.0, focus, None, None, None),)  # a move that starts after the fade is where it always was
+    assert cam(4.0 - shots.LEAD + shots.SNAP, late) == pytest.approx(shots.frame_box(focus, 1.5))
+
+
+def _scene_segments(tmp_path, groups, planned_ids, beat_t=4.0):
+    """Lines of 3 s, one per group, the ones in `planned_ids` with a focus beat at beat_t."""
+    plan = (Beat(beat_t, (200, 400, 500, 700), None, None, None),)
+    ps = [Placement(i, 3.0 * (i - 1), 3.0) for i in range(1, len(groups) + 1)]
+    frames = [{"id": i, "file": f"{i}.png", "group": g} for i, g in enumerate(groups, 1)]
+    return segments(ps, frames, tmp_path, 3.0 * len(groups), planned={i: plan for i in planned_ids})
+
+
+def test_unplanned_lines_of_a_planned_scene_stay_wide_so_the_shared_picture_does_not_double(tmp_path):
+    # the reviewer's probe: s0 (unplanned) | n (planned, same scene) | s0 (unplanned); the old rotation was at 1.08 / panned
+    segs = _scene_segments(tmp_path, ["s0", "s0", "s0"], [2])
+    assert [s.group for s in segs] == ["n1", "n2", "n3"] and segs[0].plan == segs[2].plan == () and len(segs[1].plan) == 1
+    for cut in (3.0, 6.0):
+        for t in [cut - 0.2 + 0.02 * k for k in range(1, 20)]:  # the whole crossfade
+            (a, _, ca), (b, _, cb) = view(segs, t)
+            assert abs(ca[0] - cb[0]) < 0.06 and abs(ca[1] - cb[1]) < 10 and abs(ca[2] - cb[2]) < 10, (t, a.id, ca, cb)
+    for t, k in ((1.5, 0), (8.0, 2)):  # a slow creep from the wide shot, no more: the planned camera with no beats
+        assert view(segs, t)[0][2] == pytest.approx(render.planned_camera((), t, segs[k].start, segs[k].end, 1.5))
+
+
+def test_lines_of_other_scenes_keep_the_camera_rotation(tmp_path):
+    plain = _scene_segments(tmp_path, ["s7", "s0", "s0", "s0", "s9"], [])
+    segs = _scene_segments(tmp_path, ["s7", "s0", "s0", "s0", "s9"], [3])
+    assert [s.group for s in segs] == ["s7", "n2", "n3", "n4", "s9"] and segs[0].plan is None and segs[4].plan is None
+    for t in (0.5, 1.5, 2.5):
+        assert view(segs, t)[0][2] == pytest.approx(view(plain, t)[0][2])  # s7 before the scene: the camera it always had
+    assert max(view(segs, 12.0 + 0.1 * k)[0][2][0] for k in range(30)) > 1.06  # s9 after it: a zoom or a pan of the rotation, not wide
+    ref = _scene_segments(tmp_path, ["v1", "s0", "v1"], [2])  # another group of the planned line is not touched
+    assert [s.group for s in ref] == ["v1", "n2", "v1"]
+
+
+def test_without_a_plan_the_groups_are_the_frames_groups(tmp_path):
+    segs = _scene_segments(tmp_path, ["s0", "s0", "s0"], [])
+    assert [s.group for s in segs] == ["s0", "s0", "s0"] and all(s.plan is None for s in segs)  # sound.cues gets these
+
+
 def test_a_segment_with_a_plan_can_still_be_hashed_and_compared():
     a, b = _planned_seg(Beat(1.0, KEEP, {"shape": "tick", "box": [1, 2, 3, 4]}, None, None)), _planned_seg()
     assert hash(a) == hash(b) and a == b  # Beat holds dicts: the plan is not part of what a Segment is
@@ -353,10 +401,10 @@ def test_segments_give_planned_lines_their_own_group_plan_card_and_cap(tmp_path)
     svg.write_text('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 1280" width="720" height="1280">'
                    '<rect x="60" y="300" width="600" height="400" fill="none" stroke="#4a4a4a" stroke-width="3"/></svg>')
     pl = [Placement(1, 0.2, 1.0), Placement(3, 1.5, 1.0), Placement(4, 2.8, 1.0), Placement(5, 4.0, 1.0)]
-    frames = [{"id": i, "file": f"frames/{i}.png", "group": "s0"} for i in (1, 3, 4, 5)]
+    frames = [{"id": i, "file": f"frames/{i}.png", "group": "s1" if i == 1 else "s0"} for i in (1, 3, 4, 5)]  # 1: another scene
     plan = (Beat(1.6, KEEP, None, None, {"text": "a", "box": [1, 2, 3, 4]}),)
     segs = segments(pl, frames, tmp_path, 5.3, {4: 0}, {3: plan, 5: plan}, {3: svg})
-    assert [(s.group, s.scene) for s in segs] == [("s0", None), ("n3", None), ("m0", 0), ("n5", None)]
+    assert [(s.group, s.scene) for s in segs] == [("s1", None), ("n3", None), ("m0", 0), ("n5", None)]
     assert [s.plan for s in segs] == [None, plan, None, plan] and [s.card for s in segs] == [None, svg, None, None]
     assert [s.cap for s in segs] == [1.5, cards.cap(cards.Card(svg, 1.0, 2.0, render.XF)), 1.5, shots.MAX_ZOOM_STILL]
 
@@ -397,6 +445,20 @@ def test_a_line_that_has_stopped_changing_is_composited_once(tmp_path, monkeypat
     done = shots.settled(list(plan))
     assert done == pytest.approx(1.9 - shots.LEAD + shots.POP_T) and max(seen) < done + 2 / FPS  # not asked again once it is whole
     assert len(seen) > 30 and _ink(out, 3.8) > 200 and _ink(out, 3.8, (200, 690, 520, 790)) > 100  # and still there to the end
+
+
+def test_an_unplanned_line_of_a_planned_scene_renders_beside_its_planned_neighbour(tmp_path):
+    for i in (1, 2):
+        Image.new("RGB", (W, H), PAPER).save(tmp_path / f"{i}.png")
+    plan = (Beat(2.4, KEEP, {"shape": "circle", "box": [200, 500, 520, 600]}, None, None),)
+    segs = segments([Placement(1, 0.0, 1.5), Placement(2, 1.5, 1.5)], [{"id": i, "file": f"{i}.png", "group": "s0"} for i in (1, 2)],
+                    tmp_path, 3.0, planned={2: plan})
+    assert [s.plan for s in segs] == [(), plan]  # the first has no beats and no overlay, but is on the planned camera
+    write_silence(tmp_path / "n.wav", 3.0)
+    ass = tmp_path / "s.ass"
+    ass.write_text(build_ass([]), encoding="utf-8")
+    render_video(segs, ass, tmp_path / "n.wav", 3.0, tmp_path / "o.mp4", run_dir=tmp_path)
+    assert _ink(tmp_path / "o.mp4", 0.8) == 0 and _ink(tmp_path / "o.mp4", 2.9) > 200
 
 
 CARD = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 1280" width="720" height="1280">'
