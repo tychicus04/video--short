@@ -296,6 +296,23 @@ Khối video trong nội dung của bài mẫu (bỏ link):
   - id các chuyên mục, thể loại, loại bài;
   - id tài khoản Zernio cho từng nền tảng.
 - Token chỉ server đọc. Không trả về trình duyệt, không ghi vào log hay `cms.json`, không commit.
+- **Địa chỉ đã biết.** Lấy từ `assets/env-config.js` công khai của trang admin mỗi bản:
+
+  | | dev | prod |
+  |---|---|---|
+  | API (GraphQL tại `/graphql`, REST `/files/*`) | `https://api.dev.mediasoft.com.vn` | `https://api.tapchianninhmang.vn` |
+  | CDN file gốc | `https://cdn.dev.mediasoft.com.vn/original` | `https://cdn.tapchianninhmang.vn/original` |
+  | Trang admin (link mở bài) | `https://cms.dev.mediasoft.com.vn` | `https://cms.tapchianninhmang.vn` |
+
+- **Bí mật lấy ở đâu.** Tai: "Tự lấy mọi biến môi trường trong env trên server nếu cần". Người làm tự chép token vào file cấu hình
+  trên pve2:
+  - Chép thẳng từ file sang file bằng pipe, không in giá trị ra màn hình hay vào chat, không commit.
+  - Dev: `~/Documents/Mediasoft/CMS-Backend/.env` trên Mac có `STATIC_BEARER_TOKEN` và `MCP_STATIC_BEARER_TOKEN`. File đó là của
+    backend chạy ở máy, nối vào cơ sở dữ liệu dev. Phải kiểm token có được `api.dev` nhận không, bằng một truy vấn chỉ đọc.
+  - Prod: lấy trong env của backend prod trên server. Ngày 05/11, từ Mac chưa vào được `124.158.13.224` (cổng 22 từ chối) hay
+    `14.224.151.88` (không trả lời). Không vào được thì hỏi Tai.
+  - `ZERNIO_DEFAULT_PROFILE_ID` và khóa Zernio nằm ở phía CMS, máy không cần. Máy chỉ cần id tài khoản Zernio của từng nền tảng
+    cho `propose_zernio_post`. Lấy qua API của CMS nếu có truy vấn liệt kê, không thì hỏi Tai.
 - Các id phân loại lấy một lần từ bài mẫu 22457 qua API (truy vấn chi tiết bài) rồi ghi vào file cấu hình. Cách lấy là việc của người
   làm.
 - Thiếu file cấu hình thì khung "Gửi lên CMS" ghi rõ thiếu gì, không hiện lỗi khó hiểu.
@@ -322,7 +339,7 @@ Vì vậy:
 
 ## Tai cần chuẩn bị (giai đoạn B)
 
-- Token máy và địa chỉ API của bản **dev** trước, rồi của **prod**, đặt vào file cấu hình trên pve2. Không gửi qua chat.
+- Không cần đặt token: người làm tự lấy (xem "Bí mật lấy ở đâu"). Chỉ khi không vào được server prod mới hỏi Tai.
 - Tài khoản Zernio đã nối với Facebook, YouTube, TikTok, kèm id tài khoản.
 - Đổi mật khẩu CMS vì đã dán vào chat ngày 05/11.
 
