@@ -73,3 +73,11 @@ def test_run_auto_closes_open_steps_first(tmp_path, monkeypatch):
     monkeypatch.setattr(auto, "_flow", lambda r: seen.update(timing.read(r.path)) or 0)
     assert auto.run_auto(run) == 0
     assert "fetch" not in seen
+
+
+def test_a_failed_write_never_fails_a_step(tmp_path):
+    gone = tmp_path / "gone"  # the folder cannot be written: the marks are lost, the step goes on
+    timing.start(gone, "fetch", now=1)
+    timing.end(gone, "fetch", now=2)
+    timing.close_open(gone)
+    assert timing.read(gone) == {}

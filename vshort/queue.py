@@ -157,6 +157,13 @@ def typical() -> dict[str, float]:
     return stages.typical(stages.history(runs_dir()))
 
 
+def view(run: Run, state: str, auto_mode: bool, typ: dict[str, float], now: float) -> dict:
+    """stages.view of one run folder, from its state.json, times.json and auto.json's fix round."""
+    r = _read(run, "auto.json").get("round")
+    return stages.view(state, auto_mode, done_steps(run), timing.read(run.path), typ, now,
+                       r if type(r) is int and r > 0 else 0)
+
+
 PROGRESS = {"running", "wait_brief", "wait_script", "error", "dead"}  # the rows whose card shows a stage
 
 
@@ -196,8 +203,7 @@ def status(run: Run, queued: bool, typ: dict[str, float] | None = None) -> dict:
     pic = next((n for n in ("cover/gemini-9x16.jpg", "cover/thumb-9x16.jpg") if run.file(n).is_file()), None)
     progress = None
     if not queued and state in PROGRESS:
-        v = stages.view(state, bool(meta.get("auto")), done_steps(run), timing.read(run.path),
-                        typical() if typ is None else typ, time.time())
+        v = view(run, state, bool(meta.get("auto")), typical() if typ is None else typ, time.time())
         at = v["stages"][v["current"]]
         progress = {"percent": v["percent"], "n": v["current"] + 1, "label": at["label"], "status": at["status"],
                     "eta": v["eta"], "elapsed": sum(st["seconds"] or 0 for st in v["stages"])}

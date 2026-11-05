@@ -32,11 +32,14 @@ def read(run_dir: Path) -> dict[str, dict[str, float]]:
 
 
 def _save(run_dir: Path, times: dict) -> None:
-    # whole file or nothing, as Run._save
+    # whole file or nothing, as Run._save. A write that fails loses the marks, never the step: this file is only for show
     f = Path(run_dir) / FILE
     tmp = f.with_name(f".times.{os.getpid()}.{threading.get_ident()}.tmp")
-    tmp.write_text(json.dumps(times, indent=1), encoding="utf-8")
-    tmp.replace(f)
+    try:
+        tmp.write_text(json.dumps(times, indent=1), encoding="utf-8")
+        tmp.replace(f)
+    except OSError:
+        pass
 
 
 def start(run_dir: Path, step: str, now: float | None = None) -> None:

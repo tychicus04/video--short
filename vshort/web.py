@@ -26,7 +26,7 @@ from starlette.responses import FileResponse, JSONResponse, Response
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from vshort import auto, cover, queue, stages, timing
+from vshort import auto, cover, queue
 from vshort.run import config
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -37,6 +37,7 @@ LOG_LINES = 50
 TICK = 5  # seconds between two looks at the queue
 # the only files served besides final.mp4
 COVERS = {"cover/thumb-9x16.jpg", "cover/thumb-16x9.jpg", *(f"cover/{n}" for n in cover.GEMINI.values())}
+COVER_LOCK = threading.Lock()  # one Gemini upload at a time: cover.package builds every export in the same .xuat
 LOCK = threading.Lock()  # every load -> change -> save of queue.json, in tick() and in the routes. Not reentrant: take it last.
 BAD_BODY = "Dữ liệu gửi lên sai dạng"
 BRIEF_SYNC = ("RUN={run}. Tai vừa sửa {run}/brief.vi.md (diff bên dưới). Sửa {run}/brief.en.md cho khớp đúng những chỗ đó, "
@@ -142,7 +143,7 @@ def run_detail(request: Request) -> JSONResponse:
         return _error("Không có video này", 404)
     locked = _locked(slug)
     run, now = queue._Folder(queue.run_path(slug)), time.time()
-    progress = stages.view(row["state"], row["auto"], queue.done_steps(run), timing.read(run.path), typ, now)
+    progress = queue.view(run, row["state"], row["auto"], typ, now)
     cost = _json(slug, "cost.json")
     return JSONResponse({"row": row, "locked": locked, "brief_vi": _text(slug, "brief.vi.md"),
                          "brief_en": _text(slug, "brief.en.md"), "brief_en_stale": _stale(slug),
@@ -440,15 +441,16 @@ def save_cover(slug: str, body: dict) -> Response:
     except ValueError:  # binascii.Error, or a character that is not ascii
         return _error("Ảnh gửi lên bị hỏng, thử chọn lại file", 400)
     run_dir = queue.run_path(slug)
-    try:
-        cover.save_gemini(run_dir, body.get("shape"), raw)
-    except ValueError as e:
-        return _error(str(e), 400)
-    if (run_dir / "final.mp4").is_file() and (run_dir / "cover" / "cover.json").is_file():
+    with COVER_LOCK:
         try:
-            cover.package(run_dir)
-        except (OSError, ValueError, KeyError) as e:
-            return _error(f"Đã lưu ảnh, nhưng chưa làm lại được thư mục xuất: {e}", 500)
+            cover.save_gemini(run_dir, body.get("shape"), raw)
+        except ValueError as e:
+            return _error(str(e), 400)
+        if (run_dir / "final.mp4").is_file() and (run_dir / "cover" / "cover.json").is_file():
+            try:
+                cover.package(run_dir)
+            except (OSError, ValueError, KeyError) as e:
+                return _error(f"Đã lưu ảnh, nhưng chưa làm lại được thư mục xuất: {e}", 500)
     return Response(status_code=204)
 
 

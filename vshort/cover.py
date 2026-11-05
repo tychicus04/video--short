@@ -285,7 +285,7 @@ def make(run_dir: Path) -> dict:
 def save_gemini(run_dir: Path, shape: str, data: bytes) -> Path:
     """cover/gemini-<shape>.jpg from an uploaded JPEG, PNG or WebP: turned upright, at most MAX_SIDE px, as JPEG. Never cut:
     a picture of the wrong shape is refused. ValueError (in Vietnamese) and nothing written when it is not fit."""
-    if shape not in GEMINI:
+    if not isinstance(shape, str) or shape not in GEMINI:
         raise ValueError("Khổ ảnh phải là 9x16 hoặc 16x9")
     if len(data) > MAX_UPLOAD:
         raise ValueError(f"Ảnh lớn quá {MAX_UPLOAD // 1_000_000} MB")

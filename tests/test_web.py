@@ -558,6 +558,8 @@ def test_cover_upload_errors(client_anon, client, run_s):
     assert r.status_code == 400 and r.json()["error"] == "Khổ ảnh phải là 9x16 hoặc 16x9"
     assert client.post(url, json={"shape": "9x16", "data": "!!không phải base64"}).status_code == 400
     assert client.post(url, json={"shape": "9x16", "data": 5}).status_code == 400
+    r = client.post(url, json={"shape": [], "data": ""})  # not a string: a message, not a crash
+    assert r.status_code == 400 and r.json()["error"] == "Khổ ảnh phải là 9x16 hoặc 16x9"
     assert client.post(url, json={"shape": "9x16", "data": "A" * (cover.MAX_UPLOAD * 4 // 3 + 8)}).status_code == 413
     assert not list(run_s.path.rglob("*gemini*"))
 

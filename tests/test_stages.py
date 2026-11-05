@@ -162,3 +162,13 @@ def test_history_reads_recent_done_runs(tmp_path):
     (tmp_path / "broken").mkdir()
     (tmp_path / "broken" / "auto.json").write_text("[")
     assert [h["research"]["end"] for h in stages.history(tmp_path)] == [6, 5, 4, 3, 2]
+
+
+def test_fix_round_without_a_fix_step_is_review():
+    # a motion fix with no canvas never starts fix1_motion: auto.json's round says the video is in round 1
+    done = THROUGH_REVIEW0 - {"render"}
+    times = {"render": {"start": 50}}
+    assert by_key(stages.view("running", True, done, times, TYP, now=60, fix_round=1))["review"]["status"] == "running"
+    # round 1 whose fixes are done (Tai took the translator's proposal): the rerun is what it looks like
+    st = by_key(stages.view("running", True, done | {"fixed1"}, times, TYP, now=60, fix_round=1))
+    assert st["render"]["status"] == "running" and st["review"]["status"] == "next"

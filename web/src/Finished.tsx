@@ -99,9 +99,9 @@ async function copy(text: string, what: string) {
 }
 
 type Shape = '9x16' | '16x9'
-const SHAPE: Record<Shape, { label: string; box: string }> = {
-  '9x16': { label: '9:16 (dọc)', box: 'aspect-[9/16] w-[180px]' },
-  '16x9': { label: '16:9 (ngang)', box: 'aspect-video w-[300px] max-w-full' },
+const SHAPE: Record<Shape, { label: string; box: string; width: string }> = {
+  '9x16': { label: '9:16 (dọc)', box: 'aspect-[9/16]', width: 'w-[180px]' },
+  '16x9': { label: '16:9 (ngang)', box: 'aspect-video', width: 'w-full max-w-[300px]' },
 }
 
 /** A file as base64, without the "data:image/png;base64," in front: what POST /api/runs/<slug>/cover takes. */
@@ -116,13 +116,17 @@ const base64 = (file: File) =>
 /** One Gemini cover: drop a picture on it or tap to choose one; once there, it shows, and "Thay ảnh" picks another. */
 function GeminiDrop({ c, shape }: { c: Ctx; shape: Shape }) {
   const v = c.d.gemini[shape]
-  const { label, box } = SHAPE[shape]
+  const { label, box, width } = SHAPE[shape]
   const id = `gemini-${shape}`
   const [over, setOver] = useState(false)
   const [sending, setSending] = useState(false)
 
   async function send(file: File | undefined) {
-    if (!file || c.off) return
+    if (!file) return
+    if (c.off) {
+      toast.error(!c.canWrite ? 'Cần mã truy cập để tải ảnh lên' : c.locked ? 'Video đang chạy, đợi nó xong rồi tải ảnh' : 'Đang gửi ảnh kia, đợi chút rồi thả lại')
+      return
+    }
     if (file.size > 15_000_000) return void toast.error('Ảnh lớn quá 15 MB')
     setSending(true)
     try {
@@ -138,7 +142,7 @@ function GeminiDrop({ c, shape }: { c: Ctx; shape: Shape }) {
   }
 
   return (
-    <figure className="flex w-min flex-col gap-2">
+    <figure className={cn('flex flex-col gap-2', width)}>
       <label
         htmlFor={id}
         onDragOver={(e) => {
@@ -152,7 +156,7 @@ function GeminiDrop({ c, shape }: { c: Ctx; shape: Shape }) {
           send(e.dataTransfer.files[0])
         }}
         className={cn(
-          'relative grid place-items-center overflow-hidden rounded-lg bg-muted p-3 text-center text-sm text-muted-foreground has-focus-visible:ring-3 has-focus-visible:ring-ring/50',
+          'relative grid w-full place-items-center overflow-hidden rounded-lg bg-muted p-3 text-center text-sm text-muted-foreground has-focus-visible:ring-3 has-focus-visible:ring-ring/50',
           box,
           over && 'ring-2 ring-brand',
           c.off ? 'cursor-not-allowed' : 'cursor-pointer hover:bg-secondary',

@@ -232,3 +232,13 @@ def test_done_steps_survive_a_broken_state(tmp_runs, tmp_path):
     make_run(tmp_path, "list", state="[1]")
     assert queue.done_steps(queue._Folder(tmp_path / "ok")) == {"research"}
     assert queue.done_steps(queue._Folder(tmp_path / "bad")) == set() == queue.done_steps(queue._Folder(tmp_path / "list"))
+
+
+def test_progress_reads_the_round_from_auto_json(tmp_runs, tmp_path):
+    import time
+    done = {s: "done" for s in ["research", "brief_check", "source", "fetch", "detect", "transcribe", "text", "translate",
+                                "approve_script", "plates", "motion", "stills", "tts", "visuals", "timeline", "review0"]}
+    make_run(tmp_path, "fx", auto={"state": "running", "pid": os.getpid(), "round": 1}, run={"auto": True}, state=done,
+             times={"render": {"start": time.time() - 5}})
+    row = {r["slug"]: r for r in queue.rows(queue.Queue([], []))}
+    assert row["fx"]["progress"]["label"] == "Soát và sửa"

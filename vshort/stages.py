@@ -120,14 +120,15 @@ def _needed(auto: bool) -> list[str]:
     return ["brief_check" if auto and s == "approve_brief" else s for s in steps]
 
 
-def _current(state: str, auto: bool, done: set[str], times: dict) -> int | None:
+def _current(state: str, auto: bool, done: set[str], times: dict, fix_round: int = 0) -> int | None:
     if state == "wait_brief":
         return KEYS.index("brief")
     if state == "wait_script":
         return KEYS.index("approve")
     if state not in ("running", "error", "dead"):
         return None
-    rounds = {m[1] for s in (*done, *times) if (m := _ROUND.match(s))}
+    # auto.json's round too: a motion fix with no canvas never starts a fix<r>_* step
+    rounds = {m[1] for s in (*done, *times) if (m := _ROUND.match(s))} | ({str(fix_round)} if fix_round > 0 else set())
     if any(f"fixed{r}" not in done for r in rounds):
         # a fix round reruns motion, visuals and render: the video is still at "Soát và sửa", not back at stage 7
         return KEYS.index("review")
@@ -151,10 +152,10 @@ def _steps(key: str, auto: bool, done: set[str], times: dict) -> list[dict]:
             for s in names]
 
 
-def view(state: str, auto: bool, done: set[str], times: dict, typ: dict[str, float], now: float) -> dict:
-    """`state` is a Row's state (queue.status). See the plan, Task 2, for the shape."""
+def view(state: str, auto: bool, done: set[str], times: dict, typ: dict[str, float], now: float, fix_round: int = 0) -> dict:
+    """`state` is a Row's state (queue.status), `fix_round` auto.json's round. See the plan, Task 2, for the shape."""
     n = len(STAGES)
-    cur = None if state == "done" else _current(state, auto, done, times)
+    cur = None if state == "done" else _current(state, auto, done, times, fix_round)
     if state == "done":
         status = ["done"] * n
     elif cur is None:  # queued, idle: what state.json says is done

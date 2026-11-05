@@ -41,7 +41,9 @@ export function ProgressHeader({ view, row }: { view: StageView; row: Row }) {
       </div>
       <div className="flex min-w-0 flex-[1_1_300px] flex-col gap-1">
         {at && <div className="text-sm text-muted-foreground">Bước {view.current! + 1} trên 10</div>}
-        <div className="text-[22px] leading-tight font-semibold">{at ? at.label : view.percent === 100 ? 'Xong cả 10 bước' : 'Chưa bắt đầu'}</div>
+        <div className="text-[22px] leading-tight font-semibold">
+          {at ? at.label : view.percent === 100 ? 'Xong cả 10 bước' : row.state === 'queued' ? 'Đang xếp hàng' : 'Chưa chạy tự động'}
+        </div>
         {ran > 0 && <div className="text-muted-foreground">Đã chạy {fmtDuration(ran)}</div>}
       </div>
       {!stopped && at && (
@@ -53,7 +55,12 @@ export function ProgressHeader({ view, row }: { view: StageView; row: Row }) {
           ) : (
             <Box title="Tới lúc xong" value={left} extra={until_stop != null ? fmtClock(until_stop) : undefined} />
           )}
-          {stop && <Box title="Sau khi bạn duyệt, tới lúc xong" value={fmtLeft(after_stop)} />}
+          {stop && (
+            <Box
+              title={`Sau khi bạn ${lower(stop)}, tới lúc xong${stop === 'Duyệt brief' ? ' (chưa tính lúc bạn duyệt bản dịch)' : ''}`}
+              value={fmtLeft(after_stop)}
+            />
+          )}
         </div>
       )}
     </section>
