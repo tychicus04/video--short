@@ -10,7 +10,7 @@ from pathlib import Path
 
 from PIL import Image, ImageOps
 
-from vshort import auto, cover, motion, shapes, sound
+from vshort import auto, cms, cover, motion, publish, shapes, sound
 from vshort.captions import Fragment, detect_fragments, write_sheets
 from vshort.fit import Placement, build_narration, phrase_times, sequence, total
 from vshort.media import frame_at, probe
@@ -553,6 +553,81 @@ def cmd_auto(a) -> int:
         auto.release_lock(run)
 
 
+def cmd_cms(a) -> int:
+    """Send a finished video to the CMS (publish.send). In the background unless --foreground: a 30 MB video and the
+    CMS's AI take a minute or more, the page must not wait on it."""
+    run_dir = Path(a.run)
+    if not a.foreground:
+        if pid := publish.sender(run_dir):
+            _err(f"`vshort cms` đang gửi {run_dir} (pid {pid})")
+            return BAD_INPUT
+        with open(run_dir / "auto.log", "a") as log:
+            child = subprocess.Popen([sys.executable, "-u", "-m", "vshort.cli", "cms", str(run_dir), "--foreground",
+                                      *(["--recreate"] if a.recreate else [])],
+                                     cwd=ROOT, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
+                                     start_new_session=True)
+        print(f"đang gửi lên CMS ở nền (pid {child.pid}); kết quả: {run_dir / publish.FILE}")
+        return OK
+    if (lock := publish.acquire(run_dir)) is None:
+        _err(f"`vshort cms` đang gửi {run_dir}")
+        return BAD_INPUT
+    try:
+        rec = publish.send(run_dir, recreate=a.recreate)
+    finally:
+        publish.release(lock)
+    print(f"cms: {rec['state']}" + (f" — {rec['message']}" if rec.get("message") else "")
+          + (f"\n{rec['link']}" if rec.get("link") else "") + (f"\n{rec['warning']}" if rec.get("warning") else ""))
+    return FAILED if rec["state"] == "error" else OK
+
+
+def cmd_cms_probe(a) -> int:
+    """What cms.toml needs, read from one article like the ones vshort makes (and the CMS's lists). Never the token."""
+    s, missing = cms.load(a.env, ids=False)
+    if s is None:
+        _err("\n".join(missing))
+        return BAD_INPUT
+
+    def show(title: str, fn) -> None:
+        print(title)
+        try:
+            fn()
+        except cms.CmsError as e:
+            print(f"  không đọc được: {e.message}")
+
+    def article() -> None:
+        x = cms.gql(s, cms.SAMPLE, {"id": a.article_id})["articles_detail"]
+        wf = x.get("workflow") or {}
+        print(f"  {x['id']} {x.get('title')!r}\n  department_id = {x['department_id']}, article_type_id = "
+              f"{x['article_type_id']}, workflow_id = {x.get('workflow_id')} ({wf.get('name')}, workflow_type_id "
+              f"{wf.get('workflow_type_id')})")
+        for c in x.get("articleCategories") or []:
+            print(f"  chuyên mục {c['category_id']} {(c.get('category') or {}).get('name')}" + (" (chính)" if c.get("is_major") else ""))
+        for g in x.get("articleGenres") or []:
+            print(f"  thể loại {g['article_genre_id']} {(g.get('articleGenre') or {}).get('name')}" + (" (chính)" if g.get("is_major") else ""))
+        for k in x.get("articleKinds") or []:
+            print(f"  loại bài viết {k['article_kind_id']}")
+        print("  từ khóa: " + ", ".join((t.get("tag") or {}).get("name") or "" for t in x.get("articleTags") or []))
+        workflows.update(department=x["department_id"], type=x["article_type_id"])
+
+    def private() -> None:
+        b = {"filters": [f"department_id:=({workflows['department']})", f"type_id:=({workflows['type']})",
+                         "workflow_type_id:=(1)"]}
+        for w in cms.gql(s, cms.WORKFLOWS, {"b": b})["workflows_all"]:
+            print(f"  {w['id']} {w['name']} (type_id {w['type_id']}, workflow_type_id {w['workflow_type_id']}, "
+                  f"sub_type_id {w.get('sub_type_id')})")
+
+    def zernio() -> None:
+        for z in cms.gql(s, cms.ZERNIO, {})["zernio_accounts"]:
+            print(f"  {z['platform']} {z['id']} @{z.get('username')} {z.get('displayName')!r}"
+                  + (" (cần đăng nhập lại)" if z.get("needsReauth") else ""))
+
+    workflows = {"department": s.department_id, "type": 1}
+    show(f"Bài {a.article_id} trên {s.env} ({s.api}):", article)
+    show("Chặng cá nhân (private_workflow_id):", private)
+    show("Tài khoản Zernio:", zernio)
+    return OK
+
+
 def cmd_wait(a) -> int:
     run = Run(a.run)
     while (st := auto.get_state(run))["state"] == "running":
@@ -605,6 +680,15 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--runs-dir")
     p.add_argument("--foreground", action="store_true")
     p.set_defaults(fn=cmd_auto)
+    p = sub.add_parser("cms", help="gửi video đã xong lên CMS: bài cá nhân, đề xuất mạng xã hội (không đăng)")
+    p.add_argument("run")
+    p.add_argument("--recreate", action="store_true", help="bài cũ đã bị xóa hoặc không chắc đã tạo: tạo bài mới")
+    p.add_argument("--foreground", action="store_true")
+    p.set_defaults(fn=cmd_cms)
+    p = sub.add_parser("cms-probe", help="in các id cần điền vào cms.toml, đọc từ một bài mẫu")
+    p.add_argument("article_id", type=int)
+    p.add_argument("--env", choices=cms.ENVS)
+    p.set_defaults(fn=cmd_cms_probe)
     p = sub.add_parser("wait")
     p.add_argument("run")
     p.add_argument("--poll", type=float, default=15)

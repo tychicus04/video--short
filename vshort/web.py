@@ -26,7 +26,7 @@ from starlette.responses import FileResponse, JSONResponse, Response
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from vshort import auto, cover, queue
+from vshort import auto, cms, cover, publish, queue
 from vshort.run import config
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -153,7 +153,17 @@ def run_detail(request: Request) -> JSONResponse:
                          "video": queue.safe_file(slug, "final.mp4") is not None and not locked,
                          "cover_v": _version(slug, "cover/cover.json"), "prompt": _text(slug, "cover/prompt.txt"),
                          "prompt_wide": cover.WIDE, "progress": progress, "now": now,
-                         "gemini": {shape: _version(slug, f"cover/{n}") for shape, n in cover.GEMINI.items()}})
+                         "gemini": {shape: _version(slug, f"cover/{n}") for shape, n in cover.GEMINI.items()},
+                         "cms": _cms(slug)})
+
+
+def _cms(slug: str) -> dict:
+    """The "Gửi lên CMS" box: whether the server has its settings, which CMS, and how the last send went. The record
+    is cms.json's, which never holds the token; Settings stays here."""
+    s, missing = cms.load()
+    path = queue.run_path(slug)
+    return {"configured": s is not None, "missing": missing, "env": s.env if s else None,
+            "running": publish.sender(path) is not None, "record": publish.read(path, s.env) if s else {}}
 
 
 def _version(slug: str, name: str) -> int | None:
@@ -454,6 +464,25 @@ def save_cover(slug: str, body: dict) -> Response:
     return Response(status_code=204)
 
 
+def send_cms(slug: str, body: dict) -> Response:
+    """Start `vshort cms` for a finished video; it runs in the background, the page reads cms.json as it goes."""
+    recreate = body.get("recreate", False)
+    if not isinstance(recreate, bool):
+        return _error(BAD_BODY, 400)
+    if (_row(slug) or {}).get("state") != "done":
+        return _error("Chỉ gửi được video đã xong", 400)
+    path = queue.run_path(slug)
+    if publish.sender(path):
+        return _error("Đang gửi, đợi xong", 409)
+    s, missing = cms.load()
+    if s is None:
+        return _error("Chưa cấu hình CMS trên máy chủ: " + "; ".join(missing), 400)
+    cp = vshort(["cms", str(path), *(["--recreate"] if recreate else [])])
+    if cp.returncode != 0:
+        return _error((cp.stderr or cp.stdout).strip() or "Không bắt đầu gửi được", 409)
+    return JSONResponse({"started": True}, 202)
+
+
 def _http_error(request: Request, exc: HTTPException) -> JSONResponse:
     """Starlette's own 404 and 405 are English text."""
     return _error({404: "Không có trang này", 405: "Không dùng được cách gọi này"}.get(exc.status_code, "Có lỗi"), exc.status_code)
@@ -478,6 +507,7 @@ ROUTES = [
     Route("/api/runs/{slug}/approve", _post(approve, run=True), methods=["POST"]),
     Route("/api/runs/{slug}/retry", _post(retry, run=True), methods=["POST"]),
     Route("/api/runs/{slug}/cover", _post(save_cover, run=True), methods=["POST"]),
+    Route("/api/runs/{slug}/cms", _post(send_cms, run=True), methods=["POST"]),
 ]
 class Dist(StaticFiles):
     """The built UI. Assets have a hash in their name and may be cached; index.html names them, so it is revalidated

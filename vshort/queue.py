@@ -11,7 +11,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
-from vshort import auto, stages, timing
+from vshort import auto, cms, publish, stages, timing
 from vshort.run import Run, config
 
 SLUG_RE = re.compile(r"\A[a-z0-9][a-z0-9-]{0,59}\Z")  # \Z, not $: "abc\n" is not a slug
@@ -167,10 +167,11 @@ def view(run: Run, state: str, auto_mode: bool, typ: dict[str, float], now: floa
 PROGRESS = {"running", "wait_brief", "wait_script", "error", "dead"}  # the rows whose card shows a stage
 
 
-def status(run: Run, queued: bool, typ: dict[str, float] | None = None) -> dict:
+def status(run: Run, queued: bool, typ: dict[str, float] | None = None, env: str | None = None) -> dict:
     """The Row for one run folder. Never raises on a missing or broken file. `relogin` is read from auto.json even for a
     queued row: once Tai has queued the runs that stopped for the login, the queue must start again. `typ`: the
-    typical stage times (stages.typical), worked out once by the caller for every row."""
+    typical stage times (stages.typical), worked out once by the caller for every row. `env`: the CMS in use (dev or
+    prod), for `posted`."""
     meta = _read(run, "run.json")
     try:
         a = auto.get_state(run)
@@ -215,6 +216,7 @@ def status(run: Run, queued: bool, typ: dict[str, float] | None = None) -> dict:
             "since": stamped.stat().st_mtime if stamped else None,
             "cost": cost, "verdict": _read(run, "review.json").get("verdict"), "seconds": seconds,
             "relogin": relogin, "removable": False, "progress": progress,
+            "posted": bool(env and publish.read(run.path, env).get("article_id")),
             # the card's picture: Tai's Gemini cover, else the composed one
             "cover": {"name": pic, "v": int(run.file(pic).stat().st_mtime)} if pic else None}
 
@@ -231,12 +233,14 @@ def rows(q: Queue, typ: dict[str, float] | None = None) -> list[dict]:
     """Every run folder and every topic waiting to start, in the order the panel lists them."""
     root = runs_dir()
     typ = typical() if typ is None else typ
-    found = [status(_Folder(p), p.name in q.resume, typ) for p in sorted(root.iterdir())
+    s, _ = cms.load()
+    found = [status(_Folder(p), p.name in q.resume, typ, s and s.env) for p in sorted(root.iterdir())
              if p.is_dir() and SLUG_RE.fullmatch(p.name)] if root.is_dir() else []
     have = {r["slug"] for r in found}
     waiting = [{"slug": it["slug"], "topic": it["topic"], "auto": it["auto"], "title": "", "state": "queued", "message": "",
                 "step": STEPS[0][1], "since": it["added"], "cost": 0.0, "verdict": None, "seconds": None,
-                "relogin": False, "removable": True, "progress": None, "cover": None} for it in q.new if it["slug"] not in have]
+                "relogin": False, "removable": True, "progress": None, "cover": None, "posted": False}
+               for it in q.new if it["slug"] not in have]
     place = {s: i for i, s in enumerate([*q.resume, *(it["slug"] for it in q.new)])}
     # queued: in the order of the queue; done: the newest first
     return sorted(found + waiting, key=lambda r: (ORDER[r["state"]], place[r["slug"]] if r["state"] == "queued"

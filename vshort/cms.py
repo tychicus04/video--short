@@ -68,8 +68,9 @@ def _id(v) -> bool:
     return isinstance(v, int) and not isinstance(v, bool) and v > 0
 
 
-def load() -> tuple[Settings | None, list[str]]:
-    """The settings of the set `use` names, or what is missing (in Vietnamese, for the page)."""
+def load(env: str | None = None, ids: bool = True) -> tuple[Settings | None, list[str]]:
+    """The settings of the set `use` names (or `env`), or what is missing (in Vietnamese, for the page). `ids=False`:
+    only what a call needs (api, token, act_as, department_id), for `vshort cms-probe` to find the other ids."""
     path = Path(config().get("cms_file", "~/.config/vshort/cms.toml")).expanduser()
     try:
         doc = tomllib.loads(path.read_text(encoding="utf-8"))
@@ -77,7 +78,7 @@ def load() -> tuple[Settings | None, list[str]]:
         return None, [f"chưa có file cấu hình {path}"]
     except (OSError, ValueError) as e:
         return None, [f"không đọc được {path}: {e}"]
-    env = doc.get("use")
+    env = env or doc.get("use")
     if env not in ENVS:
         return None, ['use phải là "dev" hoặc "prod"']
     sec = doc.get(env)
@@ -89,13 +90,13 @@ def load() -> tuple[Settings | None, list[str]]:
             missing.append(f"thiếu {k}")
     if isinstance(sec.get("api"), str) and sec["api"].strip() and not sec["api"].startswith("https://"):
         missing.append("api phải là https:// (token không được đi qua mạng dạng chữ trần)")
-    for k in ("department_id", "private_workflow_id", "article_type_id"):
+    for k in ("department_id", "private_workflow_id", "article_type_id") if ids else ("department_id",):
         if not _id(sec.get(k)):
             missing.append(f"{k} chưa điền (phải là số id > 0)")
-    for k in ("categories", "genres", "kinds"):
+    for k in ("categories", "genres", "kinds") if ids else ():
         if not (isinstance(sec.get(k), list) and sec[k] and all(_id(v) for v in sec[k])):
             missing.append(f"{k} chưa điền (danh sách id > 0)")
-    zernio = sec.get("zernio")
+    zernio = sec.get("zernio") if ids else {}
     if not (isinstance(zernio, dict) and all(isinstance(zernio.get(p, ""), str) for p in PLATFORMS)):
         missing.append("thiếu bảng zernio = { facebook, youtube, tiktok } (để trống nền tảng không đăng)")
     if missing:
@@ -111,9 +112,9 @@ def load() -> tuple[Settings | None, list[str]]:
         return None, ["token_file rỗng"]
     return Settings(env=env, api=sec["api"].rstrip("/"), admin=sec["admin"].rstrip("/"), token=token,
                     act_as=sec["act_as"].strip(), department_id=sec["department_id"],
-                    private_workflow_id=sec["private_workflow_id"], article_type_id=sec["article_type_id"],
-                    categories=list(sec["categories"]), genres=list(sec["genres"]), kinds=list(sec["kinds"]),
-                    zernio={p: zernio.get(p, "").strip() for p in PLATFORMS}), []
+                    private_workflow_id=sec.get("private_workflow_id", 0), article_type_id=sec.get("article_type_id", 0),
+                    categories=list(sec.get("categories", [])), genres=list(sec.get("genres", [])),
+                    kinds=list(sec.get("kinds", [])), zernio={p: zernio.get(p, "").strip() for p in PLATFORMS}), []
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):

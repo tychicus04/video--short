@@ -1,17 +1,20 @@
 """`vshort cms`: a finished video as a personal (PRIVATE), unpublished article on the CMS, shaped like Tai's sample
 article 22457, plus one social-post proposal that Tai approves in the CMS. Never publishes, never approves."""
+import fcntl
 import hashlib
 import html
 import json
 import os
 import re
 from pathlib import Path
+from typing import IO
 
 from vshort import auto, cms, cover
 from vshort.cms import CmsError, Settings
 from vshort.run import Run
 
 FILE = "cms.json"
+LOCK = "cms.lock"
 STEPS = [("meta", "Viết sapo và từ khóa"), ("cover16", "Tải ảnh ngang 16:9"), ("cover9", "Tải ảnh dọc 9:16"),
          ("video", "Tải video"), ("article", "Tạo bài cá nhân"), ("social", "Viết lời mạng xã hội"),
          ("propose", "Đề xuất Facebook, YouTube, TikTok")]
@@ -118,6 +121,42 @@ def update_body(current: dict, avatar1_id: int, avatar2_id: int, content: str) -
             "article_type_id": current["article_type_id"], "workflow_id": current["workflow_id"],
             "content": content, "avatar1_id": avatar1_id, "avatar2_id": avatar2_id, "submit_type": "save",
             "expected_updated_at": current.get("updated_at")}
+
+
+# --- one send at a time ------------------------------------------------------------------------------------------
+
+def sender(run_dir: Path) -> int | None:
+    """The pid of the live `vshort cms` sending this video, if any; for the page (it never takes the lock)."""
+    lock = Path(run_dir) / LOCK
+    try:
+        pid, since = lock.read_text().strip(), lock.stat().st_mtime
+    except OSError:
+        return None
+    return int(pid) if pid.isdigit() and auto._alive(int(pid), since) else None
+
+
+def acquire(run_dir: Path) -> IO | None:
+    """The lock, held until release() or the process ends; None when another send has it. flock, not a pid file
+    alone: two clicks start two processes, and a check-then-write would let both create the article. The pid in the
+    file is only for sender()."""
+    if sender(run_dir):
+        return None
+    f = open(Path(run_dir) / LOCK, "a+")
+    try:
+        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        f.close()
+        return None
+    f.truncate(0)
+    f.write(str(os.getpid()))
+    f.flush()
+    return f
+
+
+def release(f: IO) -> None:
+    """Emptied, not removed: a process waiting on the old file would lock a name nobody else sees."""
+    f.truncate(0)
+    f.close()
 
 
 # --- the send ------------------------------------------------------------------------------------------------------

@@ -582,3 +582,64 @@ def test_cover_upload_saves_serves_and_repackages(client, run_s):
     with Image.open(folder / "thumb-doc-9x16.jpg") as im:
         r, g_, b = im.convert("RGB").getpixel((540, 960))
     assert r > 200 and b < 60
+
+
+# --- posting to the CMS --------------------------------------------------------------------------------------------
+
+def _cms_settings(monkeypatch, env="dev"):
+    from test_cms import settings
+    from vshort import cms
+    monkeypatch.setattr(cms, "load", lambda env_=None, ids=True: (settings(env=env), []))
+
+
+def test_cms_route_starts_the_send(client, client_anon, calls, run_s, run_wait_script, monkeypatch):
+    _cms_settings(monkeypatch)
+    r = client.post("/api/runs/s/cms", json={})
+    assert r.status_code == 202 and calls[-1] == ["cms", str(run_s.path)]
+    assert client.post("/api/runs/s/cms", json={"recreate": True}).status_code == 202
+    assert calls[-1] == ["cms", str(run_s.path), "--recreate"]
+    n = len(calls)
+    assert client.post("/api/runs/s/cms", json={"recreate": "yes"}).status_code == 400
+    r = client.post("/api/runs/w/cms", json={})
+    assert r.status_code == 400 and r.json()["error"] == "Chỉ gửi được video đã xong"
+    assert client_anon.post("/api/runs/s/cms", json={}).status_code == 403
+    assert client.post("/api/runs/s/cms", content=b"recreate=1",
+                       headers={"content-type": "application/x-www-form-urlencoded"}).status_code == 415
+    assert len(calls) == n
+
+
+def test_cms_route_refuses_while_a_send_runs(client, calls, run_s, monkeypatch):
+    from vshort import publish
+    _cms_settings(monkeypatch)
+    (run_s.path / publish.LOCK).write_text(str(os.getpid()))
+    r = client.post("/api/runs/s/cms", json={})
+    assert r.status_code == 409 and r.json()["error"] == "Đang gửi, đợi xong" and not calls
+
+
+def test_cms_route_without_settings_says_what_is_missing(client, calls, run_s, monkeypatch):
+    from vshort import cms
+    monkeypatch.setattr(cms, "load", lambda env=None, ids=True: (None, ["thiếu token_file"]))
+    r = client.post("/api/runs/s/cms", json={})
+    assert r.status_code == 400 and "token_file" in r.json()["error"] and not calls
+    j = client.get("/api/runs/s").json()["cms"]
+    assert j == {"configured": False, "missing": ["thiếu token_file"], "env": None, "running": False, "record": {}}
+
+
+def test_detail_never_carries_the_token(client, run_s, monkeypatch):
+    from vshort import publish
+    _cms_settings(monkeypatch)
+    (run_s.path / publish.FILE).write_text(json.dumps({"dev": {"state": "done", "article_id": 7, "link": "x"}}))
+    detail = client.get("/api/runs/s")
+    state = client.get("/api/state")
+    assert "BI-MAT-123" not in detail.text and "BI-MAT-123" not in state.text
+    j = detail.json()["cms"]
+    assert j["env"] == "dev" and j["configured"] is True and j["record"]["article_id"] == 7 and j["running"] is False
+
+
+def test_row_posted_follows_the_current_env(client_anon, run_s, monkeypatch):
+    from vshort import publish
+    (run_s.path / publish.FILE).write_text(json.dumps({"dev": {"state": "done", "article_id": 7}}))
+    _cms_settings(monkeypatch, "dev")
+    assert client_anon.get("/api/state").json()["rows"][0]["posted"] is True
+    _cms_settings(monkeypatch, "prod")
+    assert client_anon.get("/api/state").json()["rows"][0]["posted"] is False

@@ -447,3 +447,53 @@ def test_no_title_yet_is_said_before_any_upload(fake, run_dir):
     (run_dir / "cover" / "cover.json").unlink()
     rec = publish.send(run_dir)
     assert rec["state"] == "error" and "cover.json" in rec["message"] and not fake.calls
+
+
+# --- the command ---------------------------------------------------------------------------------------------------
+
+def test_cli_cms_foreground_locks(fake, run_dir):
+    import fcntl
+    import os
+
+    from vshort import cli
+    (run_dir / publish.LOCK).write_text(str(os.getpid()))  # a live sender named in the lock
+    assert cli.main(["cms", str(run_dir), "--foreground"]) == cli.BAD_INPUT and not fake.calls
+    (run_dir / publish.LOCK).write_text("")
+    with open(run_dir / publish.LOCK, "a+") as held:  # one that holds it and has not written its pid yet
+        fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        assert cli.main(["cms", str(run_dir), "--foreground"]) == cli.BAD_INPUT and not fake.calls
+    assert cli.main(["cms", str(run_dir), "--foreground"]) == cli.OK and len(fake.ops("articles_create")) == 1
+    assert publish.sender(run_dir) is None  # released: the page shows the send as over
+    fake.before["articles_detail"] = cms.CmsError("CMS báo lỗi: x", 403)
+    assert cli.main(["cms", str(run_dir), "--foreground"]) == cli.FAILED
+
+
+def test_cli_cms_probe_prints_ids_never_the_token(monkeypatch, capsys):
+    from vshort import cli
+    seen = []
+    monkeypatch.setattr(cms, "load", lambda env=None, ids=True: (seen.append((env, ids)) or settings(), []))
+
+    def gql(s, query, variables):
+        if query == cms.SAMPLE:
+            return {"articles_detail": {
+                "id": 22457, "title": "Mẫu", "department_id": 3, "article_type_id": 1, "workflow_id": 40,
+                "workflow": {"workflow_type_id": 1, "name": "Bài cá nhân"},
+                "articleCategories": [{"category_id": 11, "is_major": True, "category": {"name": "Chuyển động công nghệ"}}],
+                "articleGenres": [{"article_genre_id": 21, "is_major": True, "articleGenre": {"name": "Video ngắn"}}],
+                "articleKinds": [{"article_kind_id": 31}], "articleTags": [{"tag": {"name": "binance"}}]}}
+        if query == cms.WORKFLOWS:
+            assert variables["b"]["filters"] == ["department_id:=(3)", "type_id:=(1)", "workflow_type_id:=(1)"]
+            return {"workflows_all": [{"id": 40, "name": "Bài cá nhân", "type_id": 1, "workflow_type_id": 1,
+                                       "sub_type_id": None}]}
+        if query == cms.ZERNIO:
+            return {"zernio_accounts": [{"id": "acc-fb", "platform": "FACEBOOK", "username": "anm",
+                                         "displayName": "ANM", "needsReauth": False}]}
+        raise AssertionError(query)
+
+    monkeypatch.setattr(cms, "gql", gql)
+    assert cli.main(["cms-probe", "22457", "--env", "dev"]) == cli.OK
+    out = capsys.readouterr().out
+    assert seen == [("dev", False)]
+    for part in ("Chuyển động công nghệ", "11", "Video ngắn", "21", "31", "binance", "40", "acc-fb", "FACEBOOK"):
+        assert part in out
+    assert "BI-MAT-123" not in out

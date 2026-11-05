@@ -134,3 +134,4 @@ def no_real_cms(monkeypatch):
         raise AssertionError(f"no CMS in tests: {method} {url}")
 
     monkeypatch.setattr(cms, "_http", http)
+    monkeypatch.setattr(cms, "config", lambda: {"cms_file": "/nonexistent/vshort-tests/cms.toml"})  # not pve2's real one
