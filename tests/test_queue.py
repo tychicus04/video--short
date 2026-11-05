@@ -212,3 +212,22 @@ def test_next_to_start_respects_limit_order_and_pause():
     assert queue.next_to_start(q, paused, 3) == [] and queue.relogin_waiting(paused) == ["e"]
     assert queue.next_to_start(q, running * 5, 3) == []  # over the limit: never a negative slice
     assert queue.next_to_start(q, [], 9) == [("resume", "r1"), ("new", "n1"), ("new", "n2")]
+
+
+def test_running_row_has_progress(tmp_runs, tmp_path):
+    import time
+    make_run(tmp_path, "r2", auto={"state": "running", "pid": os.getpid()}, run={"auto": True}, state={"research": "done"},
+             times={"brief_check": {"start": time.time() - 5}})
+    row = {r["slug"]: r for r in queue.rows(queue.Queue([], []))}
+    p = row["r2"]["progress"]
+    assert p["n"] == 2 and p["label"] == "Duyệt brief" and p["status"] == "running" and 0 <= p["percent"] <= 99
+    assert p["eta"]["stop"] == "Duyệt bản dịch"
+    assert row["five-solas"]["progress"] is None  # not started: nothing to show
+
+
+def test_done_steps_survive_a_broken_state(tmp_runs, tmp_path):
+    make_run(tmp_path, "ok", state={"research": "done", "fetch": "x"})
+    make_run(tmp_path, "bad", state="{oops")
+    make_run(tmp_path, "list", state="[1]")
+    assert queue.done_steps(queue._Folder(tmp_path / "ok")) == {"research"}
+    assert queue.done_steps(queue._Folder(tmp_path / "bad")) == set() == queue.done_steps(queue._Folder(tmp_path / "list"))

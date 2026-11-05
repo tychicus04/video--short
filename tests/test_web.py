@@ -523,3 +523,19 @@ def test_the_loop_keeps_going_after_tick_fails(run_s, monkeypatch):
                 break
             time.sleep(0.01)
     assert len(done) >= 3 and "RuntimeError" in (queue.runs_dir() / "web.log").read_text(encoding="utf-8")
+
+
+def test_detail_has_progress_for_a_finished_run(client_anon):
+    j = client_anon.get("/api/runs/s").json()
+    assert j["progress"]["percent"] == 100 and len(j["progress"]["stages"]) == 10
+    assert isinstance(j["now"], float)
+
+
+def test_state_survives_broken_times(client_anon, run_s, run_wait_script):
+    run_s.file("times.json").write_text("{oops")  # a finished run: read for the typical times
+    run_wait_script.file("times.json").write_text("{oops")
+    r = client_anon.get("/api/state")
+    assert r.status_code == 200
+    row = next(x for x in r.json()["rows"] if x["slug"] == "w")
+    assert row["progress"]["label"] == "Duyệt bản dịch" and row["progress"]["status"] == "you"
+    assert client_anon.get("/api/runs/w").json()["progress"]["current"] == 5

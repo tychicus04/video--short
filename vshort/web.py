@@ -25,7 +25,7 @@ from starlette.responses import FileResponse, JSONResponse, Response
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from vshort import auto, cover, queue
+from vshort import auto, cover, queue, stages, timing
 from vshort.run import config
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -70,11 +70,11 @@ def _not_json(request: Request) -> Response | None:
         return _error("Chỉ nhận dữ liệu dạng JSON", 415)
 
 
-def _row(slug: str) -> dict | None:
+def _row(slug: str, typ: dict | None = None) -> dict | None:
     """The Row of one video. Through rows(): it never raises on a broken state.json, status() would."""
     if not queue.SLUG_RE.fullmatch(slug):
         return None
-    return next((r for r in queue.rows(queue.load_queue()) if r["slug"] == slug), None)
+    return next((r for r in queue.rows(queue.load_queue(), typ) if r["slug"] == slug), None)
 
 
 def _locked(slug: str) -> bool:
@@ -135,9 +135,12 @@ def state(request: Request) -> JSONResponse:
 
 def run_detail(request: Request) -> JSONResponse:
     slug = request.path_params["slug"]
-    if (row := _row(slug)) is None:
+    typ = queue.typical()
+    if (row := _row(slug, typ)) is None:
         return _error("Không có video này", 404)
     locked = _locked(slug)
+    run, now = queue._Folder(queue.run_path(slug)), time.time()
+    progress = stages.view(row["state"], row["auto"], queue.done_steps(run), timing.read(run.path), typ, now)
     cost = _json(slug, "cost.json")
     return JSONResponse({"row": row, "locked": locked, "brief_vi": _text(slug, "brief.vi.md"),
                          "brief_en": _text(slug, "brief.en.md"), "brief_en_stale": _stale(slug),
@@ -146,7 +149,7 @@ def run_detail(request: Request) -> JSONResponse:
                          "log_tail": "\n".join((_text(slug, "auto.log") or "").splitlines()[-LOG_LINES:]),
                          "video": queue.safe_file(slug, "final.mp4") is not None and not locked,
                          "cover_v": _version(slug, "cover/cover.json"), "prompt": _text(slug, "cover/prompt.txt"),
-                         "prompt_wide": cover.WIDE})
+                         "prompt_wide": cover.WIDE, "progress": progress, "now": now})
 
 
 def _version(slug: str, name: str) -> int | None:
