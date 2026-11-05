@@ -134,7 +134,7 @@ export function Tabs<T extends string>({
           aria-selected={v === value}
           onClick={() => onChange(v)}
           className={cn(
-            'min-h-[42px] flex-1 rounded-lg px-4 text-sm whitespace-nowrap outline-none focus-visible:ring-3 focus-visible:ring-ring/50',
+            'min-h-11 flex-1 rounded-lg px-4 text-sm whitespace-nowrap outline-none focus-visible:ring-3 focus-visible:ring-ring/50',
             v === value
               ? 'bg-foreground font-bold text-card shadow-[-20px_10px_30px_rgba(0,0,0,0.25)]'
               : 'font-semibold text-foreground hover:bg-secondary',

@@ -42,7 +42,7 @@ export function Failed({ c }: { c: Ctx }) {
       {notice && <NoticeBox n={notice} />}
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <Button size="lg" className="h-10 w-full sm:w-auto" onClick={retry} disabled={c.off}>
+        <Button size="lg" className="w-full sm:w-auto" onClick={retry} disabled={c.off}>
           {retrying ? <Loader2 className="animate-spin" /> : <RotateCcw />}
           Chạy lại
         </Button>

@@ -131,9 +131,13 @@ def _current(state: str, auto: bool, done: set[str], times: dict) -> int | None:
     if any(f"fixed{r}" not in done for r in rounds):
         # a fix round reruns motion, visuals and render: the video is still at "Soát và sửa", not back at stage 7
         return KEYS.index("review")
-    started = [(t["start"], s) for s, t in times.items() if "start" in t and s not in SIDE and stage_of(s)]
-    if started:
-        return KEYS.index(stage_of(max(started)[1]))
+    staged = {s: t for s, t in times.items() if "start" in t and s not in SIDE and stage_of(s)}
+    if open_ := [KEYS.index(stage_of(s)) for s, t in staged.items() if "end" not in t]:
+        # the furthest stage with a step open: a short rerun of an earlier step (the motion check after render
+        # answered 2, the voice after timeline did) does not walk the page back
+        return max(open_)
+    if staged:  # between two steps, or only the canvas agent still at work: the stage of the last step started
+        return KEYS.index(stage_of(max((t["start"], s) for s, t in staged.items())[1]))
     # no times (a run from before times.json): the first step not done
     return KEYS.index(next((stage_of(s) for s in _needed(auto) if s not in done), "cover"))
 
@@ -170,13 +174,17 @@ def view(state: str, auto: bool, done: set[str], times: dict, typ: dict[str, flo
         else:
             seconds.append(None)
 
+    open_side = [s for s in SIDE if "start" in times.get(s, {}) and "end" not in times[s]]
+    # only the canvas agent is still at work (it outlived NotebookLM, subtitles and the translation, so it is already
+    # past its usual time): no number, rather than "còn 1 phút" frozen for as long as it takes
+    waiting_side = cur is not None and status[cur] == "running" and bool(open_side) and not any(
+        "end" not in t for s, t in times.items() if "start" in t and s not in SIDE and stage_of(s) == KEYS[cur])
+
     def left(i: int) -> float:
         k, st, sec = KEYS[i], status[i], seconds[i]
         if st in ("done", "you"):
             return 0
         if st == "running" and sec is not None:
-            # ponytail: a stage whose steps are all closed (the canvas agent still at work) sits at FLOOR until the
-            # next step starts; show the side step's time here if Tai finds that confusing
             return max(typ[k] - sec, FLOOR)
         return typ[k]
 
@@ -185,9 +193,10 @@ def view(state: str, auto: bool, done: set[str], times: dict, typ: dict[str, flo
     if state == "done":
         eta = {"stop": None, "until_stop": None, "after_stop": None}
     elif stop is None:
-        eta = {"stop": None, "until_stop": round(sum(left(i) for i in range(n))), "after_stop": None}
+        eta = {"stop": None, "until_stop": None if waiting_side else round(sum(left(i) for i in range(n))),
+               "after_stop": None}
     else:
-        eta = {"stop": STAGES[stop][1], "until_stop": round(sum(left(i) for i in range(stop))),
+        eta = {"stop": STAGES[stop][1], "until_stop": None if waiting_side else round(sum(left(i) for i in range(stop))),
                "after_stop": round(sum(typ[k] for k in KEYS[stop + 1:]))}
 
     total = sum(typ[k] for k in KEYS)
@@ -202,5 +211,7 @@ def view(state: str, auto: bool, done: set[str], times: dict, typ: dict[str, flo
         out.append({"key": k, "label": label, "what": what, "status": status[i],
                     "seconds": None if sec is None else round(sec), "typical": round(typ[k]),
                     "overdue": status[i] == "running" and sec is not None and sec > typ[k],
-                    "steps": _steps(k, auto, done, times) if status[i] == "running" else []})
+                    "steps": _steps(k, auto, done, times) + (
+                        [{"step": s, "label": _label(s), "status": "running"} for s in open_side if stage_of(s) != k]
+                        if waiting_side else []) if status[i] == "running" else []})
     return {"stages": out, "current": cur, "percent": percent, "eta": eta}

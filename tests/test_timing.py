@@ -41,6 +41,8 @@ def test_read_broken_times_is_empty(tmp_path):
     assert timing.read(tmp_path) == {"text": {"start": 1, "end": 2}}
     timing.end(tmp_path, "fetch", now=9)  # a broken entry never fails a step's mark
     assert timing.read(tmp_path)["fetch"] == {"end": 9}
+    f.write_text('{"fetch": {"start": 1, "end": 1e999}, "text": {"start": 1, "end": 2}}')  # infinity: round() would raise
+    assert timing.read(tmp_path) == {"text": {"start": 1, "end": 2}}
 
 
 def test_mark_ends_the_step(tmp_path):

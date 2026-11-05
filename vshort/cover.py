@@ -290,12 +290,12 @@ def save_gemini(run_dir: Path, shape: str, data: bytes) -> Path:
     if len(data) > MAX_UPLOAD:
         raise ValueError(f"Ảnh lớn quá {MAX_UPLOAD // 1_000_000} MB")
     try:
-        img = Image.open(BytesIO(data))
+        img = Image.open(BytesIO(data), formats=["JPEG", "PNG", "WEBP"])  # not EPS (Ghostscript), TIFF, PSD…
         if img.width * img.height > MAX_PIXELS:
             raise ValueError(f"Ảnh lớn quá ({img.width}×{img.height} điểm ảnh)")
         img = ImageOps.exif_transpose(img).convert("RGB")
     except (OSError, Image.DecompressionBombError, SyntaxError) as e:  # SyntaxError: what Pillow raises for some broken files
-        raise ValueError("File này không phải ảnh") from e
+        raise ValueError("File này không phải ảnh JPEG, PNG hay WebP") from e
     w, h = img.size
     a, b = map(int, shape.split("x"))
     if abs((w / h) / (a / b) - 1) > RATIO_TOL:

@@ -173,7 +173,7 @@ function RowPair({ topic, slug, message, onSlug }: { topic: string; slug: string
             autoCapitalize="none"
             aria-label={`Tên thư mục cho: ${topic}`}
             aria-invalid={message ? true : undefined}
-            className="h-8 font-mono text-xs"
+            className="h-11 bg-card font-mono text-xs"
           />
         </TableCell>
         <TableCell className="px-3 pt-3 align-top whitespace-normal text-muted-foreground">

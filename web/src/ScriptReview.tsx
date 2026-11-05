@@ -242,15 +242,15 @@ export function ScriptReview({ c }: { c: Ctx }) {
         <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-end gap-2">
           <span className="mr-auto basis-full text-xs text-muted-foreground empty:hidden sm:basis-auto">{why}</span>
           {dirty && !c.busy && (
-            <Button variant="ghost" size="lg" className="h-10" onClick={() => setDrafts({})}>
+            <Button variant="ghost" size="lg" onClick={() => setDrafts({})}>
               <Undo2 /> Hoàn tác
             </Button>
           )}
-          <Button variant="outline" size="lg" className="h-10" onClick={save} disabled={c.off}>
+          <Button variant="outline" size="lg" onClick={save} disabled={c.off}>
             {doing === 'save' ? <Loader2 className="animate-spin" /> : <Save />}
             Lưu và kiểm
           </Button>
-          <Button size="lg" className="h-10" onClick={approve} disabled={c.off || dirty || !!proposed}>
+          <Button size="lg" onClick={approve} disabled={c.off || dirty || !!proposed}>
             {doing === 'approve' ? <Loader2 className="animate-spin" /> : <Check />}
             Duyệt bản dịch
           </Button>

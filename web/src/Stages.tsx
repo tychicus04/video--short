@@ -27,6 +27,8 @@ export function ProgressHeader({ view, row }: { view: StageView; row: Row }) {
   const { stop, until_stop, after_stop } = view.eta
   const ran = elapsed(view)
   const stopped = row.state === 'error' || row.state === 'dead'
+  // null: only the canvas agent is still at work, past its usual time (vshort/stages.py)
+  const left = until_stop == null ? 'chưa ước được, chờ hình động vẽ xong' : `còn ${fmtLeft(until_stop)}`
   return (
     <section aria-label="Tiến độ chung" className="flex flex-wrap items-center gap-6 rounded-lg bg-card p-6">
       <div
@@ -47,9 +49,9 @@ export function ProgressHeader({ view, row }: { view: StageView; row: Row }) {
           {at.status === 'you' ? (
             <Box title="Máy đang chờ bạn" value={at.label} />
           ) : stop ? (
-            <Box title={`Tới lúc cần bạn ${lower(stop)}`} value={`còn ${fmtLeft(until_stop)}`} extra={until_stop != null ? fmtClock(until_stop) : undefined} />
+            <Box title={`Tới lúc cần bạn ${lower(stop)}`} value={left} extra={until_stop != null ? fmtClock(until_stop) : undefined} />
           ) : (
-            <Box title="Tới lúc xong" value={`còn ${fmtLeft(until_stop)}`} extra={until_stop != null ? fmtClock(until_stop) : undefined} />
+            <Box title="Tới lúc xong" value={left} extra={until_stop != null ? fmtClock(until_stop) : undefined} />
           )}
           {stop && <Box title="Sau khi bạn duyệt, tới lúc xong" value={fmtLeft(after_stop)} />}
         </div>

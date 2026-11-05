@@ -54,7 +54,7 @@ export function AccessCode({ tokenSet, refresh }: { tokenSet: boolean; refresh: 
               aria-invalid={error ? true : undefined}
               value={code}
               onChange={(e) => setCode(e.target.value)}
-              className="h-9"
+              className="h-11"
             />
             {error && <p className="mt-1.5 text-sm text-destructive">{error}</p>}
           </div>

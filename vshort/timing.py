@@ -2,6 +2,7 @@
 time spent and time left (vshort/stages.py). state.json stays the record of what is done; this file is only for show,
 so a broken one reads as empty and never fails a step."""
 import json
+import math
 import os
 import threading
 import time
@@ -24,7 +25,8 @@ def read(run_dir: Path) -> dict[str, dict[str, float]]:
     out = {}
     for step, v in data.items():
         marks = {k: v[k] for k in ("start", "end") if k in v} if isinstance(v, dict) else {}
-        if marks and all(isinstance(t, (int, float)) and not isinstance(t, bool) for t in marks.values()):
+        # finite: 1e999 parses as infinity, and one infinite time would break every page that rounds it
+        if marks and all(isinstance(t, (int, float)) and not isinstance(t, bool) and math.isfinite(t) for t in marks.values()):
             out[step] = marks
     return out
 

@@ -173,6 +173,12 @@ def _png(w, h, color=(200, 0, 0)) -> bytes:
     return buf.getvalue()
 
 
+def _gif(w, h) -> bytes:
+    buf = BytesIO()
+    Image.new("RGB", (w, h), (200, 0, 0)).save(buf, "GIF")
+    return buf.getvalue()
+
+
 def test_save_gemini_converts_and_caps_size(tmp_path):
     p = cover.save_gemini(tmp_path, "9x16", _png(3000, 5333))
     assert p == tmp_path / "cover" / "gemini-9x16.jpg"
@@ -186,7 +192,8 @@ def test_save_gemini_refuses_wrong_ratio_bad_shape_non_image_and_huge(tmp_path):
              ("9x16", b"x" * (cover.MAX_UPLOAD + 1), "Ảnh lớn quá 15 MB"),
              ("9x16", b"not an image", "File này không phải ảnh"),
              ("9x16", _png(100, 100), "Ảnh 100×100 không đúng khổ 9x16 \\(lệch quá 5 %\\)"),
-             ("16x9", _png(1080, 1920), "không đúng khổ 16x9")]
+             ("16x9", _png(1080, 1920), "không đúng khổ 16x9"),
+             ("9x16", _gif(90, 160), "File này không phải ảnh JPEG, PNG hay WebP")]  # only what Gemini gives
     for shape, data, msg in cases:
         with pytest.raises(ValueError, match=msg):
             cover.save_gemini(tmp_path, shape, data)

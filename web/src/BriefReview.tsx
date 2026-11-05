@@ -142,7 +142,7 @@ export function BriefReview({ c }: { c: Ctx }) {
             className="min-h-72 leading-6"
           />
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            <Button size="lg" className="h-10 w-full sm:w-auto" onClick={saveVi} disabled={c.off || !viDirty || enDirty}>
+            <Button size="lg" className="w-full sm:w-auto" onClick={saveVi} disabled={c.off || !viDirty || enDirty}>
               {syncing ? <Loader2 className="animate-spin" /> : <Languages />}
               Lưu và cập nhật bản tiếng Anh
             </Button>
@@ -195,7 +195,7 @@ export function BriefReview({ c }: { c: Ctx }) {
               className="min-h-64 font-mono text-xs leading-5 md:text-xs"
             />
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-              <Button variant="outline" size="lg" className="h-10 w-full sm:w-auto" onClick={saveEn} disabled={c.off || (!enDirty && !stale)}>
+              <Button variant="outline" size="lg" className="w-full sm:w-auto" onClick={saveEn} disabled={c.off || (!enDirty && !stale)}>
                 <Save /> Lưu bản tiếng Anh
               </Button>
               {enDirty && !c.busy && (
@@ -218,7 +218,7 @@ export function BriefReview({ c }: { c: Ctx }) {
             {!c.canWrite && <p className="text-muted-foreground">Cần mã truy cập</p>}
             {!stale && !unsaved && c.canWrite && <p className="text-muted-foreground">Duyệt xong, video quay lại hàng đợi và chạy tiếp.</p>}
           </div>
-          <Button size="lg" className="h-10 w-full shrink-0 sm:w-auto" onClick={approve} disabled={!canApprove}>
+          <Button size="lg" className="w-full shrink-0 sm:w-auto" onClick={approve} disabled={!canApprove}>
             {approving ? <Loader2 className="animate-spin" /> : <Check />}
             Duyệt brief
           </Button>

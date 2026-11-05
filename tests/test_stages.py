@@ -113,6 +113,17 @@ def test_canvas_agent_alone_keeps_translate():
     assert by_key(v)["translate"]["status"] == "running"
     assert by_key(v)["notebooklm"]["seconds"] == 5 + 890  # motion_design is not NotebookLM's time
     assert v["percent"] >= before["percent"]
+    # no number frozen at "còn 1 phút" while only the canvas agent works: unknown, and the step shows why
+    assert v["eta"]["until_stop"] is None and v["eta"]["stop"] == "Duyệt bản dịch"
+    assert {"step": "motion_design", "label": "Vẽ hình động từ brief", "status": "running"} in by_key(v)["translate"]["steps"]
+
+
+def test_rerun_of_an_earlier_step_does_not_walk_back():
+    # render answered 2: the motion check runs again while render is still open; the page stays at "Dựng video"
+    done = THROUGH_REVIEW0 - {"render", "review0", "motion"}
+    times = {"timeline": {"start": 0, "end": 10}, "render": {"start": 20}, "motion": {"start": 200}}
+    v = stages.view("running", True, done, times, TYP, now=210)
+    assert by_key(v)["render"]["status"] == "running" and by_key(v)["build"]["status"] == "done"
 
 
 def test_finished_is_all_done():
