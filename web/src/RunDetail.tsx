@@ -8,9 +8,10 @@ import { Failed } from '@/Failed'
 import { Finished } from '@/Finished'
 import { ScriptReview } from '@/ScriptReview'
 import { LogTail, Message, type Ctx } from '@/runKit'
+import { ProgressHeader, StageList } from '@/Stages'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { StatusBadge, fmtAgo, money } from '@/status'
 import { cn } from '@/lib/utils'
@@ -58,38 +59,62 @@ function useRun(slug: string, holding: { current: boolean }) {
   return { d, failed, gone, read }
 }
 
-/** A video that is queued, running or never started: how it is going, and the log. */
+/** A video that is queued, running or never started: the ten stages, what it is, and the log. */
 function Progress({ c }: { c: Ctx }) {
-  const { row, log_tail } = c.d
+  const { row, log_tail, progress } = c.d
+  if (row.removable)
+    return (
+      <Card size="sm">
+        <CardContent className="text-muted-foreground">Chủ đề này đang xếp hàng, chưa có thư mục. Tới lượt thì máy chủ mới bắt đầu.</CardContent>
+      </Card>
+    )
   const facts: [string, string][] = [
-    ['Bước', row.step ?? '—'],
-    ['Cập nhật', row.since != null ? fmtAgo(row.since) : '—'],
-    ['Chi phí Claude', money(row.cost)],
+    ['Chủ đề', row.topic || '—'],
     ['Duyệt brief', row.auto ? 'Bỏ qua, chạy thẳng' : 'Chờ bạn duyệt'],
+    ['Chi phí Claude', `${money(row.cost)} tới giờ`],
+    ['Cập nhật', row.since != null ? fmtAgo(row.since) : '—'],
   ]
   return (
-    <div className="space-y-4">
-      <Card size="sm">
-        <CardHeader>
-          <CardTitle>Tình hình</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {row.removable ? (
-            <p className="text-sm text-muted-foreground">Chủ đề này đang xếp hàng, chưa có thư mục. Tới lượt thì máy chủ mới bắt đầu.</p>
-          ) : (
-            <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-4">
+    <div className="space-y-6">
+      <ProgressHeader view={progress} row={row} />
+      <div className="flex flex-wrap items-start gap-6">
+        <section aria-labelledby="steps-h" className="min-w-0 flex-[999_1_560px] rounded-lg bg-card p-6">
+          <h2 id="steps-h" className="mb-4 text-lg font-semibold">
+            Từng bước
+          </h2>
+          <StageList view={progress} auto={row.auto} />
+        </section>
+        <aside className="flex min-w-0 flex-[1_1_300px] flex-col gap-4">
+          <section aria-labelledby="info-h" className="rounded-lg bg-card p-5">
+            <h2 id="info-h" className="mb-3 font-semibold">
+              Thông tin
+            </h2>
+            <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2.5 text-sm">
               {facts.map(([k, v]) => (
-                <div key={k} className="min-w-0">
-                  <dt className="text-xs text-muted-foreground">{k}</dt>
-                  <dd className="mt-0.5 font-medium [overflow-wrap:anywhere]">{v}</dd>
+                <div key={k} className="contents">
+                  <dt className="text-muted-foreground">{k}</dt>
+                  <dd className="[overflow-wrap:anywhere]">{v}</dd>
                 </div>
               ))}
             </dl>
-          )}
-          {row.message.trim() && <Message text={row.message} className="rounded-lg bg-muted/40 p-3 text-muted-foreground" />}
-        </CardContent>
-      </Card>
-      {!row.removable && <LogTail text={log_tail} />}
+            {row.message.trim() && <Message text={row.message} className="mt-3 rounded-lg bg-muted p-3 text-muted-foreground" />}
+          </section>
+          <LogTail text={log_tail} />
+          <p className="rounded-lg bg-card p-5 text-sm text-muted-foreground">
+            Thời gian dự kiến lấy trung vị của 5 video xong gần nhất cho từng bước; chưa đủ thì dùng số ước sẵn.
+          </p>
+        </aside>
+      </div>
+    </div>
+  )
+}
+
+/** Where a video that waits for Tai or stopped is: the head and the stage it is at, above the page for it. */
+function Where({ c }: { c: Ctx }) {
+  return (
+    <div className="space-y-4">
+      <ProgressHeader view={c.d.progress} row={c.d.row} />
+      <StageList view={c.d.progress} auto={c.d.row.auto} compact />
     </div>
   )
 }
@@ -150,9 +175,11 @@ export function RunDetail({
         </a>
       </Button>
 
-      <header className="space-y-1.5">
+      <header className="space-y-2">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          <h1 className={cn('text-lg font-semibold', row?.title ? '[overflow-wrap:anywhere]' : 'font-mono break-all')}>{row?.title || slug}</h1>
+          <h1 className={cn('text-2xl leading-tight font-bold sm:text-[28px]', row?.title ? '[overflow-wrap:anywhere]' : 'font-mono break-all')}>
+            {row?.title || slug}
+          </h1>
           {row && !gone && <StatusBadge state={row.state} />}
         </div>
         {row?.title && <p className="font-mono text-xs break-all text-muted-foreground">{slug}</p>}
@@ -183,17 +210,26 @@ export function RunDetail({
 
           {!c ? (
             <div className="space-y-3" aria-busy="true" aria-label="Đang tải">
-              <Skeleton className="h-32 rounded-xl" />
-              <Skeleton className="h-56 rounded-xl" />
+              <Skeleton className="h-32 rounded-lg" />
+              <Skeleton className="h-56 rounded-lg" />
             </div>
           ) : c.d.row.state === 'wait_brief' ? (
-            <BriefReview c={c} />
+            <>
+              <Where c={c} />
+              <BriefReview c={c} />
+            </>
           ) : c.d.row.state === 'wait_script' ? (
-            <ScriptReview c={c} />
+            <>
+              <Where c={c} />
+              <ScriptReview c={c} />
+            </>
           ) : c.d.row.state === 'done' ? (
             <Finished c={c} />
           ) : c.d.row.state === 'error' || c.d.row.state === 'dead' ? (
-            <Failed c={c} />
+            <>
+              <Where c={c} />
+              <Failed c={c} />
+            </>
           ) : (
             <Progress c={c} />
           )}

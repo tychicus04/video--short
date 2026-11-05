@@ -23,37 +23,37 @@ interface Meta {
 }
 
 export const STATE: Record<RowState, Meta> = {
-  queued: { label: 'Đang xếp hàng', icon: Clock, badge: 'bg-zinc-500/15 text-zinc-300 border-zinc-500/25' },
-  running: { label: 'Đang chạy', icon: Loader2, spin: true, badge: 'bg-sky-500/15 text-sky-300 border-sky-500/25' },
+  queued: { label: 'Đang xếp hàng', icon: Clock, badge: 'bg-secondary text-foreground border-transparent' },
+  running: { label: 'Đang chạy', icon: Loader2, spin: true, badge: 'bg-brand/20 text-brand-text border-transparent' },
   dead: {
     label: 'Dừng giữa chừng',
     icon: Unplug,
-    badge: 'bg-orange-500/15 text-orange-300 border-orange-500/30',
+    badge: 'bg-orange-500/15 text-orange-300 border-transparent',
     bar: 'bg-orange-400',
     tint: 'bg-orange-500/[0.05]',
   },
   wait_brief: {
     label: 'Chờ duyệt brief',
     icon: ClipboardCheck,
-    badge: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
+    badge: 'bg-wait-bg text-wait border-transparent',
     bar: 'bg-amber-400',
     tint: 'bg-amber-500/[0.06]',
   },
   wait_script: {
     label: 'Chờ duyệt bản dịch',
     icon: ClipboardCheck,
-    badge: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
+    badge: 'bg-wait-bg text-wait border-transparent',
     bar: 'bg-amber-400',
     tint: 'bg-amber-500/[0.06]',
   },
   error: {
     label: 'Lỗi',
     icon: TriangleAlert,
-    badge: 'bg-red-500/15 text-red-300 border-red-500/30',
+    badge: 'bg-err/15 text-err-text border-transparent',
     bar: 'bg-red-400',
     tint: 'bg-red-500/[0.06]',
   },
-  done: { label: 'Xong', icon: CircleCheck, badge: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/25' },
+  done: { label: 'Xong', icon: CircleCheck, badge: 'bg-ok/15 text-ok border-transparent' },
   idle: { label: 'Chưa chạy tự động', icon: CircleDashed, badge: 'bg-transparent text-muted-foreground border-border' },
 }
 
