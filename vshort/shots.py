@@ -19,6 +19,7 @@ from vshort.visuals import LUMA, MIN_CONTRAST, PAPER, SUBTITLE
 
 LEAD = 0.2  # the picture moves this long before the word
 SNAP = 0.25  # the camera's move to a new framing
+HOLD = 0.5  # a framing is held this long on screen before the line pulls back wide for the cut
 DRAW = 0.5  # a pencil mark draws itself in this long
 MAX_GAP = 2.0  # longest stretch of a line with no visible change
 MAX_ZOOM_STILL = 1.5  # a 720x1280 still goes soft past this

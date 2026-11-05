@@ -533,6 +533,11 @@ def _shots_line(run: Run, w: _ShotLines, i: int, rows: list[dict]):
         if w.kind[i] == "still" and focus and focus[3] > w.plate_top - 10:
             probs.append(who + f"focus {list(focus)} xuống tới y {focus[3]}, vào dải phụ đề cũ của ảnh NotebookLM (bắt đầu ở "
                          f"y {w.plate_top}; focus phải kết thúc trên y {w.plate_top - 10}): đừng cận vào đó")
+        if b.focus is not shots.KEEP and b.t > (latest := render.last_focus(seg.end)):  # null is a focus too: it moves the camera
+            probs.append(who + f"focus muộn quá: lời của nhịp lúc {shots._secs(b.t - seg.start)} s của câu ({round(b.t, 3)} s), mà "
+                         f"camera phải tới nơi và giữ khung {shots._secs(shots.HOLD)} s trước khi kéo về toàn cảnh cho chỗ cắt sang câu sau; "
+                         f"nhịp có focus phải ở chậm nhất {shots._secs(latest - seg.start)} s của câu ({round(latest, 3)} s): "
+                         "dời nhịp sớm hơn hoặc bỏ focus (mark, doodle, pop thì được ở cuối câu)")
         for what, box in (("focus", focus), ("mark", b.mark and b.mark["box"])):
             late = [q.t1 for q in pieces if box and _touch(box, q.box) and b.t - shots.LEAD < q.t1 - 1e-9]
             if late:

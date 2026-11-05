@@ -90,7 +90,10 @@ Một object, khóa là id câu (chuỗi), giá trị là danh sách nhịp **th
   (và mỗi phần tử thẻ hiện ra). 2,0 s là mức cứng, không phải mục tiêu.
 - **Dấu ở lại cho tới khi dấu kế tiếp bắt đầu**, rồi mờ dần. Khi lời và camera sang vật khác, cho vật mới dấu riêng (dấu cũ tự mờ); đừng để dấu cũ còn khoanh
   một chỗ lời đã bỏ mà vẫn thấy trên màn hình.
-- **Không đặt nhịp có `focus` trong ~0,5 giây cuối của câu**: camera tự kéo về toàn cảnh trước chỗ cắt sang câu sau.
+- **Không đặt nhịp có `focus` (kể cả `null`) trong 1,0 giây cuối của câu**: lời của nhịp phải tới chậm nhất 1,0 giây trước khi câu hết. Camera bật tới khung
+  (0,25 s) và phải giữ khung 0,5 s rồi mới kéo về toàn cảnh trước chỗ cắt sang câu sau; nhịp muộn hơn bị `vshort shots` từ chối và báo giờ muộn nhất.
+  `mark`, `doodle`, `pop` vẫn đặt được ở cuối câu. **`doodle` và `pop` ở lại trên màn hình cho tới hết câu** (không mờ đi như `mark`), nên đặt chúng vào
+  chỗ giấy trống mà các nhịp sau của câu cũng không cận vào hay vẽ lên.
 - **Vùng an toàn trên màn hình** (tính sau camera của nhịp đó, nên cận vào gần mép thì dấu có thể rơi ra ngoài): y từ 141 tới 1046, x từ 24; từ y 535 trở xuống x tối đa 618
   (phía trên được tới 696). Ngoài vùng ấy là thanh/nút của TikTok, Reels, Shorts và hộp phụ đề.
 - `pop` ≤ 3 cho cả video. `doodle` và `pop` chỉ đặt ở giấy trống; `mark` chỉ trên vật có mực.

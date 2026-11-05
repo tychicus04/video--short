@@ -247,6 +247,12 @@ def planned_camera(bs: list[shots.Beat], t: float, start: float, end: float, cap
     return shots.camera_at(bs, t, start - XF / 2, cap, wide_by=end - XF / 2)
 
 
+def last_focus(end: float) -> float:
+    """The latest word a beat with a `focus` may have on a line that ends at `end`: the camera moves LEAD before it, takes
+    SNAP to arrive and stays HOLD on the framing before the pull back to the wide shot (SNAP) that ends as the cut starts."""
+    return end - XF / 2 - 2 * shots.SNAP - shots.HOLD + shots.LEAD
+
+
 def _camera(segs: list[Segment], k: int, t: float) -> tuple[float, float, float]:
     """(scale, cx, cy) of the shot segment k belongs to: window centre in frame pixels, linear in time over the shot.
 

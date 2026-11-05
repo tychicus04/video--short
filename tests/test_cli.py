@@ -869,6 +869,24 @@ def test_focus_into_the_old_caption_band_is_refused(tmp_path, capsys, y1, refuse
     assert ("1" in _ok_lines(tmp_path)) is not refused and not any("câu 3" in e and "phụ đề cũ" in e for e in out.err.splitlines())
 
 
+@pytest.mark.parametrize("at, refused", [(0.2, False), (0.3, True)])
+def test_a_focus_too_near_the_end_of_the_line_is_refused(tmp_path, capsys, at, refused):
+    # line 1 ends at 3.9: the camera needs SNAP to arrive and HOLD on it before it pulls back for the cut, so the latest
+    # word of a focus is 3.9 - 1.0 = 2.9 s; phrase 3 runs 2.6-3.8 s and 'at' is a share of it: 0.2 -> 2.84 s, 0.3 -> 2.96 s
+    _shots_run(tmp_path)
+    plan = _good_plan(tmp_path)
+    plan["1"][2] = {"phrase": 3, "at": at, "focus": None, "mark": {"shape": "tick", "box": [150, 350, 450, 450]}}
+    code, out = _shots(tmp_path, plan, capsys)
+    late = [e for e in out.err.splitlines() if "chậm nhất" in e]
+    assert (code == 2) is refused and len(late) == int(refused)
+    assert ("1" in _ok_lines(tmp_path)) is not refused
+    if refused:
+        assert late[0].startswith("shots.json câu 1 nhịp 3: ") and "2,90 s của câu" in late[0]  # the line, the beat, the latest time
+        assert len(out.err.splitlines()) == 1
+    plan["1"][2] = {"phrase": 3, "at": at, "mark": {"shape": "tick", "box": [150, 350, 450, 450]}}  # no focus: a mark may be last
+    assert _shots(tmp_path, plan, capsys)[0] == 0
+
+
 def test_lines_with_motion_are_not_allowed(tmp_path, capsys):
     _shots_run(tmp_path)
     (tmp_path / "motion.json").write_text("{}")

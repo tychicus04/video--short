@@ -41,10 +41,12 @@ def test_vs_nhip_quotes_the_limits_the_code_checks():
 
     md = (EX.parent.parent / "claude" / "agents" / "vs-nhip.md").read_text(encoding="utf-8")
     vi = lambda x: str(x).replace(".", ",")  # noqa: E731  the agent reads Vietnamese numbers
+    margin = round(100 - render.last_focus(100), 3)  # how far before the end of a line its last focus may come
     for want in (f"Tối đa {shots.MAX_POPS} `pop`", f"≤ {shots.MAX_POP_LEN} ký tự", f"Không quá {vi(shots.MAX_GAP)} giây",
                  f"tối đa {vi(shots.MAX_ZOOM_STILL)} lần", f"trước lời {vi(shots.LEAD)} s", f"({vi(shots.SNAP)} s)",
                  f"vẽ dần ~{vi(shots.DRAW)} s", f"y từ {textfit.UI_TOP} tới {shots.SUBTITLE[1]}, x từ {shots.MARGIN}",
-                 f"x tối đa {textfit.UI_RIGHT}", f"từ y {textfit.UI_RIGHT_FROM} trở xuống", f"tới {render.W - shots.MARGIN})"):
+                 f"x tối đa {textfit.UI_RIGHT}", f"từ y {textfit.UI_RIGHT_FROM} trở xuống", f"tới {render.W - shots.MARGIN})",
+                 f"trong {vi(margin)} giây cuối", f"chậm nhất {vi(margin)} giây trước khi câu hết", f"giữ khung {vi(shots.HOLD)} s"):
         assert want in md, want
 
 
