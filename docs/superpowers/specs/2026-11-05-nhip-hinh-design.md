@@ -59,7 +59,7 @@ Mỗi câu không có hình động có một danh sách nhịp. Mỗi nhịp g�
 {"10": [
   {"phrase": 1, "focus": [120, 300, 600, 520], "mark": {"shape": "underline", "box": [150, 470, 560, 500]}},
   {"phrase": 3, "focus": null, "mark": {"shape": "circle", "box": [170, 590, 550, 700]}},
-  {"phrase": 3, "at": 0.6, "pop": "2024"}
+  {"phrase": 3, "at": 0.6, "pop": {"text": "2024", "box": [80, 200, 300, 280]}}
  ]}
 ```
 
@@ -73,7 +73,8 @@ Mỗi nhịp có thể có:
   nhiều giấy trống hơn.
 - **`doodle`:** `{"shape": "<tên trong assets/shapes>", "box": [...]}`, một hình vẽ tay nhỏ bật ra ở chỗ giấy trống, vẽ bằng
   `shapes.strokes_in_box`. Ví dụ quả địa cầu (`internet`) cho "Internet", ổ NAS cho "NAS ở nhà".
-- **`pop`:** một chữ hoặc số ngắn (≤ 12 ký tự) viết tay to, nảy vào. Phải có nguyên văn trong lời Việt của câu đó, để không bịa dữ
+- **`pop`:** `{"text", "box"}`, một chữ hoặc số ngắn (≤ 12 ký tự) viết tay to, nảy vào ở box giấy trống (agent chọn chỗ; cả hai bản
+  chạy thử đều thấy để code tự đặt chỗ thì dễ đè hình). Phải có nguyên văn trong lời Việt của câu đó, để không bịa dữ
   kiện. Tối đa 3 lần mỗi video.
 
 ### 3. Kiểm (`vshort shots RUN`; mã 2 kèm một dòng mỗi lỗi, mã 0 thì ghi `shots/sheet.png` để agent xem)
@@ -83,7 +84,7 @@ Mỗi nhịp có thể có:
   không cần nhịp.
 - **Vùng an toàn trên màn hình:** dấu, hình vẽ tay và số bật ra, tính sau camera của nhịp đó, phải nằm trong vùng mà
   TikTok/Reels/Shorts không che (cùng giới hạn với tư liệu: `visuals.REF_*`) và không chạm vùng phụ đề.
-- **Box của `mark` có mực:** ≥ ~3 % điểm ảnh khác màu giấy. Box của `doodle` là giấy trống: ≤ ~3 %.
+- **Box của `mark` có mực:** ≥ ~3 % điểm ảnh khác màu giấy. Box của `doodle` và `pop` là giấy trống: ≤ ~3 %.
 - **`pop`:** có trong lời câu đó, đếm tổng số lần mỗi video.
 - **Thẻ chưa viết tới:** trên thẻ `svg`, `mark` hay `focus` không được bắt đầu trước khi các phần tử nằm dưới box của nó hiện ra
   (theo `shots/reveal.json`).
