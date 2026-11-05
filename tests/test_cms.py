@@ -8,6 +8,7 @@ import pytest
 from vshort import cms
 
 TOKEN = "BI-MAT-123"
+REAL_HTTP = cms._http  # taken at import, before conftest's no_real_cms replaces it
 
 
 class FakeHttp:
@@ -182,3 +183,18 @@ def test_http_never_follows_a_redirect(monkeypatch):
     handlers = [type(h) for h in cms._OPENER.handlers]
     assert urllib.request.HTTPRedirectHandler not in handlers and any(
         issubclass(h, urllib.request.HTTPRedirectHandler) for h in handlers)
+
+
+def test_load_refuses_a_token_with_spaces_or_line_breaks(tmp_path, monkeypatch):
+    """http.client would put the whole header, token and all, into a ValueError that ends up in auto.log."""
+    for bad in ("BI-MAT\r123", "BI MAT", "BI-MÂT"):
+        write_settings(tmp_path, monkeypatch, token=bad)
+        s, missing = cms.load()
+        assert s is None and missing and all(bad not in m for m in missing)
+
+
+def test_a_header_http_refuses_never_carries_the_token():
+    """The request is refused before anything is sent (no network): a CmsError that does not repeat the header."""
+    with pytest.raises(cms.CmsError) as e:
+        REAL_HTTP("POST", "https://127.0.0.1:9/graphql", {"Authorization": f"Bearer {TOKEN}\nX: y"}, b"{}", 5)
+    assert TOKEN not in str(e.value) and e.value.answered is False  # not sure what went out: never "refused"

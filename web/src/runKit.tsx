@@ -56,12 +56,13 @@ export interface Notice {
   text: string
 }
 
-/** The answer to a write that did not go through, kept on the page until the next action. It scrolls itself into view: the button may be far from where it shows. */
-export function NoticeBox({ n }: { n: Notice }) {
+/** The answer to a write that did not go through, kept on the page until the next action. It scrolls itself into view: the button may be far from where it shows.
+ * `still`: a standing notice drawn from the 5-second refresh (a new object every time): never scrolls. */
+export function NoticeBox({ n, still = false }: { n: Notice; still?: boolean }) {
   const box = useRef<HTMLDivElement>(null)
   useEffect(() => {
-    box.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
-  }, [n])
+    if (!still) box.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }, [n, still])
   const warn = n.kind === 'warn'
   return (
     <div ref={box}>

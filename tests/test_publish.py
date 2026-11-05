@@ -164,7 +164,7 @@ class FakeCms:
         if v["id"] not in self.articles:
             raise cms.CmsError("CMS báo lỗi: Not Found", 404)
         a = self.articles[v["id"]]
-        return a | {"workflow": {"workflow_type_id": self.workflow_type,
+        return {"personal_status_id": 1} | a | {"workflow": {"workflow_type_id": self.workflow_type,
                                  "name": "Bài cá nhân" if self.workflow_type == 1 else "Chờ duyệt"}}
 
     def articles_create(self, v):
@@ -505,3 +505,33 @@ def test_cli_cms_probe_prints_ids_never_the_token(monkeypatch, capsys):
                  "acc-fb", "FACEBOOK"):
         assert part in out
     assert "BI-MAT-123" not in out
+
+
+def test_resend_keeps_the_cover_tai_chose(fake, run_dir):
+    """Only the video was rebuilt: the update must not put the machine's cover back over the one Tai picked in the CMS."""
+    aid = publish.send(run_dir)["article_id"]
+    fake.articles[aid]["avatar1_id"] = 5555
+    (run_dir / "final.mp4").write_bytes(b"video-2")
+    publish.send(run_dir)
+    (upd,) = fake.ops("articles_update")
+    assert upd["b"]["avatar1_id"] == 5555 and upd["b"]["avatar2_id"] == 902 and "904_final.mp4" in upd["b"]["content"]
+
+
+def test_trashed_article_writes_nothing(fake, run_dir):
+    """CMS-Admin's "Chuyển về thùng rác" keeps the article in the personal step with personal_status_id 4; any save
+    without that status takes it out of the trash (article-save-helper prepareWorkflows)."""
+    aid = publish.send(run_dir)["article_id"]
+    fake.articles[aid]["personal_status_id"] = 4
+    (run_dir / "cover" / "gemini-16x9.jpg").write_bytes(b"gemini-wide")
+    n = len(fake.calls)
+    rec = publish.send(run_dir)
+    assert [op for op, _ in fake.calls[n:]] == ["articles_detail"]
+    assert rec["state"] == "deleted" and "thùng rác" in rec["message"]
+    assert publish.send(run_dir, recreate=True)["state"] == "done" and len(fake.ops("articles_create")) == 2
+
+
+def test_trashed_during_the_upload_writes_nothing(fake, run_dir):
+    aid = publish.send(run_dir)["article_id"]
+    (run_dir / "cover" / "gemini-16x9.jpg").write_bytes(b"gemini-wide")
+    fake.during_upload = lambda: fake.articles[aid].update(personal_status_id=4)
+    assert publish.send(run_dir)["state"] == "deleted" and not fake.ops("articles_update")

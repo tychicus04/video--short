@@ -5,6 +5,7 @@ request to the CMS API: never into an error message, cms.json, a log, or a page 
 Every network call goes through `_http`, so the tests put a fake CMS there."""
 import http.client
 import json
+import re
 import tomllib
 import urllib.error
 import urllib.parse
@@ -20,7 +21,7 @@ GQL_TIMEOUT = 120  # seconds; articles_transform_preview runs the CMS's AI
 PUT_TIMEOUT = 600  # a 30 MB video to MinIO
 
 ARTICLE_FIELDS = ("id title slug content department_id article_type_id workflow_id avatar1_id avatar2_id updated_at "
-                  "workflow { workflow_type_id name }")
+                  "personal_status_id workflow { workflow_type_id name }")
 ARTICLE_TYPES = "query { article_types_all { id name department_id status_id } }"
 ARTICLE = f"query($id: Int!) {{ articles_detail(id: $id) {{ {ARTICLE_FIELDS} }} }}"
 CREATE = "mutation($b: ArticleSaveInputDto!) { articles_create(body: $b) { id } }"
@@ -116,6 +117,8 @@ def load(env: str | None = None, ids: bool = True) -> tuple[Settings | None, lis
         return None, [f"không có token_file {tok}"]
     if not token:
         return None, ["token_file rỗng"]
+    if not re.fullmatch(r"[!-~]+", token):  # http.client would quote the whole header, token and all, in its error
+        return None, ["token_file có ký tự lạ (khoảng trắng, xuống dòng giữa token, chữ có dấu)"]
     return Settings(env=env, api=sec["api"].rstrip("/"), admin=sec["admin"].rstrip("/"), token=token,
                     act_as=sec["act_as"].strip(), department_id=sec["department_id"],
                     private_workflow_id=sec.get("private_workflow_id", 0), article_type_id=sec.get("article_type_id", 0),
@@ -135,8 +138,8 @@ _OPENER = urllib.request.build_opener(_NoRedirect)
 
 def _http(method: str, url: str, headers: dict[str, str], body: bytes | None, timeout: int) -> tuple[int, bytes]:
     """The only call that touches the network: (HTTP status, body). CmsError(answered=False) when nothing came back."""
-    req = urllib.request.Request(url, data=body, headers=headers, method=method)
     try:
+        req = urllib.request.Request(url, data=body, headers=headers, method=method)
         with _OPENER.open(req, timeout=timeout) as r:
             return r.status, r.read()
     except urllib.error.HTTPError as e:
@@ -147,6 +150,8 @@ def _http(method: str, url: str, headers: dict[str, str], body: bytes | None, ti
     except (OSError, http.client.HTTPException) as e:  # URLError, a timeout and a reset are all OSError
         why = getattr(e, "reason", None) or e
         raise CmsError(f"Không kết nối được CMS: {why}", answered=False) from None
+    except ValueError:  # a header or address urllib refuses; its message repeats the header (the token): not passed on
+        raise CmsError("Không gửi được yêu cầu tới CMS: địa chỉ hoặc header có ký tự không hợp lệ", answered=False) from None
 
 
 def _scrub(s: Settings, text: str) -> str:

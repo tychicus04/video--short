@@ -22,6 +22,7 @@ UPDATE_LABEL = "Cập nhật ảnh và video"
 FILES = ("cover16", "cover9", "video")
 MIME = {"cover16": "image/jpeg", "cover9": "image/jpeg", "video": "video/mp4"}
 PRIVATE = 1  # workflow_type_id of the personal (PRIVATE) step
+RECYCLE_BIN = 4  # personal_status_id of an article Tai moved to the trash (it stays in the PRIVATE step)
 # the CMS's social AI presets (AI_SOCIAL_PRESETS) by target type, and the Zernio platform each one goes to
 TARGETS = [(9002, "facebook"), (9003, "youtube"), (9004, "tiktok")]
 UNSURE = "Không chắc bài đã được tạo: mở CMS xem trong bài cá nhân; chưa có thì bấm Tạo bài mới"
@@ -218,6 +219,10 @@ def _article(s: Settings, rec: dict) -> dict | None:
     if wf.get("workflow_type_id") != PRIVATE:
         rec.update(state="left", message=f"Bài đã rời luồng cá nhân (chặng {rec['workflow'] or 'khác'}), sửa trong CMS")
         return None
+    if a.get("personal_status_id") == RECYCLE_BIN:  # any save without this status takes it out of the trash
+        rec.update(state="deleted", message=f"Bài số {rec['article_id']} đang ở thùng rác trong CMS: khôi phục trong CMS "
+                                            "rồi bấm Gửi lại, hoặc bấm Tạo bài mới.")
+        return None
     return a
 
 
@@ -328,10 +333,11 @@ def _send(s: Settings, run_dir: Path, rec: dict, step) -> None:
         old = rec["article_files"].get("video", {}).get("url")
         if rec["article_files"].get("video", {}).get("sha") != files["video"]["sha"] and _has(content, old):
             content = swap_video(content, old, files["video"]["url"])
-        if (content, files["cover16"]["id"], files["cover9"]["id"]) != (
-                current["content"], current.get("avatar1_id"), current.get("avatar2_id")):
-            cms.gql(s, cms.UPDATE, {"id": aid, "b": update_body(current, files["cover16"]["id"], files["cover9"]["id"],
-                                                                content)})
+        # a cover whose file did not change keeps what the article has: Tai may have picked another one in the CMS
+        av1, av2 = (files[k]["id"] if rec["article_files"].get(k, {}).get("sha") != files[k]["sha"]
+                    else current.get(f"avatar{n}_id") for n, k in ((1, "cover16"), (2, "cover9")))
+        if (content, av1, av2) != (current["content"], current.get("avatar1_id"), current.get("avatar2_id")):
+            cms.gql(s, cms.UPDATE, {"id": aid, "b": update_body(current, av1, av2, content)})
         rec["article_files"] = {k: files[k] for k in FILES}
         step("article", "done")
     warnings = [] if _has(content, files["video"]["url"]) else [NO_BLOCK]

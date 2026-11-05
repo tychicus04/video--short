@@ -87,11 +87,11 @@ export function CmsBox({ c }: { c: Ctx }) {
           {rec.proposal && <p className="text-muted-foreground">Đề xuất mạng xã hội: đã gửi, duyệt trong CMS</p>}
         </div>
       )}
-      {stopped && <NoticeBox n={{ kind: 'error', text: 'Dừng giữa chừng. Bấm Gửi lại để làm tiếp từ việc dở.' }} />}
+      {stopped && <NoticeBox still n={{ kind: 'error', text: 'Dừng giữa chừng. Bấm Gửi lại để làm tiếp từ việc dở.' }} />}
       {!stopped && rec.message && ['left', 'deleted', 'unsure', 'error'].includes(rec.state ?? '') && (
-        <NoticeBox n={{ kind: rec.state === 'left' ? 'warn' : 'error', text: rec.message }} />
+        <NoticeBox still n={{ kind: rec.state === 'left' ? 'warn' : 'error', text: rec.message }} />
       )}
-      {rec.warning && <NoticeBox n={{ kind: 'warn', text: rec.warning }} />}
+      {rec.warning && <NoticeBox still n={{ kind: 'warn', text: rec.warning }} />}
 
       <div className="flex flex-wrap items-center gap-2">
         <Button disabled={off} onClick={() => send(false)}>
