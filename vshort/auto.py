@@ -145,7 +145,7 @@ MOTION_BIND = ("Việc 2 — gắn nhịp vào lời. RUN={run}\n\nĐọc {run}/
                "{run}/motion.bind.json. Chạy `vshort motion {run}` tới khi mã 0.")
 VISUALS = ("RUN={run}\n\nĐọc {run}/motion.bind.json (lines) để biết câu nào đã có hình động (đừng chọn tư liệu cho các câu đó), "
            "{run}/sources.md (nguồn tư liệu thật) và {run}/brief.vi.md (mục \"Lưu ý độ chính xác\") khi vá chữ.")
-COVER = ("Việc riêng: chọn ảnh đại diện và viết tiêu đề đăng cho video, không làm gì khác (không tạo notebook, không nạp "
+COVER = ("Việc riêng: chọn ảnh đại diện, viết tiêu đề đăng và prompt ảnh bìa cho video, không làm gì khác (không tạo notebook, không nạp "
          "nguồn, không sửa brief). RUN={run}. Chạy `vshort cover {run} --candidates`: nó tải ảnh đầu bài (og:image) của các "
          "nguồn trong {run}/sources.md, ghép thành {run}/cover/sheet.jpg có đánh số. Xem ảnh đó, {run}/brief.vi.md và "
          "{run}/script.vi.json (lời video thật sự nói). Chọn MỘT ảnh minh hoạ đúng chủ đề video: ưu tiên ảnh của nguồn "
@@ -155,8 +155,25 @@ COVER = ("Việc riêng: chọn ảnh đại diện và viết tiêu đề đăn
          "người xem quan tâm (ví dụ \"Lỗ hổng CVSS 10 trong LXD: mạo danh client, chiếm cả cụm máy không cần khóa\"); "
          "\"thumb\" — chữ in lên ảnh bìa (3–6 từ, ≤ 32 ký tự), đặt từ khóa đắt nhất trong dấu sao để tô vàng (ví dụ "
          "\"*CVSS 10*: chiếm cụm không cần khóa\"). Chỉ dùng dữ kiện có trong script.vi.json; không bịa số; không tên "
-         "tệp/công cụ mà mục \"Lưu ý độ chính xác\" của brief cấm.\n\nGhi {run}/cover/pick.json: "
-         "{{\"n\": số hoặc null khi không ảnh nào hợp, \"why\": \"…\", \"title\": \"…\", \"thumb\": \"…\"}}. "
+         "tệp/công cụ mà mục \"Lưu ý độ chính xác\" của brief cấm.\n\n"
+         "Cuối cùng viết \"poster\" — phần riêng của prompt để Tai dán vào app Gemini vẽ ảnh bìa kiểu poster tin nóng "
+         "(khung chung: phong cách, chữ đúng dấu, không logo thật, đã có sẵn trong code): \"scene\" bằng tiếng Anh, gồm một "
+         "câu \"Story:\" kể sự việc bằng lời thường, rồi \"Layout, top to bottom:\" với 3–4 gạch đầu dòng tả thứ cụ thể "
+         "nhìn thấy được ở trên, giữa (vật chính, cận cảnh, có chi tiết hậu quả) và đáy khung; vật chính không ghi tên hãng "
+         "hay logo; \"badge\" — nhãn đỏ góc trên phải, 2–3 từ in hoa (\"CẢNH BÁO KHẨN\" khi đang bị tấn công/cần vá "
+         "ngay, \"TIN BẢO MẬT\" hay \"CÔNG NGHỆ MỚI\" khi không khẩn); \"lines\" — 4 dòng tít tiếng Việt xếp chồng: "
+         "dòng 1 (đỏ, to nhất, 2–4 từ in hoa) và dòng 2 (trắng, to, 2–4 từ in hoa, có thể có dấu !) là cú đấm; dòng 3 "
+         "(vàng, ≤ 32 ký tự) là hậu quả; dòng 4 (trắng, ≤ 32 ký tự) là việc người xem nên làm. Ví dụ cho video NAS "
+         "Synology bị tống tiền: scene = \"Story: ransomware is attacking home NAS storage boxes running an old, unpatched "
+         "operating system; it encrypts the owner's photos and documents and leaves a ransom note.\\n\\nLayout, top to "
+         "bottom:\\n- Top-left: a hooded hacker typing on a laptop in the dark, floating code and red WARNING tags.\\n- "
+         "Center: a close-up of a black 4-bay home NAS with glowing red drive lights, a cracked red padlock in front, photo "
+         "and document icons turning into locked files, a red ransom note taped to its front.\\n- Bottom: a dim home "
+         "office shelf with the NAS among family photo frames, red smoke and two yellow warning triangles.\", lines = "
+         "[\"NAS CHƯA VÁ\", \"BỊ TỐNG TIỀN!\", \"Mã độc mã hóa ảnh, tài liệu\", \"Cập nhật DSM ngay hôm nay\"]. Cùng "
+         "luật dữ kiện như title.\n\nGhi {run}/cover/pick.json: "
+         "{{\"n\": số hoặc null khi không ảnh nào hợp, \"why\": \"…\", \"title\": \"…\", \"thumb\": \"…\", "
+         "\"poster\": {{\"scene\": \"…\", \"badge\": \"…\", \"lines\": [\"…\", \"…\", \"…\", \"…\"]}}}}. "
          "Đừng chạy `vshort cover {run}` không có --candidates.")
 COVER_TIMEOUT = 600  # seconds: one sheet to look at
 MAC_DIR = "~/Movies/vshort"  # where the Mac's LaunchAgent (scripts/vn.tai.vshort-keo.plist) pulls */xuat/ to

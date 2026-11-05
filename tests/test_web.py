@@ -116,6 +116,23 @@ def test_files_refuse_other_names_and_escapes(client):
         assert client.get(url).status_code == 404
 
 
+def test_title_covers_and_prompt_of_a_finished_run(client_anon, run_s):
+    j = client_anon.get("/api/runs/s").json()
+    assert j["row"]["title"] == "" and j["cover_v"] is None and j["prompt"] is None and "16:9" in j["prompt_wide"]
+    assert client_anon.get("/files/s/cover/thumb-9x16.jpg").status_code == 404
+    run_s.file("cover").mkdir()
+    run_s.write("cover/cover.json", {"title": "Tiêu đề đăng", "from": "video"})
+    run_s.file("cover/prompt.txt").write_text("Create a poster", encoding="utf-8")
+    run_s.file("cover/thumb-9x16.jpg").write_bytes(b"jpg")
+    run_s.file("cover/anh-dai-dien-9x16.jpg").write_bytes(b"jpg")
+    j = client_anon.get("/api/runs/s").json()
+    assert j["row"]["title"] == "Tiêu đề đăng" and j["prompt"] == "Create a poster" and j["cover_v"] > 0
+    r = client_anon.get("/files/s/cover/thumb-9x16.jpg")
+    assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg" and r.content == b"jpg"
+    for name in ("cover/anh-dai-dien-9x16.jpg", "cover/prompt.txt", "cover/%2E%2E/brief.vi.md"):
+        assert client_anon.get(f"/files/s/{name}").status_code == 404  # only the two headline covers
+
+
 def test_video_is_409_while_the_run_is_locked(client, run_s):
     run_s.file("auto.lock").write_text(str(os.getpid()))
     assert client.get("/files/s/final.mp4").status_code == 409

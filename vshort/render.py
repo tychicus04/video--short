@@ -1,5 +1,5 @@
-"""Final video: fixed low subtitles in NotebookLM's caption style, clean plates, NotebookLM's watermark erased, a faint ANM logo
-top right, the ANM outro in place of NotebookLM's, new voice."""
+"""Final video: fixed low subtitles in NotebookLM's caption style, clean plates, NotebookLM's watermark erased,
+the ANM outro in place of NotebookLM's (the only logo), new voice."""
 import math
 import os
 import subprocess
@@ -29,30 +29,25 @@ SUB_Y = 1150  # every caption box is centred here, on NotebookLM's own low capti
 INK, BOX = "3A3434", "D6DEE2"  # ASS BGR, sampled from NotebookLM's captions: dark grey ink on a light grey box
 WATERMARK = "delogo=x=524:y=1232:w=180:h=32"
 LOGO = Path(__file__).resolve().parent.parent / "assets" / "brand" / "anm-logo.png"
-LOGO_BOX = (481, 24, 704, 80)  # top right, clear of the captions and the erased watermark
-LOGO_ALPHA = 0.35  # faint: a grey mark, not a sticker
 SHIELD_W = 185  # the logo's shield ends here; its words start at x 188
 OUTRO = LOGO.with_name("anm-outro.mp4")  # appended to every video; `vshort outro` redraws it, or drop in any 720x1280 clip
 OUTRO_S = 2.5  # length of the drawn outro
 
 
 @lru_cache
-def _logo() -> tuple[Image.Image, Image.Image, Image.Image]:
-    """(faint grey mark filling LOGO_BOX, outro shield, outro words), scaled once."""
+def _logo() -> tuple[Image.Image, Image.Image]:
+    """(outro shield, outro words), scaled once. The logo is only on the outro: Tai dropped the corner mark (05/11)."""
     im = Image.open(LOGO).convert("RGBA")
-    x0, y0, x1, y1 = LOGO_BOX
-    mark = im.resize((x1 - x0, y1 - y0), Image.LANCZOS)
-    mark = Image.merge("RGBA", (*[mark.convert("L")] * 3, mark.getchannel("A").point(lambda a: round(a * LOGO_ALPHA))))
     shield = im.crop((0, 0, SHIELD_W, im.height))
     shield = shield.resize((round(shield.width * 300 / shield.height), 300), Image.LANCZOS)
     words = im.crop((SHIELD_W + 3, 0, im.width, im.height))
     words = words.resize((600, round(words.height * 600 / words.width)), Image.LANCZOS)
-    return mark, shield, words
+    return shield, words
 
 
 def end_card(t: float, paper: Image.Image) -> Image.Image:
     """The outro at t s: the shield grows in, then the words wipe in from the left."""
-    _, shield, words = _logo()
+    shield, words = _logo()
     img = paper.copy()
     p = kit.ease(t / 0.5)
     if p:
@@ -280,7 +275,7 @@ def draw(img: Image.Image, scale: float, cx: float, cy: float) -> Image.Image:
 
 def render_video(segs: list[Segment], ass: Path, narration: Path, total: float, out: Path,
                  scenes: list[Scene] = (), outro: Path | None = None) -> None:
-    """`total` s of lines with the logo in the corner, then the `outro` clip faded in from the last frame, silent."""
+    """`total` s of lines, then the `outro` clip faded in from the last frame, silent."""
     cache: dict[Path, Image.Image] = {}
 
     def load(f: Path) -> Image.Image:
@@ -300,10 +295,8 @@ def render_video(segs: list[Segment], ass: Path, narration: Path, total: float, 
             parts = parts[1:]  # two lines of one scene: the same picture, drawn once
         imgs = [(image(s, cam, t), w) for s, w, cam in parts]
         img = imgs[0][0] if len(imgs) == 1 else Image.blend(imgs[0][0], imgs[1][0], imgs[1][1])
-        img.paste(mark, LOGO_BOX[:2], mark)  # after the camera: the logo stays put
         return img
 
-    mark = _logo()[0]
     tail = iter_frames(outro, fps=FPS, gray=False) if outro else iter(())
     extra = probe(outro).duration if outro else 0.0
     last = end = None

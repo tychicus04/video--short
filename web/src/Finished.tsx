@@ -2,9 +2,10 @@
 import { useState, type ComponentProps } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { ChevronDown, Download, Film } from 'lucide-react'
+import { ChevronDown, Copy, Download, Film } from 'lucide-react'
+import { toast } from 'sonner'
 import type { CostEntry } from '@/api'
-import { Message, type Ctx } from '@/runKit'
+import { Message, copyText, type Ctx } from '@/runKit'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -91,6 +92,76 @@ function CostTable({ cost }: { cost: CostEntry[] }) {
   )
 }
 
+async function copy(text: string, what: string) {
+  if (await copyText(text)) toast.success(`Đã sao chép ${what}`)
+  else toast.error(`Không sao chép được ${what}, hãy bôi đen rồi chép tay`)
+}
+
+/** What goes out with the video: the publish title, the headline covers, and the prompt for a poster cover drawn in the Gemini app. */
+function Publish({ c }: { c: Ctx }) {
+  const { slug, d } = c
+  const title = d.row.title
+  if (!title && d.cover_v == null && !d.prompt) return null
+  const src = (shape: string) => `/files/${encodeURIComponent(slug)}/cover/thumb-${shape}.jpg?v=${d.cover_v}`
+  return (
+    <Card size="sm">
+      <CardHeader>
+        <CardTitle>Đăng bài</CardTitle>
+        <CardDescription className="text-xs">Tiêu đề, ảnh bìa, và prompt để tự vẽ ảnh bìa trong app Gemini</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        {title && (
+          <div className="space-y-1.5">
+            <div className="text-xs text-muted-foreground">Tiêu đề đăng</div>
+            <div className="flex items-start gap-3">
+              <p className="min-w-0 flex-1 text-sm font-medium [overflow-wrap:anywhere]">{title}</p>
+              <Button size="sm" variant="outline" className="shrink-0" onClick={() => copy(title, 'tiêu đề')}>
+                <Copy /> Sao chép
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {d.prompt ? (
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-xs text-muted-foreground">1. Prompt ảnh bìa 9:16: dán vào app Gemini</div>
+              <Button size="sm" className="shrink-0" onClick={() => copy(d.prompt!, 'prompt')}>
+                <Copy /> Sao chép prompt
+              </Button>
+            </div>
+            <pre className="max-h-56 overflow-y-auto rounded-lg bg-muted/40 p-3 text-xs leading-5 whitespace-pre-wrap [overflow-wrap:anywhere]">
+              {d.prompt}
+            </pre>
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+              <div className="text-xs text-muted-foreground">2. Có ảnh dọc rồi thì dán tiếp câu này, cùng cuộc trò chuyện, để có ảnh ngang 16:9 cho bài báo</div>
+              <Button size="sm" variant="outline" className="shrink-0" onClick={() => copy(d.prompt_wide, 'câu 16:9')}>
+                <Copy /> Sao chép câu 16:9
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">Video này chưa có prompt ảnh bìa: nó xong trước khi có bước viết prompt.</p>
+        )}
+
+        {d.cover_v != null && (
+          <div className="space-y-1.5">
+            <div className="text-xs text-muted-foreground">Ảnh bìa tự ghép từ ảnh bài báo (dự phòng), bấm để mở cỡ thật</div>
+            <div className="flex items-end gap-3">
+              <a href={src('9x16')} target="_blank" rel="noreferrer" className="shrink-0">
+                <img src={src('9x16')} alt="Ảnh bìa dọc 9:16" className="h-36 rounded-md ring-1 ring-foreground/10" />
+              </a>
+              <a href={src('16x9')} target="_blank" rel="noreferrer" className="min-w-0">
+                <img src={src('16x9')} alt="Ảnh bìa ngang 16:9" className="max-h-36 w-full max-w-64 rounded-md object-contain ring-1 ring-foreground/10" />
+              </a>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 export function Finished({ c }: { c: Ctx }) {
   const { slug, d } = c
   const { row } = d
@@ -140,6 +211,8 @@ export function Finished({ c }: { c: Ctx }) {
           <span>Chi phí {money(row.cost)}</span>
           {row.since != null && <span>Xong {fmtAgo(row.since)}</span>}
         </div>
+
+        <Publish c={c} />
 
         {row.message.trim() && (
           <Card size="sm">

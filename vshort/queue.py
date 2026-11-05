@@ -177,6 +177,7 @@ def status(run: Run, queued: bool) -> dict:
     seconds = _read(run, "timeline.json").get("total")
     stamped = next((f for f in (run.file("auto.json"), run.file("run.json")) if f.exists()), None)
     return {"slug": run.path.name, "topic": str(meta.get("topic") or ""), "auto": bool(meta.get("auto")),
+            "title": str(_read(run, "cover/cover.json").get("title") or ""),
             "state": "queued" if queued else state,
             "message": "\n".join(ln for ln in message.splitlines() if not ln.startswith("Chép về Mac")),
             "step": _step(run, bool(meta.get("auto"))),
@@ -199,7 +200,7 @@ def rows(q: Queue) -> list[dict]:
     found = [status(_Folder(p), p.name in q.resume) for p in sorted(root.iterdir())
              if p.is_dir() and SLUG_RE.fullmatch(p.name)] if root.is_dir() else []
     have = {r["slug"] for r in found}
-    waiting = [{"slug": it["slug"], "topic": it["topic"], "auto": it["auto"], "state": "queued", "message": "",
+    waiting = [{"slug": it["slug"], "topic": it["topic"], "auto": it["auto"], "title": "", "state": "queued", "message": "",
                 "step": STEPS[0][1], "since": it["added"], "cost": 0.0, "verdict": None, "seconds": None,
                 "relogin": False, "removable": True} for it in q.new if it["slug"] not in have]
     place = {s: i for i, s in enumerate([*q.resume, *(it["slug"] for it in q.new)])}

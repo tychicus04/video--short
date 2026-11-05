@@ -144,3 +144,23 @@ def test_package_lays_out_one_folder_named_by_the_title(tmp_path):
     assert (folder / "tieu-de.txt").read_text().startswith("Mới: tên hay\n")
     assert Image.open(folder / "thumb-doc-9x16.jpg").size == (1080, 1920)
     assert not (run / ".xuat").exists()
+
+
+def test_poster_prompt_goes_with_the_covers_and_the_export(tmp_path):
+    run = _run(tmp_path)
+    poster = {"scene": "Story: a NAS is held to ransom.", "badge": "CẢNH BÁO KHẨN",
+              "lines": ["NAS CHƯA VÁ", "BỊ TỐNG TIỀN!", "Mã độc mã hóa ảnh", "Cập nhật ngay"]}
+    (run / "cover" / "pick.json").write_text(json.dumps({"n": None, "why": "", "title": "T", "poster": poster}))
+    assert main(["cover", str(run)]) == 0
+    prompt = (run / "cover" / "prompt.txt").read_text()
+    assert "Story: a NAS is held to ransom." in prompt and '"CẢNH BÁO KHẨN"' in prompt
+    assert 'line 1, red, biggest: "NAS CHƯA VÁ"' in prompt and 'line 4, white, smaller: "Cập nhật ngay"' in prompt
+    assert cover.WIDE not in prompt  # the 16:9 follow-up is pasted on its own, after the first picture
+    saved = (run / "xuat" / "T" / "prompt-anh-bia.txt").read_text()
+    assert saved.startswith(prompt) and cover.WIDE in saved
+
+    for bad in ({**poster, "lines": ["một dòng"]}, {**poster, "scene": " "}, {"scene": "x"}, "text"):
+        assert cover.poster_prompt({"poster": bad}) is None
+    (run / "cover" / "pick.json").write_text(json.dumps({"n": None, "why": "", "title": "T"}))
+    assert main(["cover", str(run)]) == 0  # no poster this time: no old prompt left beside the new pick
+    assert not (run / "cover" / "prompt.txt").exists() and not (run / "xuat" / "T" / "prompt-anh-bia.txt").exists()

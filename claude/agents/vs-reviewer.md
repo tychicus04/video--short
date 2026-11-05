@@ -25,8 +25,8 @@ Nhiều khung liên tiếp: `from itertools import islice; from vshort.media imp
 Kiểm:
 1. **Không còn chữ phụ đề tiếng Anh cũ hay watermark**: khung mỗi 0,5 giây, và dày hơn (mỗi 0,1 giây) quanh mỗi `start`
    trong `timeline.json` (chỗ chuyển câu, có mờ chồng). Chữ tiếng Anh của phụ đề cũ ở bất kỳ khung nào, hay watermark
-   "Gemini Notebook" ở góc dưới phải = lỗi nặng (ghi thời điểm). Logo Tạp chí An ninh mạng Việt Nam màu xám mờ ở góc trên phải
-   (x 481–704, y 24–80) là đúng thiết kế, không phải lỗi; góc dưới phải phải trống. Sau câu cuối (`total` trong `timeline.json`) là 2,5 giây
+   "Gemini Notebook" ở góc dưới phải = lỗi nặng (ghi thời điểm). Video không có logo góc
+   (logo Tạp chí An ninh mạng Việt Nam chỉ nằm ở outro); góc dưới phải phải trống. Sau câu cuối (`total` trong `timeline.json`) là 2,5 giây
    outro logo ANM, im lặng, đúng thiết kế; không được có đoạn logo Gemini. Kiểm 1 và 3 chỉ xét khung trước `total`.
 2. **Chuyển động mượt**: ở ba chỗ (đầu, giữa, cuối; một trong ba nằm ngay chỗ chuyển giữa hai câu) lấy 6 khung liên tiếp
    và xếp cạnh nhau. Hình phải dịch/phóng đều từng khung hình: không nhảy bậc, không giật, không lóe, không vỡ nét.
@@ -55,7 +55,7 @@ Kiểm:
    - **một khung liền**: giữa đoạn không có cắt cảnh hay mờ chồng sang tờ giấy mới; cái đã vẽ còn đó (nhạt đi khi lời đã sang bước khác);
      chấm đỏ đi suốt đoạn, không biến đi rồi hiện ở chỗ khác;
    - **khung cuối đọc được như sơ đồ**: thấy đủ các bước của đoạn theo một hướng đọc, đường đi của chấm đỏ nối các bước; không rối
-     (tối đa 7 thứ, không chồng hay chạm nhau, nhãn đọc được, không lấn vào dải phụ đề hay logo góc trên phải);
+     (tối đa 7 thứ, không chồng hay chạm nhau, nhãn đọc được, không lấn vào dải phụ đề hay mép trên);
    - hình khớp lời: chấm đỏ làm đúng điều câu đang nói, đúng lúc (không đi trước, không đi sau); cái chuyển đỏ là cái lời nói bị chiếm;
      không vẽ bước mà lời đã bỏ;
    - **hình mới đúng phong cách** (`RUN/shapes/`): cùng nét bút chì, cùng màu như hình khác, nhận ra được là gì; lệch phong cách = lỗi

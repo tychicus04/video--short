@@ -25,7 +25,7 @@ from starlette.responses import FileResponse, JSONResponse, Response
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from vshort import auto, queue
+from vshort import auto, cover, queue
 from vshort.run import config
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -34,6 +34,7 @@ COOKIE = "vshort_token"
 YEAR = 365 * 24 * 3600
 LOG_LINES = 50
 TICK = 5  # seconds between two looks at the queue
+COVERS = {"cover/thumb-9x16.jpg", "cover/thumb-16x9.jpg"}  # the only files served besides final.mp4
 LOCK = threading.Lock()  # every load -> change -> save of queue.json, in tick() and in the routes. Not reentrant: take it last.
 BAD_BODY = "Dữ liệu gửi lên sai dạng"
 BRIEF_SYNC = ("RUN={run}. Tai vừa sửa {run}/brief.vi.md (diff bên dưới). Sửa {run}/brief.en.md cho khớp đúng những chỗ đó, "
@@ -143,14 +144,24 @@ def run_detail(request: Request) -> JSONResponse:
                          "translation": _translation(slug), "proposed": _proposed(slug), "review_md": _text(slug, "review.md"),
                          "cost": cost if isinstance(cost, list) else [],
                          "log_tail": "\n".join((_text(slug, "auto.log") or "").splitlines()[-LOG_LINES:]),
-                         "video": queue.safe_file(slug, "final.mp4") is not None and not locked})
+                         "video": queue.safe_file(slug, "final.mp4") is not None and not locked,
+                         "cover_v": _version(slug, "cover/cover.json"), "prompt": _text(slug, "cover/prompt.txt"),
+                         "prompt_wide": cover.WIDE})
+
+
+def _version(slug: str, name: str) -> int | None:
+    """mtime of a file, for ?v= on a cover's address: a new cover is fetched, an unchanged one comes from the cache."""
+    p = queue.safe_file(slug, name)
+    return int(p.stat().st_mtime) if p else None
 
 
 def video(request: Request) -> Response:
-    """Only final.mp4, and not while `vshort auto` is writing it. FileResponse answers Range requests itself."""
+    """final.mp4, not while `vshort auto` is writing it, and the two headline covers. FileResponse answers Range requests itself."""
     slug, name = request.path_params["slug"], request.path_params["name"]
-    if name != "final.mp4" or not queue.SLUG_RE.fullmatch(slug) or (p := queue.safe_file(slug, name)) is None:
+    if name not in COVERS | {"final.mp4"} or not queue.SLUG_RE.fullmatch(slug) or (p := queue.safe_file(slug, name)) is None:
         return _error("Không có video này", 404)
+    if name in COVERS:
+        return FileResponse(p, media_type="image/jpeg")
     if _locked(slug):
         return _error("Video đang được dựng lại, chờ xong rồi xem", 409)
     return FileResponse(p, media_type="video/mp4", filename=f"{slug}.mp4" if "download" in request.query_params else None)
@@ -422,7 +433,7 @@ def _crash(request: Request, exc: Exception) -> JSONResponse:
 ROUTES = [
     Route("/api/state", state),
     Route("/api/runs/{slug}", run_detail),
-    Route("/files/{slug}/{name}", video),
+    Route("/files/{slug}/{name:path}", video),
     Route("/api/login", login, methods=["POST"]),
     Route("/api/queue", _post(add_to_queue), methods=["POST"]),
     Route("/api/queue/remove", _post(remove_from_queue), methods=["POST"]),

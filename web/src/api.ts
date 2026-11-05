@@ -6,6 +6,7 @@ export interface Row {
   slug: string
   topic: string // "" for a folder that has no run.json
   auto: boolean // the brief is not stopped for approval
+  title: string // the publish title from cover/cover.json; "" until the video is finished
   state: RowState
   message: string // multi-line; for relogin rows, what to do
   step: string | null
@@ -59,6 +60,9 @@ export interface Detail {
   cost: CostEntry[]
   log_tail: string
   video: boolean // final.mp4 exists and is not being rewritten
+  cover_v: number | null // mtime of cover/cover.json: the headline covers exist, ?v= on their address
+  prompt: string | null // cover/prompt.txt: what Tai pastes into the Gemini app for a poster cover
+  prompt_wide: string // pasted next in the same Gemini chat: the 16:9 one
 }
 
 /** `error` is the Vietnamese message; `data` the parsed body, e.g. {errors: [...]} of a 400 from /api/queue. */

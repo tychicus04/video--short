@@ -38,7 +38,7 @@ mới** (mục dưới). Hộp có nhãn (`box`) chỉ dành cho một lớp hay
 - **Đường đi nối các bước**: chấm đỏ (hay dữ liệu bị lấy) đi theo các `path` vẽ trong nhịp đó (`move` với `path`), để cuối đoạn đường
   đi của nó còn trên khung, nối các bước thành một chuỗi. Bước "dữ liệu bay đi" vẽ một `path` có `arrow` rồi cho icon chạy theo.
 - Nhãn ngắn (tối đa 20 ký tự), một dòng, chữ cỡ 44 (nhỏ nhất 32; nhãn trong `box` tự thu nhỏ cho vừa hộp).
-- Mọi thứ, kể cả nhãn và chỗ một món bay tới, nằm trong **x 40–680, y 96–1050** (khung 720×1280): trên là logo, dưới là phụ đề.
+- Mọi thứ, kể cả nhãn và chỗ một món bay tới, nằm trong **x 40–680, y 96–1050** (khung 720×1280): trên chừa lề, dưới là phụ đề.
   **Dùng hết vùng này**: hình to (thứ chính của một nhịp rộng từ 200 px), trải đều theo hướng đọc, không dồn vào một góc.
 - Chỉ `dot` và `icon` được di chuyển. Mọi thứ khác chỉ tự vẽ ra, chuyển đỏ hoặc nứt.
 - Mỗi hành động đặt đúng chỗ trong nhịp của nó: chấm đỏ không phá tường trước khi nhịp nói tường bảo vệ thế nào.

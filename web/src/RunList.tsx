@@ -107,9 +107,12 @@ function Item({ row, canWrite, refresh }: { row: Row; canWrite: boolean; refresh
       <div className="flex items-center gap-3">
         <a
           href={`#/r/${encodeURIComponent(row.slug)}`}
-          className="min-w-0 flex-1 truncate font-mono text-sm font-medium outline-none after:absolute after:inset-0 focus-visible:after:ring-2 focus-visible:after:ring-ring/60 focus-visible:after:ring-inset"
+          className={cn(
+            'min-w-0 flex-1 truncate text-sm font-medium outline-none after:absolute after:inset-0 focus-visible:after:ring-2 focus-visible:after:ring-ring/60 focus-visible:after:ring-inset',
+            !row.title && 'font-mono',
+          )}
         >
-          {row.slug}
+          {row.title || row.slug}
         </a>
         <StatusBadge state={row.state} className="shrink-0" />
         <ChevronRight aria-hidden className="hidden size-4 shrink-0 text-muted-foreground sm:block" />

@@ -130,7 +130,7 @@ def test_render_video_duration_audio_and_subs(tmp_path):
     assert np.abs(f[1112, 100].astype(int) - B).max() < 12  # outside the box the frame shows
 
 
-def test_logo_in_the_corner_then_the_outro(tmp_path):
+def test_no_corner_logo_then_the_outro(tmp_path):
     B = (40, 40, 40)
     Image.new("RGB", (720, 1280), B).save(tmp_path / "1.png")
     segs = segments([Placement(1, 0.0, 1.0)], [{"id": 1, "file": "1.png", "group": "a"}], tmp_path, 1.0)
@@ -144,11 +144,7 @@ def test_logo_in_the_corner_then_the_outro(tmp_path):
     render_video(segs, ass, tmp_path / "n.wav", 1.0, out, outro=clip)
     assert abs(probe(out).duration - 3.5) < 0.1
     first = frame_at(out, 0.5).astype(int)
-    mark = first[24:80, 481:704]
-    seen = np.abs(mark - B).max(axis=2) > 25
-    assert seen.mean() > 0.03  # the logo is there, top right
-    assert np.abs(mark - B).max() < 160  # faint: never its full white
-    assert (mark.max(axis=2) - mark.min(axis=2))[seen].mean() < 12  # grey, no colour
+    assert np.abs(first[24:80, 481:704] - B).max() < 25  # no logo top right: it is only on the outro
     assert np.abs(first[1214:1270, 483:706] - B).max() < 25  # nothing in the old bottom-right corner
     end = frame_at(out, 3.3)
     assert np.abs(end[300, 360].astype(int) - B).max() > 100  # the outro has replaced the frame

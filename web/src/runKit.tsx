@@ -111,3 +111,22 @@ export function LogTail({ text }: { text: string }) {
     </Card>
   )
 }
+
+/** Puts text on the clipboard. The panel is plain http on the LAN, where navigator.clipboard does not exist: then the old way. */
+export async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text)
+    return true
+  } catch {
+    const ta = document.createElement('textarea')
+    ta.value = text
+    ta.setAttribute('readonly', '')
+    ta.style.position = 'fixed'
+    ta.style.opacity = '0'
+    document.body.appendChild(ta)
+    ta.select()
+    const ok = document.execCommand('copy')
+    ta.remove()
+    return ok
+  }
+}

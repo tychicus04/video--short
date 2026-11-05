@@ -2,8 +2,9 @@
 headline on it, and the export folder named by the publish title.
 
 `candidates` gathers the sources' lead images onto a numbered sheet; an agent looks at it and writes cover/pick.json
-({"n": k | null, "why": ..., "title": publish title, "thumb": headline}); `make` cuts the pick (or, failing that, the
-video's first still) to both shapes and writes the headline on them; `package` lays out xuat/<title>/ for the Mac to pull.
+({"n": k | null, "why": ..., "title": publish title, "thumb": headline, "poster": prompt parts}); `make` cuts the pick
+(or, failing that, the video's first still) to both shapes, writes the headline on them and writes cover/prompt.txt, the
+prompt Tai pastes into the Gemini app for a poster cover; `package` lays out xuat/<title>/ for the Mac to pull.
 """
 import json
 import os
@@ -34,6 +35,26 @@ HIGHLIGHT = (255, 214, 0)  # *starred* words of the headline
 TEXT_BOX = {"16x9": (90, 560, 1480, 1000), "9x16": (70, 1190, 1010, 1640)}
 EM = (150, 64)  # largest and smallest headline size, px
 MAX_NAME = 200  # bytes of the folder/file name: APFS allows 255, Vietnamese takes 2–3 bytes a letter
+# The prompt Tai pastes into the Gemini app to draw a poster cover by hand (an API key that draws costs money: Tai said
+# no, 05/11). The agent writes only what changes per video (pick.json "poster"); the frame stays the same every time.
+POSTER = """Create a vertical 9:16 cover image for a Vietnamese cybersecurity news short video (TikTok/Reels thumbnail).
+
+Style: dramatic, cinematic, photorealistic digital poster. Dark navy/black background with red danger glow, sparks, \
+smoke and fire, high contrast, layered composition filling the whole frame, like a breaking-news alert poster.
+
+{scene}
+
+Top-right corner: a red badge with the bold text "{badge}".
+
+Lower third: a huge bold condensed Vietnamese headline, stacked and centered, with a thick black outline and drop shadow:
+{lines}
+
+Spell every Vietnamese text exactly as given, with correct diacritics. No other text, no real company or agency \
+logos, no watermark."""
+# pasted in the same Gemini chat once the 9:16 one is drawn: the article's lead image
+WIDE = """Now make the same poster as a horizontal 16:9 image: same scene and the same headline text, rearranged for the wide \
+frame, with the headline on the left half."""
+LINE_LOOK = ["red, biggest", "white with the last word in red, big", "yellow, smaller", "white, smaller"]
 
 
 class _Lead(HTMLParser):
@@ -211,6 +232,20 @@ def folder_name(title: str) -> str:
     return name or "video"
 
 
+def poster_prompt(pick: dict) -> str | None:
+    """The Gemini prompt from pick.json's "poster" ({"scene", "badge", "lines": 2–4 headline lines}); None when the
+    agent wrote none or wrote it in another shape, so a bad prompt never stops the covers."""
+    p = pick.get("poster")
+    try:
+        scene, badge, lines = p["scene"].strip(), p.get("badge", "CẢNH BÁO KHẨN").strip(), [x.strip() for x in p["lines"]]
+    except (TypeError, KeyError, AttributeError):
+        return None
+    if not scene or not badge or not 2 <= len(lines) <= len(LINE_LOOK) or not all(lines):
+        return None
+    head = "\n".join(f'  line {k + 1}, {look}: "{x}"' for k, (x, look) in enumerate(zip(lines, LINE_LOOK)))
+    return POSTER.format(scene=scene, badge=badge, lines=head)
+
+
 def make(run_dir: Path) -> dict:
     """cover/anh-dai-dien-{16x9,9x16}.jpg from the pick (the video's first still when there is none) and
     cover/thumb-{16x9,9x16}.jpg with the headline on them: the agent's, else the spoken title when it does not fit."""
@@ -233,12 +268,16 @@ def make(run_dir: Path) -> dict:
         if thumb is None:
             raise ValueError(f"tiêu đề không vừa ảnh {name}: {spoken!r}")
         thumb.save(out / f"thumb-{name}.jpg", quality=92)
+    if prompt := poster_prompt(pick):
+        (out / "prompt.txt").write_text(prompt, encoding="utf-8")
+    else:
+        (out / "prompt.txt").unlink(missing_ok=True)  # never an old video's prompt next to a new pick
     (out / "cover.json").write_text(json.dumps(info, ensure_ascii=False, indent=1), encoding="utf-8")
     return info
 
 
 def package(run_dir: Path) -> Path:
-    """xuat/<title>/: <title>.mp4, both headline covers and tieu-de.txt (title, picture credit), built aside and
+    """xuat/<title>/: <title>.mp4, both headline covers, tieu-de.txt (title, picture credit) and the Gemini prompt, built aside and
     swapped in whole, so the Mac's pull (rsync of */xuat/) never takes half a video or an old title's folder."""
     info = json.loads((run_dir / "cover" / "cover.json").read_text(encoding="utf-8"))
     name, tmp = folder_name(info["title"]), run_dir / ".xuat"
@@ -247,6 +286,10 @@ def package(run_dir: Path) -> Path:
     shutil.copy2(run_dir / "final.mp4", tmp / name / f"{name}.mp4")
     for shape, word in (("16x9", "ngang"), ("9x16", "doc")):
         shutil.copy2(run_dir / "cover" / f"thumb-{shape}.jpg", tmp / name / f"thumb-{word}-{shape}.jpg")
+    if (run_dir / "cover" / "prompt.txt").exists():
+        (tmp / name / "prompt-anh-bia.txt").write_text(
+            (run_dir / "cover" / "prompt.txt").read_text(encoding="utf-8") + "\n\n----- Có ảnh dọc rồi thì dán tiếp câu "
+            "này vào cùng cuộc trò chuyện Gemini để có ảnh ngang 16:9 cho bài báo:\n\n" + WIDE + "\n", encoding="utf-8")
     credit = f"\nẢnh bìa: {info['page']}" if info["from"] == "source" else ""
     (tmp / name / "tieu-de.txt").write_text(f"{info['title']}\n{credit}", encoding="utf-8")
     shutil.rmtree(run_dir / "xuat", ignore_errors=True)

@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { StatusBadge, fmtAgo, money } from '@/status'
+import { cn } from '@/lib/utils'
 
 const REFRESH_MS = 5000
 
@@ -151,9 +152,10 @@ export function RunDetail({
 
       <header className="space-y-1.5">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          <h1 className="font-mono text-lg font-semibold break-all">{slug}</h1>
+          <h1 className={cn('text-lg font-semibold', row?.title ? '[overflow-wrap:anywhere]' : 'font-mono break-all')}>{row?.title || slug}</h1>
           {row && !gone && <StatusBadge state={row.state} />}
         </div>
+        {row?.title && <p className="font-mono text-xs break-all text-muted-foreground">{slug}</p>}
         {row?.topic && !gone && <p className="text-sm text-muted-foreground [overflow-wrap:anywhere]">{row.topic}</p>}
       </header>
 
