@@ -36,6 +36,18 @@ def test_agent_instructions_quote_the_limits_the_code_checks():
     assert visuals.ZOOM == render.ZOOM  # visuals cannot import render (render -> motion -> visuals)
 
 
+def test_vs_nhip_quotes_the_limits_the_code_checks():
+    from vshort import render, shots, textfit
+
+    md = (EX.parent.parent / "claude" / "agents" / "vs-nhip.md").read_text(encoding="utf-8")
+    vi = lambda x: str(x).replace(".", ",")  # noqa: E731  the agent reads Vietnamese numbers
+    for want in (f"Tối đa {shots.MAX_POPS} `pop`", f"≤ {shots.MAX_POP_LEN} ký tự", f"Không quá {vi(shots.MAX_GAP)} giây",
+                 f"tối đa {vi(shots.MAX_ZOOM_STILL)} lần", f"trước lời {vi(shots.LEAD)} s", f"({vi(shots.SNAP)} s)",
+                 f"vẽ dần ~{vi(shots.DRAW)} s", f"y từ {textfit.UI_TOP} tới {shots.SUBTITLE[1]}, x từ {shots.MARGIN}",
+                 f"x tối đa {textfit.UI_RIGHT}", f"từ y {textfit.UI_RIGHT_FROM} trở xuống", f"tới {render.W - shots.MARGIN})"):
+        assert want in md, want
+
+
 def test_captions_and_patches_stay_clear_of_what_the_platforms_draw():
     from vshort import render, textfit, visuals
 

@@ -10,7 +10,7 @@ AFTER_APPROVE = D["build"] + D["render"] + D["review"] + D["cover"]
 # every step that is always marked, research … review0, for an automatic run
 THROUGH_REVIEW0 = {"research", "brief_check", "source", "fetch", "motion_design", "detect", "transcribe", "text",
                    "translate", "approve_script", "plates", "motion", "motion_bind", "stills", "tts", "visuals",
-                   "visuals_agent", "timeline", "render", "review0"}
+                   "visuals_agent", "timeline", "shots_agent", "shots", "render", "review0"}
 
 
 def by_key(v):
@@ -95,7 +95,7 @@ def test_fix_round_rerun_stays_on_review():
 
 def test_translator_resume_shows_build():
     # Tai took the translator's proposal: the voice and pictures are made again before a fresh review
-    again = {"tts", "timeline", "render", "motion", "motion_bind", "stills", "visuals"}
+    again = {"tts", "timeline", "shots", "render", "motion", "motion_bind", "stills", "visuals"}
     done = (THROUGH_REVIEW0 - again) | {"fix1_translator", "fixed1"}
     times = {"fix1_translator": {"start": 100, "end": 200}, "tts": {"start": 500}}
     st = by_key(stages.view("running", True, done, times, TYP, now=600))
@@ -172,3 +172,16 @@ def test_fix_round_without_a_fix_step_is_review():
     # round 1 whose fixes are done (Tai took the translator's proposal): the rerun is what it looks like
     st = by_key(stages.view("running", True, done | {"fixed1"}, times, TYP, now=60, fix_round=1))
     assert st["render"]["status"] == "running" and st["review"]["status"] == "next"
+
+
+def test_shots_steps_belong_to_the_render_stage():
+    assert [stages.stage_of(s) for s in ("timeline", "shots_agent", "shots", "render")] == ["render"] * 4
+    assert stages.DEFAULT_SECONDS["render"] == 600
+    assert "Nhịp hình" in next(what for k, _, what in stages.STAGES if k == "render")
+    assert stages._label("shots_agent") == "Lên nhịp hình" and stages._label("shots") == "Nhịp hình"
+    assert stages._label("fix1_shots") == "Sửa vòng 1: nhịp hình" and stages.stage_of("fix1_shots") == "review"
+    # the panel lists them in the order auto does them, with the agent running
+    times = {"timeline": {"start": 0, "end": 10}, "shots_agent": {"start": 20}}
+    v = stages.view("running", True, THROUGH_REVIEW0 - {"shots_agent", "shots", "render", "review0"}, times, TYP, now=60)
+    assert [(s["label"], s["status"]) for s in by_key(v)["render"]["steps"]] == [
+        ("Dòng thời gian", "done"), ("Lên nhịp hình", "running"), ("Nhịp hình", "next"), ("Dựng video", "next")]

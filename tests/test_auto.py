@@ -126,6 +126,8 @@ class Fakes:
     def __init__(self, run: Run):
         self.run, self.agents, self.cmds, self.nb = run, Counter(), [], []
         self.prompts: dict[str, list[str]] = {}
+        self.order: list[str] = []  # every agent and vshort command, in the order they were called
+        self.args: dict[str, list[list[str]]] = {}  # vshort step -> the argument list of each call
         self.codes: dict[str, list[int]] = {}  # vshort step -> exit codes to return, in order (then 0)
         self.no_notebook = False
         self.boom: set[str] = set()  # vshort steps that raise
@@ -141,6 +143,7 @@ class Fakes:
             self.die_in = None
             raise KeyboardInterrupt  # the process dies mid-call: nothing after it runs
         self.agents[agent] += 1
+        self.order.append(agent)
         self.prompts.setdefault(agent, []).append(prompt)
         if step in self.fail_steps:
             raise auto.AgentError(f"{agent} lỗi ở bước {step}")
@@ -176,6 +179,8 @@ class Fakes:
     def vshort(self, args):
         cmd = args[0]
         self.cmds.append(cmd)
+        self.order.append(cmd)
+        self.args.setdefault(cmd, []).append(args)
         code = (self.codes.get(cmd) or [0]).pop(0) if self.codes.get(cmd) else 0
         if code:
             return code
@@ -512,6 +517,7 @@ def test_translator_fix_redoes_stills_and_visuals_checks(flow):
     fk.reviews = [_needs("translator", "câu 1 nói quá")]
     assert auto.run_auto(run) == WAIT_SCRIPT
     assert not run.done("stills") and not run.done("visuals") and run.done("visuals_agent")
+    assert not run.done("shots") and run.done("shots_agent")  # the plan is checked again against the new words, not redrawn
 
 
 def test_agents_do_not_inherit_the_claude_session(tmp_path, claude, monkeypatch):
@@ -639,3 +645,144 @@ def test_a_null_canvas_with_a_leftover_bind_is_no_animation(flow):
     run.write("motion.bind.json", {"lines": [1]})
     assert auto.run_auto(run) == OK
     assert "Hình động: không có" in auto.get_state(run)["message"]
+
+
+# --- nhịp hình: the beat plan after the timeline ---------------------------------------------------------------------
+
+def test_build_runs_shots_after_timeline_and_before_render(flow):
+    run, fk = flow
+    _approved(run)
+    assert auto.run_auto(run) == OK
+    assert [x for x in fk.order if x in ("timeline", "shots", "vs-nhip", "render")] == \
+        ["timeline", "shots", "vs-nhip", "shots", "render"]  # prep, the agent, then the check
+    assert [a[2:] for a in fk.args["shots"]] == [["--prep"], []] and fk.args["shots"][0][1] == str(run.path)
+    [prompt] = fk.prompts["vs-nhip"]
+    assert prompt.startswith(f"RUN={run.path}") and f"vshort shots {run.path} --prep" in prompt and "mã 0" in prompt
+    assert run.done("shots_agent") and run.done("shots")
+    assert auto.TIMEOUT["vs-nhip"] == 1800
+
+
+def test_shots_are_not_planned_twice(flow):
+    run, fk = flow
+    _approved(run)
+    assert auto.run_auto(run) == OK
+    fk.order.clear()
+    run.unmark("render", "review0")
+    assert auto.run_auto(run) == OK
+    assert "vs-nhip" not in fk.order and "shots" not in fk.order
+
+
+def test_a_video_rendered_before_nhip_hinh_is_not_planned_afterwards(flow):
+    run, fk = flow
+    _approved(run)
+    for s in ("plates", "motion", "motion_bind", "stills", "visuals", "visuals_agent", "tts", "timeline", "render"):
+        run.mark(s)
+    assert auto.run_auto(run) == OK
+    assert fk.agents["vs-nhip"] == 0 and "shots" not in fk.cmds
+    assert "Nhịp hình: không có" in auto.get_state(run)["message"]
+
+
+def test_shots_agent_failure_does_not_stop_the_video(flow, capsys):
+    run, fk = flow
+    _approved(run)
+    fk.fail_steps = {"shots_agent"}
+    assert auto.run_auto(run) == OK
+    assert fk.cmds.count("render") == 1 and "vs-nhip lỗi ở bước shots_agent" in capsys.readouterr().out
+    assert run.done("shots_agent") and run.done("shots") and fk.agents["vs-nhip"] == 1  # one try, not one per rerun
+    msg = auto.get_state(run)["message"]
+    assert "Nhịp hình: không có" in msg and "thiếu shots.json" in msg
+
+
+def test_a_plan_that_does_not_pass_does_not_stop_the_video(flow):
+    run, fk = flow
+    _approved(run)
+    fk.codes["shots"] = [0, 2]  # the prep works, the agent's plan fails its check
+    assert auto.run_auto(run) == OK and "render" in fk.cmds and run.done("shots")
+
+
+def test_no_data_to_plan_from_means_no_agent(flow, capsys):
+    run, fk = flow
+    _approved(run)
+    fk.codes["shots"] = [2]  # `vshort shots --prep` cannot make its files: nothing for an agent to look at
+    assert auto.run_auto(run) == OK
+    assert fk.agents["vs-nhip"] == 0 and fk.cmds.count("render") == 1 and run.done("shots")
+    assert "--prep" in capsys.readouterr().out and "Nhịp hình: không có" in auto.get_state(run)["message"]
+
+
+def test_a_stale_plan_is_checked_again_when_render_says_2(flow):
+    run, fk = flow
+    _approved(run)
+    fk.codes["render"] = [2]  # shots/ok.json older than the script, the pictures or the voice
+    assert auto.run_auto(run) == OK
+    tail = fk.order[fk.order.index("render"):]
+    assert tail[:4] == ["render", "shots", "motion", "render"]  # `vshort shots` once, then the motion check as before
+    assert fk.args["shots"][-1][2:] == [] and fk.agents["vs-nhip"] == 1  # a check, not a new plan
+
+
+def test_review_finding_for_shots_goes_to_vs_nhip(flow):
+    run, fk = flow
+    _approved(run)
+    fk.reviews = [_needs("shots", "dấu khoanh lệch khỏi chữ DSM")]
+    assert auto.run_auto(run) == OK
+    assert fk.agents["vs-nhip"] == 2 and fk.agents["vs-motion"] == 1 and fk.agents["vs-visuals"] == 1
+    fix = fk.prompts["vs-nhip"][1]
+    assert "agent=shots" in fix and "dấu khoanh lệch khỏi chữ DSM" in fix and "vshort shots" in fix and "mã 0" in fix
+    assert run.done("fix1_shots") and fk.cmds.count("render") == 2
+    mid = fk.order[len(fk.order) - 1 - fk.order[::-1].index("vs-nhip"):]  # from the fix on
+    assert mid[:3] == ["vs-nhip", "shots", "render"] and fk.prompts["vs-reviewer"][1].startswith("Soát lại")
+
+
+def test_review_json_accepts_the_shots_agent(flow):
+    run, fk = flow
+    run.write("review.json", _needs("shots"))
+    assert auto.read_review(run)["findings"][0]["agent"] == "shots"
+
+
+def test_shots_fix_that_fails_still_renders(flow):
+    run, fk = flow
+    _approved(run)
+    fk.reviews = [_needs("shots")]
+    fk.fail_steps = {"fix1_shots"}
+    assert auto.run_auto(run) == OK and fk.cmds.count("render") == 2 and run.done("fixed1")
+
+
+def test_translator_fix_unmarks_the_shots_check(flow):
+    run, fk = flow
+    _approved(run)
+    run.write("script.vi.json", [{"id": 1, "phrases": "Xin | chào", "note": ""}, {"id": 2, "phrases": "Tạm biệt", "note": ""}])
+    fk.reviews = [_needs("translator", "câu 1 nói quá")]
+    assert auto.run_auto(run) == WAIT_SCRIPT
+    assert not run.done("shots") and not run.done("render")
+
+
+PHRASES = "câu 1 (0.00–3.00s, ảnh frames/1.png, ảnh NotebookLM)\n  cụm 1 @0.00s: Xin\ncâu 2 (3.00–6.00s, ảnh frames/2.png, thẻ tư liệu)\n" \
+          "câu 3 (6.00–9.00s, ảnh frames/3.png, ảnh NotebookLM)\nDải phụ đề cũ trên ảnh NotebookLM bắt đầu ở y 900.\n"
+
+
+def _plan(run, planned, shots_json=True):
+    run.file("shots").mkdir(exist_ok=True)
+    run.file("shots/phrases.txt").write_text(PHRASES, encoding="utf-8")
+    run.write("shots/ok.json", {"stamp": {}, "lines": {str(i): [{"phrase": 1, "focus": None}] for i in planned}})
+    if shots_json:
+        run.write("shots.json", {})
+
+
+def test_finish_lists_planned_and_fallback_lines(flow):
+    run, fk = flow
+    _approved(run)
+    _plan(run, [3, 1])
+    assert auto.run_auto(run) == OK
+    lines = auto.get_state(run)["message"].splitlines()
+    k = next(i for i, x in enumerate(lines) if x.startswith("Hình động:"))
+    assert lines[k + 1] == "Nhịp hình: câu 1, 3 (kiểu cũ: câu 2)"
+
+
+def test_finish_says_why_there_are_no_beats(flow):
+    run, fk = flow
+    assert auto._shots_note(run) == "Nhịp hình: không có (thiếu shots.json: agent lỗi hoặc chưa ghi kế hoạch)"
+    _plan(run, [])
+    assert auto._shots_note(run) == "Nhịp hình: không có (không câu nào qua `vshort shots`; chạy lại để xem lỗi)"
+    _plan(run, [1, 2, 3])
+    assert auto._shots_note(run) == "Nhịp hình: câu 1, 2, 3"
+    run.file("shots/ok.json").write_text("{oops")  # a file nobody should have left: not a traceback in the final message
+    assert auto._shots_note(run).startswith("Nhịp hình: không có")

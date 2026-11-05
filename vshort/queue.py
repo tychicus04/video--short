@@ -22,7 +22,7 @@ STEPS = [("research", "Tìm hiểu"), ("approve_brief", "Chờ duyệt brief"), 
          ("fetch", "NotebookLM làm video"), ("detect", "Tách phụ đề"), ("transcribe", "Chép phụ đề"), ("text", "Ghép câu"),
          ("translate", "Dịch"), ("approve_script", "Chờ duyệt bản dịch"), ("plates", "Xóa chữ cũ"), ("motion", "Hình động"),
          ("stills", "Ảnh tĩnh"), ("tts", "Đọc giọng"), ("visuals", "Tư liệu"), ("timeline", "Dòng thời gian"),
-         ("render", "Dựng video"), ("review0", "Soát")]
+         ("shots", "Nhịp hình"), ("render", "Dựng video"), ("review0", "Soát")]
 # the order of the list: what needs Tai first, finished and untouched last
 ORDER = {s: i for i, s in enumerate(["wait_brief", "wait_script", "error", "dead", "running", "queued", "done", "idle"])}
 KNOWN = {"running", "wait_brief", "wait_script", "error", "done"}  # what auto.py writes; anything else shows as error

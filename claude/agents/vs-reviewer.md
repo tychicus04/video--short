@@ -1,6 +1,6 @@
 ---
 name: vs-reviewer
-description: Bước soát cuối của /video-short — xem khung hình của final.mp4 và đo narration.wav: phụ đề/watermark cũ không lộ, chuyển động mượt, không khung trắng, không lặng dài, hình tư liệu khớp nguồn, chỗ vá không lộ viền, hình động khớp lời và gọn, phụ đề khớp lời đọc; ghi review.md.
+description: Bước soát cuối của /video-short — xem khung hình của final.mp4 và đo narration.wav: phụ đề/watermark cũ không lộ, chuyển động mượt, không khung trắng, không lặng dài, hình tư liệu khớp nguồn, chỗ vá không lộ viền, hình động khớp lời và gọn, nhịp hình (dấu, cận, hình vẽ tay) đúng vật được nói, phụ đề khớp lời đọc; ghi review.md.
 tools: Read, Bash, Write
 model: opus
 ---
@@ -14,7 +14,9 @@ tay trên **một khung**, theo nhịp — `idea` cả khung, `actor` (chấm đ
 `beats` (mỗi nhịp một `idea` và các `acts`). `motion.bind.json`: `lines` các câu được vẽ tay thay ảnh tĩnh, `beats` mốc lời của từng
 nhịp (`null` = nhịp bị bỏ) `{"line", "phrase", "at"}` là câu, cụm phụ đề thứ mấy (đếm từ 1) và vị trí 0–1 trong cụm. Đổi ra giây:
 lấy `start`, `dur` của câu trong `timeline.json`, chia `dur` cho các cụm theo số âm tiết như phụ đề. Hình mới của video này nằm
-trong `RUN/shapes/` (xem `RUN/shapes/sheet.png`).
+trong `RUN/shapes/` (xem `RUN/shapes/sheet.png`). `shots/ok.json` (nếu có): `lines` là các câu **có nhịp hình** — id câu → danh sách nhịp
+`{"phrase", "at", "focus", "mark", "doodle", "pop"}` (`phrase`, `at` đếm như trên; `focus` là box máy quay bật tới, `null` toàn cảnh; `mark` là dấu chì khoanh/gạch/chỉ
+một box; `doodle` hình vẽ tay ở lề; `pop` chữ/số nảy ra); `RUN/shots/sheet.png` là khung của từng nhịp. Câu có lời mà không có trong `lines` dựng kiểu cũ.
 
 Lấy khung hình bằng Python trong `~/video-pipeline` (ví dụ; `mkdir -p /tmp/vs_review` trước):
 `cd ~/video-pipeline && uv run python -c "from vshort.media import frame_at; from PIL import Image; from pathlib import Path; Image.fromarray(frame_at(Path('RUN/final.mp4'), 12.5)).resize((360,640)).save('/tmp/vs_review/f12.5.png')"`
@@ -64,7 +66,16 @@ Kiểm:
    - an toàn: nhãn chỉ ở mức khái niệm; tên lỗ hổng/CVE, tên exploit hay công cụ, mã, lệnh, địa chỉ web thật, hoặc các bước đủ chi tiết
      để làm lại = lỗi nặng; hình nói điều lời không nói = lỗi.
    Ghi đoạn hình động vào `review.md`: các câu, từng nhịp (câu nào, `idea`, hay bị bỏ).
-10. Liệt kê mọi `note` khác rỗng trong `script.vi.json` (lời Việt khác lời Anh và lý do), và toàn bộ `visuals.json`
+10. **Nhịp hình** (nếu có `shots/ok.json`): với mỗi câu có nhịp, lấy khung của `final.mp4` ở giờ mỗi nhịp (giờ câu cộng vị trí cụm như trên, rồi cộng khoảng 0,5 s cho dấu vẽ
+    xong và máy quay tới nơi) và 6 khung liên tiếp quanh một chỗ máy quay bật (`focus`) hoặc dấu đang vẽ. Kiểm:
+    - **dấu chỉ đúng vật được nói**: khoanh/gạch/mũi tên nằm trên đúng chữ hay vật mà cụm lời đang đọc ở nhịp đó (không lệch sang chữ bên cạnh, không khoanh giấy trống,
+      không còn khoanh vật lời đã bỏ qua); `doodle` đúng là thứ lời nói tới và không đè hình; `pop` đọc được và có trong lời;
+    - **không có hình mờ vì zoom quá**: cận vào mà chữ hay nét thành bệt, vỡ ô, hoặc lộ viền/dải giấy vá của phụ đề cũ;
+    - **chữ thẻ không bị cắt mép**: khi camera cận vào thẻ tư liệu, mọi chữ của thẻ còn trọn trong khung; thẻ đã viết xong ở cuối câu;
+    - **nhịp không rối**: các thay đổi cách nhau vừa phải, dấu không chồng thành mớ, camera không giật qua lại; máy quay về toàn cảnh trước chỗ chuyển câu, không
+      kéo hình cận sang câu sau; dấu/hình vẽ/số nằm trong vùng không bị TikTok/Reels/Shorts che.
+    Lỗi của câu có nhịp thì `agent` là `"shots"`. Ghi vào `review.md`: các câu có nhịp, số nhịp mỗi câu, các câu rơi về kiểu cũ.
+11. Liệt kê mọi `note` khác rỗng trong `script.vi.json` (lời Việt khác lời Anh và lý do), và toàn bộ `visuals.json`
    (mỗi chỗ vá: câu, chữ cũ → chữ mới; mỗi hình tư liệu: câu, loại, `source`, `accessed`, `note`).
 
 Giữ ngữ cảnh gọn (mỗi lượt đọc lại toàn bộ): lệnh Python/Bash chỉ in kết luận và con số (thời điểm lỗi, số đo), không in dữ liệu thô,
@@ -74,6 +85,7 @@ Ghi `RUN/review.md` bằng tiếng Việt: kết luận một dòng (Đạt / C�
 Ghi thêm `RUN/review.json` (`vshort auto` đọc file này để giao việc sửa):
 `{"verdict": "Đạt" | "Cần sửa", "findings": [{"agent": "...", "ids": [số câu], "at": "mm:ss", "what": "lỗi, một câu"}]}`.
 `agent` là ai sửa được lỗi đó: `"motion"` (hình động: `motion.json`, `motion.bind.json`, hình mới), `"visuals"` (chỗ vá chữ, hình tư liệu: `visuals.json`),
+`"shots"` (nhịp hình của câu có nhịp: dấu lệch vật, cận quá sát hay mờ, chữ thẻ cắt mép, nhịp rối: `shots.json`),
 `"translator"` (lời Việt/phụ đề sai nghĩa, nói quá so với brief), `"none"` (chỉ người sửa được, vd. hình NotebookLM sai mà không vá được).
 Chỉ ghi lỗi cần sửa; "Đạt" thì `findings` rỗng.
 Trả về: kết luận và tối đa 5 phát hiện quan trọng nhất.

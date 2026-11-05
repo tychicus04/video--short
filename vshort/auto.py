@@ -2,6 +2,7 @@
 judgement steps are vs-* agents called with `claude -p`. Every call's cost goes to RUN/cost.json."""
 import json
 import os
+import re
 import shutil
 import subprocess
 import threading
@@ -16,7 +17,7 @@ from vshort.run import Run
 ROOT = Path(__file__).resolve().parent.parent  # agents run here: Sonnet session, advisor off, `model:` of the agent
 CLAUDE = ["claude"]
 TIMEOUT = {"vs-researcher": 1800, "vs-transcriber": 900, "vs-translator": 1200, "vs-motion": 2400, "vs-visuals": 2400,
-           "vs-reviewer": 3600}  # seconds
+           "vs-nhip": 1800, "vs-reviewer": 3600}  # seconds
 
 
 GIT_TIMEOUT = 120  # seconds per git call: a hung network must not keep a finished video "running"
@@ -147,6 +148,8 @@ MOTION_BIND = ("Việc 2 — gắn nhịp vào lời. RUN={run}\n\nĐọc {run}/
                "{run}/motion.bind.json. Chạy `vshort motion {run}` tới khi mã 0.")
 VISUALS = ("RUN={run}\n\nĐọc {run}/motion.bind.json (lines) để biết câu nào đã có hình động (đừng chọn tư liệu cho các câu đó), "
            "{run}/sources.md (nguồn tư liệu thật) và {run}/brief.vi.md (mục \"Lưu ý độ chính xác\") khi vá chữ.")
+NHIP = ("RUN={run}\n\nChạy `vshort shots {run} --prep`, đọc {run}/shots/phrases.txt, rồi làm nhịp hình như hướng dẫn; "
+        "tự chạy `vshort shots {run}` tới khi mã 0.")
 COVER = ("Việc riêng: chọn ảnh đại diện, viết tiêu đề đăng và prompt ảnh bìa cho video, không làm gì khác (không tạo notebook, không nạp "
          "nguồn, không sửa brief). RUN={run}. Chạy `vshort cover {run} --candidates`: nó tải ảnh đầu bài (og:image) của các "
          "nguồn trong {run}/sources.md, ghép thành {run}/cover/sheet.jpg có đánh số. Xem ảnh đó, {run}/brief.vi.md và "
@@ -187,6 +190,7 @@ FIX_HOW = {
     "motion": ("Sửa motion.json và/hoặc motion.bind.json; được thêm hình mới vào RUN/shapes/, không sửa hình đã có trong "
                "thư viện; tự chạy `vshort motion` tới khi mã 0."),
     "visuals": "Sửa visuals.json rồi tự chạy `vshort visuals` tới khi mã 0.",
+    "shots": "Sửa shots.json rồi tự chạy `vshort shots` tới khi mã 0.",
     "translator": ("Ghi bản sửa vào {run}/script.proposed.json (cùng dạng script.vi.json, sửa cả `note`); "
                    "KHÔNG sửa script.vi.json — Tai duyệt bản đề xuất trước."),
 }
@@ -307,7 +311,7 @@ def read_review(run: Run) -> dict:
         rev = run.read("review.json")
         assert rev["verdict"] in ("Đạt", "Cần sửa") and isinstance(rev["findings"], list)
         for f in rev["findings"]:
-            assert f["agent"] in ("motion", "visuals", "translator", "none")
+            assert f["agent"] in ("motion", "visuals", "translator", "shots", "none")
             assert isinstance(f["what"], str) and isinstance(f.get("ids", []), list)
     except (OSError, ValueError, KeyError, TypeError, AssertionError):
         raise AgentError(f"review.json không đọc được (thiếu hoặc sai dạng) — xem {run.path}/review.md") from None
@@ -323,11 +327,10 @@ def _fix(run: Run, r: int, todo: list[dict]) -> None:
     """Round r's fixes; each agent step is marked, so a run that died midway redoes only what is left."""
     from vshort.cli import WAIT_SCRIPT
     p = run.path
-    by = {a: [f for f in todo if f["agent"] == a] for a in ("motion", "visuals", "translator")}
-    for agent in ("motion", "visuals"):
+    by = {a: [f for f in todo if f["agent"] == a] for a in ("motion", "visuals", "shots", "translator")}
+    for agent, redo in (("motion", _motion), ("visuals", _visuals), ("shots", _shots)):  # the beats last: they stand on the rest
         if by[agent]:
-            prompt = FIX.format(run=p, agent=agent, items=_items(by[agent]), how=FIX_HOW[agent])
-            (_motion if agent == "motion" else _visuals)(run, prompt, step=f"fix{r}_{agent}")
+            redo(run, FIX.format(run=p, agent=agent, items=_items(by[agent]), how=FIX_HOW[agent]), step=f"fix{r}_{agent}")
             run.unmark("render")
     if by["translator"]:
         if not run.done(f"fix{r}_translator"):
@@ -338,7 +341,7 @@ def _fix(run: Run, r: int, todo: list[dict]) -> None:
                 raise AgentError("vs-translator không ghi script.proposed.json khi sửa theo review")
             run.mark(f"fix{r}_translator")
         # the voice, stills (a line may no longer be empty), visuals and the motion check all follow the words
-        run.unmark("approve_script", "tts", "timeline", "render", "motion", "motion_bind", "stills", "visuals")
+        run.unmark("approve_script", "tts", "timeline", "shots", "render", "motion", "motion_bind", "stills", "visuals")
         run.mark(f"fixed{r}")  # what is left (read the voice again, render) happens once Tai approves
         raise Stop(WAIT_SCRIPT, _proposal(run), "wait_script")
     _render(run)
@@ -424,6 +427,7 @@ def _finish(run: Run, rev: dict, rounds: int) -> None:
     else:
         out.append("Hình động: không có" + (" (motion.json không qua kiểm, xem motion.loi.json)"
                                              if run.file("motion.loi.json").exists() else ""))
+    out.append(_shots_note(run))
     fx = run.read("sfx.json") if run.file("sfx.json").exists() else []
     out.append("Hiệu ứng âm thanh: " + (", ".join(f"{c['name']} {c['at']:.1f} s" for c in fx) or "không có"))
     out.append(publish_shapes(run))
@@ -443,6 +447,24 @@ def _finish(run: Run, rev: dict, rounds: int) -> None:
     if total > BUDGET:
         out.append(f"Vượt ngân sách ${BUDGET:.0f}.")
     set_state(run, "done", "\n".join(out))
+
+
+def _shots_note(run: Run) -> str:
+    """The final message's line on the beat plan: the lines that follow it, and those allowed beats that fell back to the
+    old camera (`vshort shots --prep` listed the allowed ones in shots/phrases.txt); else why there are none."""
+    try:
+        planned = sorted(int(i) for i in run.read("shots/ok.json")["lines"])
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):  # no verdicts, or not what `vshort shots` writes
+        planned = []
+    if not planned:
+        return "Nhịp hình: không có (" + ("không câu nào qua `vshort shots`; chạy lại để xem lỗi" if run.file("shots.json").exists()
+                                           else "thiếu shots.json: agent lỗi hoặc chưa ghi kế hoạch") + ")"
+    try:
+        allowed = [int(m[1]) for m in re.finditer(r"^câu (\d+) \(", run.file("shots/phrases.txt").read_text(encoding="utf-8"), re.M)]
+    except OSError:
+        allowed = []
+    old = [i for i in allowed if i not in planned]
+    return f"Nhịp hình: câu {', '.join(map(str, planned))}" + (f" (kiểu cũ: câu {', '.join(map(str, old))})" if old else "")
 
 
 def _no_motion(run: Run) -> None:
@@ -548,6 +570,28 @@ def _visuals(run: Run, prompt: str, step: str = "visuals_agent") -> None:
         raise Stop(code, f"`vshort visuals` lỗi cả khi không có tư liệu (mã {code}); xem auto.log")
 
 
+def _check_shots(run: Run) -> None:
+    """`vshort shots` over the agent's plan: it writes shots/ok.json with the lines that pass, whatever the exit code says;
+    the lines that don't render on the old camera, so no code stops the video."""
+    run_vshort(["shots", str(run.path)])
+    run.mark("shots")  # ends the step's time (run_vshort started it); the check itself is what is done
+
+
+def _shots(run: Run, prompt: str, step: str = "shots_agent") -> None:
+    """The beat plan by the agent. A failed agent or a plan that does not pass never stops the video: the lines that
+    pass follow their beats, the rest (all of them, with no plan) keep the old camera."""
+    if not run.done(step):
+        if run_vshort(["shots", str(run.path), "--prep"]):  # nothing to plan from (no frames, a broken card): don't pay an agent
+            print("Nhịp hình: chưa chuẩn bị được dữ liệu (`vshort shots --prep` lỗi); video dùng camera cũ.", flush=True)
+        else:
+            try:
+                run_claude(run, step, "vs-nhip", prompt, TIMEOUT["vs-nhip"])
+            except AgentError as e:
+                print(f"Nhịp hình: {e}; video dùng camera cũ cho các câu chưa có nhịp.", flush=True)
+        run.mark(step)
+    _check_shots(run)
+
+
 def _tts_result(run: Run, code: int) -> None:
     from vshort.cli import QUOTA
     if code == QUOTA:
@@ -559,6 +603,7 @@ def _tts_result(run: Run, code: int) -> None:
 def _render(run: Run) -> None:
     if not run.done("render"):
         if run_vshort(["render", str(run.path)]) == 2:
+            _check_shots(run)  # the plan may only be stale (the script, pictures or voice changed since): ok.json for what is now
             # as the skill did: check motion again (it may only be stale), drop it only if it no longer passes
             if run_vshort(["motion", str(run.path)]):
                 _no_motion(run)
@@ -582,6 +627,8 @@ def _build(run: Run) -> None:
             run.unmark("tts")
             _tts_result(run, run_vshort(["tts", p]))
             _vs(run, "timeline")
+    if not run.done("shots") and not run.done("render"):  # a video rendered before this step existed: no plan to pay for
+        _shots(run, NHIP.format(run=p))
     _render(run)
 
 

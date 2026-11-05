@@ -16,7 +16,7 @@ STAGES = [
     ("translate", "Dịch", "Dịch sát sang tiếng Việt, chia cụm phụ đề, tự kiểm"),
     ("approve", "Duyệt bản dịch", "Máy dừng ở đây chờ bạn đọc và duyệt"),
     ("build", "Giọng đọc và hình", "Gemini đọc, hình động, ảnh tĩnh, tư liệu thật"),
-    ("render", "Dựng video", "Ghép giọng, hình, phụ đề, outro"),
+    ("render", "Dựng video", "Nhịp hình, ghép giọng, hình, phụ đề, outro"),
     ("review", "Soát và sửa", "Xem từng khung, sửa tối đa 2 vòng"),
     ("cover", "Ảnh bìa và xuất", "Tiêu đề đăng, ảnh bìa, prompt Gemini, kéo về Mac"),
 ]
@@ -29,13 +29,13 @@ STEPS_OF = {
     "translate": ("translate",),
     "approve": ("approve_script",),
     "build": ("plates", "motion", "motion_bind", "stills", "visuals", "visuals_agent", "tts"),
-    "render": ("timeline", "render"),
+    "render": ("timeline", "shots_agent", "shots", "render"),
     "review": (),  # review0, fix1_motion, fixed1, review1… (_REVIEW)
     "cover": ("cover",),
 }
 # seconds; guessed from cost.json of earlier runs and by hand, until five finished runs have times.json
 DEFAULT_SECONDS = {"research": 480, "brief": 300, "notebooklm": 900, "subtitles": 180, "translate": 240, "approve": 0,
-                   "build": 540, "render": 180, "review": 720, "cover": 60}
+                   "build": 540, "render": 600, "review": 720, "cover": 60}
 FLOOR = 60  # the least time left a running stage shows: never "0 phút" nor less than nothing
 HISTORY = 5  # finished runs the typical time is the median of
 # the canvas agent starts with NotebookLM and often outlives the translation: shown under NotebookLM, but neither
@@ -43,9 +43,10 @@ HISTORY = 5  # finished runs the typical time is the median of
 SIDE = {"motion_design"}
 _REVIEW = re.compile(r"(review|fix|fixed)\d.*")
 _ROUND = re.compile(r"fix(\d+)_")
-WHAT_FIX = {"motion": "hình động", "visuals": "tư liệu", "translator": "bản dịch"}
+WHAT_FIX = {"motion": "hình động", "visuals": "tư liệu", "shots": "nhịp hình", "translator": "bản dịch"}
 LABELS = {"brief_check": "Agent soát brief", "motion_design": "Vẽ hình động từ brief",
-          "motion_bind": "Gắn hình động vào lời", "visuals_agent": "Chọn tư liệu thật", "cover": "Ảnh bìa, tiêu đề, xuất"}
+          "motion_bind": "Gắn hình động vào lời", "visuals_agent": "Chọn tư liệu thật", "shots_agent": "Lên nhịp hình",
+          "cover": "Ảnh bìa, tiêu đề, xuất"}
 
 
 def stage_of(step: str) -> str | None:
