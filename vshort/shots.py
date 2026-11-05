@@ -1,5 +1,6 @@
 """Nhịp hình: a change every ~2 s on stills and reference cards, each tied to the words being said.
 The beat plan (RUN/shots.json): its schema, the time of each beat and the camera that snaps to each focus."""
+import re
 from dataclasses import dataclass
 from typing import Callable
 
@@ -50,6 +51,11 @@ def _secs(x: float) -> str:
     return f"{x:.2f}".replace(".", ",")
 
 
+def _said(text: str, said: str) -> bool:
+    """`text` is in `said` as whole words: "202" is not in "2024", nor "5" in "5,5"."""
+    return re.search(rf"(?<!\w)(?<!\d[.,]){re.escape(text)}(?!\w)(?![.,]\d)", said) is not None
+
+
 def _box_problems(what: str, box) -> list[str]:
     W, H, *_ = _frame()
     if not (isinstance(box, (list, tuple)) and len(box) == 4 and all(_int(v) for v in box)):
@@ -92,7 +98,7 @@ def _beat_problems(row: dict, n: int, said: str, doodle_ok: Callable[[str], bool
                 probs.append("pop text phải là chữ, không rỗng")
             elif len(text) > MAX_POP_LEN:
                 probs.append(f"pop text {text!r} dài {len(text)} ký tự, tối đa {MAX_POP_LEN} ký tự")
-            elif text not in said:
+            elif not _said(text, said):
                 probs.append(f"pop text {text!r} không có nguyên văn trong lời Việt của câu")
     return probs
 

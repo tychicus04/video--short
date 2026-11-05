@@ -7,7 +7,7 @@ from vshort.shots import (CREEP, KEEP, LEAD, SNAP, Beat, beats, camera_at, chang
 
 SCRIPT = [
     {"id": 3, "phrases": "Máy chủ của bạn | ở *Hà Nội* | năm 2024"},
-    {"id": 4, "phrases": "Xác thực Authenticated | an toàn hơn"},
+    {"id": 4, "phrases": "Xác thực Authenticated | mã hóa Cryptography an toàn hơn 5,5 lần"},
 ]
 POP = {"text": "Hà Nội", "box": [100, 200, 300, 280]}
 MARK = {"shape": "circle", "box": [100, 300, 400, 500]}
@@ -40,7 +40,7 @@ def test_a_good_plan_passes():
         {"focus": list(FOCUS), "mark": MARK},
         {"phrase": 2, "at": 0.5, "focus": None, "pop": POP},
         {"phrase": 3, "doodle": {"shape": "internet", "box": [500, 200, 700, 400]}, "pop": {"text": "bạn ở", "box": POP["box"]}},
-    ], "4": [{"pop": {"text": "Authenticate", "box": POP["box"]}}]}  # 12 characters: the longest allowed
+    ], "4": [{"pop": {"text": "Cryptography", "box": POP["box"]}}]}  # a whole word of 12 characters: the longest allowed
     assert check(plan) == []
 
 
@@ -53,13 +53,18 @@ def test_a_good_plan_passes():
     ({"3": [{"doodle": {"shape": "no-such-shape", "box": MARK["box"]}}]}, "thư viện"),
     ({"3": [{"pop": {"text": "Bắc Kinh", "box": POP["box"]}}]}, "nguyên văn"),
     ({"4": [{"pop": {"text": "Authenticated", "box": POP["box"]}}]}, "12 ký tự"),
+    ({"3": [{"pop": {"text": "202", "box": POP["box"]}}]}, "nguyên văn"),  # a pop never cuts a number or a word short
+    ({"4": [{"pop": {"text": "Authenticate", "box": POP["box"]}}]}, "nguyên văn"),
+    ({"3": [{"pop": {"text": "Hà Nộ", "box": POP["box"]}}]}, "nguyên văn"),
+    ({"3": [{"pop": {"text": "ủ c", "box": POP["box"]}}]}, "nguyên văn"),
+    ({"4": [{"pop": {"text": "5", "box": POP["box"]}}]}, "nguyên văn"),  # "5,5" is one number
     ({"3": [{}]}, "ít nhất một"),
     ({"9": [{"focus": None}]}, "không thuộc các câu"),
     ({"3": [{"phrase": 2, "focus": None}, {"phrase": 1, "focus": None}]}, "tăng dần"),
     ({"3": [{"phrase": 1 + i // 2, "at": i % 2 * 0.5, "pop": {"text": t, "box": POP["box"]}}
             for i, t in enumerate(["Máy chủ", "Hà Nội", "2024", "bạn"])]}, "tối đa"),
 ], ids=["phrase-0", "phrase-too-big", "at", "box-reversed", "shape", "doodle", "pop-not-said", "pop-13-chars",
-        "empty-beat", "id-not-allowed", "descending", "four-pops"])
+        "pop-cut-number", "pop-cut-word", "pop-cut-last-word", "pop-inside-two-words", "pop-cut-decimal", "empty-beat", "id-not-allowed", "descending", "four-pops"])
 def test_schema_rejects_each_bad_field(doc, word):
     probs = check(doc)
     assert len(probs) == 1 and word in probs[0] and probs[0].startswith("shots.json câu ")
