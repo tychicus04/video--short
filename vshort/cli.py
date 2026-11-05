@@ -267,6 +267,7 @@ def cmd_motion(a) -> int:
         brief = run.file("brief.vi.md")
         said = motion.brief_words(brief.read_text(encoding="utf-8")) if brief.exists() else set()
         probs += motion.design_problems(doc, said, run.path)
+        probs += [] if probs else motion.ui_problems(doc)  # not in `vshort render`: older canvases still render
     elif isinstance(doc, dict) and "scenes" in doc:
         probs.append(motion.OLD)
     else:
@@ -283,6 +284,7 @@ def cmd_motion(a) -> int:
             refs = None  # `vshort visuals` reports a broken visuals.json itself
         script = run.read("script.vi.json")
         probs += motion.bind_problems(doc, bind, script, run.path, refs if isinstance(refs, list) else None)
+        probs += [] if probs else motion.ui_problems(motion.bound(doc, bind))  # the bind's labels may be longer
     for p in probs:
         _err(p)
     if probs:

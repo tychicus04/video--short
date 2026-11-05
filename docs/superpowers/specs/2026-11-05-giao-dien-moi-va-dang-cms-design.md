@@ -266,9 +266,19 @@ Khối video trong nội dung của bài mẫu (bỏ link):
    4. tạo bài (`articles_create`);
    5. viết lời mạng xã hội cho từng nền tảng (`articles_transform_preview`);
    6. đề xuất (`propose_zernio_post`, kèm video và `articleId`).
-3. **Không bao giờ tạo bài trùng.** `cms.json` đã có `article_id` thì lần bấm sau gọi `articles_update` cho bài đó, cùng khuôn.
-   Không bao giờ gọi `articles_create` lần hai. Đề xuất mạng xã hội đã có thì không đề xuất lại. Lần bấm lại tải lại các file đã
-   đổi, ví dụ ảnh Gemini mới hay video dựng lại.
+3. **Không bao giờ tạo bài trùng.** `cms.json` đã có `article_id` thì không bao giờ tự gọi `articles_create` lần hai.
+   *(Quyết định của tôi, sau buổi soát:)* lần bấm sau phải an toàn với bài Tai đã động vào:
+   1. Trước hết đọc trạng thái hiện tại của bài trên CMS.
+   2. **Bài còn ở chặng PRIVATE:** chỉ thay **ảnh đại diện và khối video**, và chỉ khi file đã đổi (ảnh Gemini mới, video dựng lại).
+      Gửi lại `workflow_id` hiện có của bài. **Không đụng** tiêu đề, sapo, từ khóa, chuyên mục, vì Tai có thể đã sửa trong CMS.
+   3. **Bài đã sang chặng khác** (đã gửi duyệt, đã xuất bản…): không ghi gì. Chỉ hiện trạng thái và link mở bài, ghi "bài đã rời
+      luồng cá nhân, sửa trong CMS".
+      - Tuyệt đối không gửi `workflow_id` PRIVATE cho bài đã xuất bản: làm vậy là kéo bài đang đọc được về lại nháp.
+      - Không gửi gì cần OTP.
+   4. **Bài đã bị xóa** (CMS báo không tìm thấy): hiện rõ điều đó, kèm nút riêng "Tạo bài mới", có hỏi xác nhận. Nút này xóa
+      `article_id` cũ trong `cms.json` rồi tạo lại. Đây là cách duy nhất để có `articles_create` lần hai.
+   5. **Đề xuất mạng xã hội đã có:** không đề xuất lại. Nếu video đã dựng lại sau lúc đề xuất, hiện cảnh báo "đề xuất mạng xã hội
+      đang dùng video cũ, sửa trong CMS".
 4. Trang hiện từng việc kèm dấu xong hoặc lỗi. Khi xong, trang hiện mã bài, link mở bài trong CMS
    (`https://cms.tapchianninhmang.vn/article/edit/personal/1/<id>`) và trạng thái đề xuất mạng xã hội.
 5. Lỗi thì hiện lý do bằng tiếng Việt, kèm nút thử lại. Nút thử lại làm tiếp từ việc hỏng.

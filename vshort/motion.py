@@ -11,7 +11,7 @@ from PIL import Image, ImageDraw, ImageFont
 from vshort import kit, shapes
 from vshort.fit import GAP, LEAD, Placement, phrase_fracs
 from vshort.script import syllables
-from vshort.textfit import FONTS
+from vshort.textfit import FONTS, UI_RIGHT, UI_RIGHT_FROM, UI_TOP
 from vshort.visuals import SAFE_TLDS, _int, _strip_marks
 
 # syllables any label may use besides the narration's own words
@@ -78,6 +78,32 @@ def _words(text: str) -> list[str]:
 def _inside(box) -> bool:
     x0, y0, x1, y1 = kit.SAFE
     return box[0] >= x0 and box[1] >= y0 and box[2] <= x1 and box[3] <= y1
+
+
+UI = (f"chỗ TikTok/Reels/Shorts in đè lên khung (dải trên y < {UI_TOP}; cột nút x > {UI_RIGHT} từ y {UI_RIGHT_FROM} "
+      "trở xuống)")
+
+
+def _under_ui(box) -> bool:
+    return box[1] < UI_TOP or (box[2] > UI_RIGHT and box[3] > UI_RIGHT_FROM)
+
+
+def ui_problems(doc: dict) -> list[str]:
+    """Things, labels included, and mover stops the platforms would draw over, on a canvas that passes its other checks.
+
+    Only `vshort motion` asks, so a canvas designed before this rule (05/11/2026) still renders.
+    """
+    things = {th["id"]: th for th in doc["things"]}
+    probs = [f"thing {i!r}: lấn vào {UI} (khung {[round(v) for v in kit.bbox(th)]})"
+             for i, th in things.items() if _under_ui(kit.bbox(th))]
+    for k, beat in enumerate(doc["beats"], 1):
+        for a in beat.get("acts", []):
+            th = things[a["thing"]]
+            if a["do"] in ("move", "bounce") and th["kind"] in kit.MOVERS:
+                ends = [a["to"]] if "to" in a else things[a["path"]]["points"]
+                if any(_under_ui(kit.bbox({**th, "xy": p})) for p in ends):
+                    probs.append(f"nhịp {k}: {a['thing']!r} đi vào {UI}")
+    return probs
 
 
 def _text_problems(what: str, text, said: set[str]) -> list[str]:
