@@ -47,7 +47,7 @@ def _num(v) -> bool:
 
 
 def _secs(x: float) -> str:
-    return f"{x:.1f}".replace(".", ",")
+    return f"{x:.2f}".replace(".", ",")
 
 
 def _box_problems(what: str, box) -> list[str]:
