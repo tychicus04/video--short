@@ -320,7 +320,16 @@ def test_planned_line_snaps_to_focus():
 def test_planned_line_leaves_the_rotation_of_the_others_alone():
     plain = _kinds(["s0", "s1", "s2"])
     assert _kinds(["s0", "n2", "s1", "s2"]) == [plain[0], -1, plain[1], plain[2]]
-    assert _kinds(["s0", "v1", "n2", "s3", "v4"]) == _kinds(["s0", "v1", "m2", "s3", "v4"])  # a planned line is like an animated one
+
+
+def test_a_planned_line_is_not_in_the_rotation_at_all():
+    # NotebookLM groups are scene ids: lines 4-8 of one scene are one shot, and a planned line in the middle splits it
+    k = _kinds(["s2", "v9", "s2"])
+    assert _kinds(["s2", "n4", "s2", "v9", "s2"]) == [k[0], -1, k[0], k[1], k[2]]  # the halves are one entry, no turn is spent
+    k = _kinds(["s0", "v1", "s2", "s3"])  # s2 skips the move the reference before it made, planned line or not
+    assert _kinds(["s0", "v1", "n2", "s2", "s3"]) == k[:2] + [-1] + k[2:]
+    assert _kinds(["n0", "s1", "n2", "n3", "s1", "v4"]) == [-1] + _kinds(["s1", "v4"])[:1] + [-1, -1] + _kinds(["s1", "v4"])
+    assert _kinds(["s2", "m0", "s2"]) == [0, -1, 1]  # an animated line between is a real cut: two shots
 
 
 def test_a_segment_with_a_plan_can_still_be_hashed_and_compared():
@@ -364,6 +373,7 @@ def test_render_with_shots_draws_the_mark(tmp_path):
     plan = (Beat(1.5, KEEP, {"shape": "circle", "box": [200, 500, 520, 600]}, None, None),)  # starts to draw at 1.3 s
     planned, plain = _line(tmp_path, plan), _line(tmp_path, plan, planned=False)
     assert _ink(planned, 1.0) == _ink(plain, 1.0) == 0  # before its time the mark is not there
+    assert np.abs(frame_at(planned, 1.0).astype(int) - frame_at(plain, 1.0)).max() < 8  # the frame is the unplanned one
     assert _ink(planned, 2.6) > 200 and _ink(plain, 2.6) == 0  # drawn round the box, and only in the planned video
 
 

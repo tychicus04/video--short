@@ -214,12 +214,19 @@ def _kinds(groups: list[str]) -> list[int]:
 
     Stills rotate through the four, skipping the move the shot before them made. References only zoom (a pan at ZOOM
     shows 667 of 720 px and would cut their credit line): opposite to the shot before, or to the last reference
-    when that shot panned. Animated shots have no camera and a planned line (n) has its own: both leave the rotation alone.
+    when that shot panned. Animated shots have no camera and leave the rotation alone. A planned line (n) has a camera of
+    its own and is not in the rotation at all: the others get the moves they would if it were not there, and the two
+    halves of a shot it splits (lines of one scene, `s2 n4 s2`) are one entry of it.
     """
-    kinds, turn, last_ref = [], 0, 1
+    kinds, turn, last_ref, shot = [], 0, 1, None  # shot: (group, kind) of the last entry that is not a planned line
     for g in groups:
-        prev = kinds[-1] if kinds else None
-        if g.startswith(("m", "n")):
+        if g.startswith("n"):
+            kinds.append(-1)
+            continue
+        prev = shot[1] if shot else None
+        if shot and g == shot[0]:
+            k = prev
+        elif g.startswith("m"):
             k = -1
         elif g.startswith("v"):
             k = last_ref = 1 - (prev if prev in (0, 1) else last_ref)
@@ -230,6 +237,7 @@ def _kinds(groups: list[str]) -> list[int]:
                 k = turn % 4
                 turn += 1
         kinds.append(k)
+        shot = g, k
     return kinds
 
 
