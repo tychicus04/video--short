@@ -241,13 +241,19 @@ def _kinds(groups: list[str]) -> list[int]:
     return kinds
 
 
+def planned_camera(bs: list[shots.Beat], t: float, start: float, end: float, cap: float) -> tuple[float, float, float]:
+    """(scale, cx, cy) of a line from `start` to `end` that follows its beats `bs`: it is back on the wide shot when the
+    crossfade to the next line starts. The render and `vshort shots` both ask here, so the checks see what is rendered."""
+    return shots.camera_at(bs, t, start - XF / 2, cap, wide_by=end - XF / 2)
+
+
 def _camera(segs: list[Segment], k: int, t: float) -> tuple[float, float, float]:
     """(scale, cx, cy) of the shot segment k belongs to: window centre in frame pixels, linear in time over the shot.
 
     A shot under 3 s moves proportionally less, so it never rushes. A planned line follows its beats instead.
     """
     if segs[k].plan is not None:
-        return shots.camera_at(segs[k].plan, t, segs[k].start - XF / 2, segs[k].cap)
+        return planned_camera(segs[k].plan, t, segs[k].start, segs[k].end, segs[k].cap)
     lo = hi = k
     while lo and segs[lo - 1].group == segs[k].group:
         lo -= 1

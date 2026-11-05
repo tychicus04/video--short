@@ -151,6 +151,26 @@ def test_a_snap_that_starts_before_the_last_one_ended_is_continuous():
         assert camera_at(bs, t - 1e-9, 4.0, 1.5) == pytest.approx(camera_at(bs, t + 1e-9, 4.0, 1.5), abs=1e-4)
 
 
+def test_wide_by_pulls_the_camera_back_to_the_wide_shot_before_the_crossfade():
+    bs, wide = [beat(5.0, focus=FOCUS)], 9.6  # the framing has been held (creeping) for a good while by then
+    held = lambda t: camera_at(bs, t, 4.0, 1.5)
+    pull = lambda t: camera_at(bs, t, 4.0, 1.5, wide_by=wide)
+    assert pull(wide - SNAP - 0.01) == held(wide - SNAP - 0.01)  # until it starts it is the framing the beats made
+    assert pull(wide - SNAP) == pytest.approx(held(wide - SNAP))  # and starts from wherever the camera is
+    assert held(wide)[0] > 1.3 and MIN_ZOOM < pull(wide - SNAP / 2)[0] < held(wide - SNAP / 2)[0]  # on its way
+    for t in (wide, wide + 0.2, wide + 0.4, wide + 5):
+        assert pull(t) == pytest.approx((MIN_ZOOM, W / 2, H / 2)) and pull(t) == pull(wide)  # wide at the cut, and no creep after
+
+
+def test_the_pull_back_waits_for_the_last_focus_to_arrive():
+    bs, wide = [beat(9.5, focus=FOCUS)], 9.6  # its snap ends at 9.55, after wide_by - SNAP = 9.35
+    want = frame_box(FOCUS, 1.5)
+    assert camera_at(bs, 9.55, 4.0, 1.5, wide_by=wide) == pytest.approx(want)  # it gets there, then goes back
+    assert camera_at(bs, 9.55 - 1e-9, 4.0, 1.5, wide_by=wide) == pytest.approx(camera_at(bs, 9.55 + 1e-9, 4.0, 1.5, wide_by=wide), abs=1e-4)
+    assert camera_at(bs, 9.55 + SNAP, 4.0, 1.5, wide_by=wide) == pytest.approx((MIN_ZOOM, W / 2, H / 2))
+    assert camera_at([beat(5.0, mark=MARK)], 9.6, 4.0, 1.5, wide_by=wide) == pytest.approx((MIN_ZOOM, W / 2, H / 2))  # no focus at all
+
+
 # ---- pencil marks, doodles, pops and their picture checks ----
 
 BOXES = {"middle": [250, 500, 470, 700], "edge": [0, 0, 120, 90], "far corner": [600, 1190, 720, 1280]}

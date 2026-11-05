@@ -523,7 +523,7 @@ def _shots_line(run: Run, w: _ShotLines, i: int, rows: list[dict]):
         return [f"shots.json câu {i}: không đọc/vẽ được {w.cards.get(i, seg.file).name}: {e}"], None
 
     def cam(t):
-        return shots.camera_at(bs, t, seg.start - render.XF / 2, cap)
+        return render.planned_camera(bs, t, seg.start, seg.end, cap)
 
     probs = shots.gap_problems(i, seg.start, seg.end, shots.changes(bs, [q.t0 for q in pieces]))
     probs += shots.image_problems(i, bs, final, cam, run.path, end=seg.end, ref=ref)

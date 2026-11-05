@@ -204,10 +204,19 @@ def _cam(moves: list[tuple[float, tuple[float, float, float]]], t: float, start:
     return a[0] * (to[0] / a[0]) ** u, a[1] + (to[1] - a[1]) * u, a[2] + (to[2] - a[2]) * u  # zoom by ratio, centre straight
 
 
-def camera_at(bs: list[Beat], t: float, start: float, cap: float) -> tuple[float, float, float]:
+def camera_at(bs: list[Beat], t: float, start: float, cap: float, *, wide_by: float | None = None) -> tuple[float, float, float]:
     """(scale, cx, cy) at t of a line that starts at `start` on the wide shot: each beat with a focus snaps to it LEAD
-    before its word, over SNAP; a beat without one holds the framing."""
-    return _cam([(b.t - LEAD, frame_box(b.focus, cap)) for b in bs if b.focus is not KEEP and b.t - LEAD <= t], t, start, cap)
+    before its word, over SNAP; a beat without one holds the framing. With `wide_by` the camera is back on the wide shot
+    by then (the line's crossfade out starts: a tight framing held into the next picture would show it twice): one more
+    move, begun SNAP before it or when the last focus has arrived, whichever is later, and it does not creep after."""
+    moves = [(b.t - LEAD, frame_box(b.focus, cap)) for b in bs if b.focus is not KEEP and b.t - LEAD <= t]
+    if wide_by is not None:
+        back = max([wide_by - SNAP] + [b.t - LEAD + SNAP for b in bs if b.focus is not KEEP])
+        if t >= back + SNAP:
+            return frame_box(None, cap)
+        if t >= back:
+            moves.append((back, frame_box(None, cap)))
+    return _cam(moves, t, start, cap)
 
 
 def changes(bs: list[Beat], extra: list[float]) -> list[float]:

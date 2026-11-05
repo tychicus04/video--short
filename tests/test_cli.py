@@ -1051,3 +1051,14 @@ def shots_beats(rows, i):
     from vshort.fit import Placement
     start, dur = SHOT_AT[i]
     return shots.beats(rows, SHOT_SAY[i], Placement(i, start, dur))
+
+
+def test_shots_judges_the_camera_that_pulls_back_before_the_cut(tmp_path, capsys):
+    _shots_run(tmp_path)
+    plan = {"1": [{"phrase": 1, "focus": [100, 300, 500, 500]},
+                  {"phrase": 2, "mark": {"shape": "tick", "box": [150, 350, 450, 450]}},
+                  # on the screen at the focus (1.5x) this circle clears the phone's top bar; on the wide shot it does not
+                  {"phrase": 3, "mark": {"shape": "circle", "box": [160, 150, 440, 330]}}]}
+    code, out = _shots(tmp_path, plan, capsys)
+    assert code == 2 and "câu 1 nhịp 3" in out.err and "thanh trên" in out.err  # covered only once the camera is back
+    assert list(_ok_lines(tmp_path)) == []

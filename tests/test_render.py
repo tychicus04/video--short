@@ -332,6 +332,17 @@ def test_a_planned_line_is_not_in_the_rotation_at_all():
     assert _kinds(["s2", "m0", "s2"]) == [0, -1, 1]  # an animated line between is a real cut: two shots
 
 
+def test_a_planned_line_is_back_on_the_wide_shot_when_the_crossfade_out_starts():
+    # the reviewer's probe: one scene, the planned line in the middle ends on a tight focus; its neighbours start at 1.01
+    beat = Beat(4.0, (200, 400, 500, 700), None, None, None)
+    segs = [Segment(1, 0, 3, Path("f.png"), "s0"), Segment(2, 3, 6, Path("f.png"), "n2", None, (beat,)),
+            Segment(3, 6, 9, Path("f.png"), "s0")]
+    for t in (5.81, 5.9, 6.0, 6.1, 6.19):  # the whole crossfade 2 -> 3
+        (a, _, cam_a), (b, _, cam_b) = view(segs, t)
+        assert (a.id, b.id) == (2, 3) and abs(cam_a[0] - cam_b[0]) < 0.06, (t, cam_a, cam_b)
+    assert view(segs, 5.0)[0][2][0] > 1.4  # it did zoom in on the focus, mid-line
+
+
 def test_a_segment_with_a_plan_can_still_be_hashed_and_compared():
     a, b = _planned_seg(Beat(1.0, KEEP, {"shape": "tick", "box": [1, 2, 3, 4]}, None, None)), _planned_seg()
     assert hash(a) == hash(b) and a == b  # Beat holds dicts: the plan is not part of what a Segment is
