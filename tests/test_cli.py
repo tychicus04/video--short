@@ -786,7 +786,8 @@ def test_shots_ok_writes_ok_json_and_sheet(tmp_path, capsys):
     ok = json.loads((tmp_path / "shots" / "ok.json").read_text())
     assert ok["lines"] == plan  # the beats as written, line 4 (no plan) is not there
     assert ok["stamp"] == cli._shots_stamp(Run(tmp_path), [1, 2, 3]) == cli._shots_stamp(Run(tmp_path), ok["lines"])  # ids or its keys
-    assert set(ok["stamp"]) == {"script", "timeline", "frames"}
+    assert set(ok["stamp"]) == {"script", "timeline", "frames", "pictures", "cards", "animated"}
+    assert set(ok["stamp"]["pictures"]) == {"1", "2", "3"} and list(ok["stamp"]["cards"]) == ["3"] and ok["stamp"]["animated"] == []
     assert ok["stamp"]["script"] == {str(i): SHOT_SAY[i] for i in (1, 2, 3)}
     assert [p["id"] for p in ok["stamp"]["timeline"]] == [1, 2, 3] and len(ok["stamp"]["frames"]) == 4
     sheet = Image.open(tmp_path / "shots" / "sheet.png")
@@ -849,6 +850,7 @@ def test_mark_before_the_card_line_is_written_is_refused(tmp_path, capsys, field
     assert code == 2
     (err,) = [e for e in out.err.splitlines() if "câu 3" in e and "dòng chưa viết tới" in e]
     assert "nhịp 2" in err and field in err
+    assert f"({round(text2.t1, 3)} s như shots/reveal.json)" in err and f"({round(8.8, 3)} s như shots/reveal.json)" in err  # the clock of reveal.json
     assert list(_ok_lines(tmp_path)) == ["1", "2"]
     plan["3"][1] = {"phrase": 2, "mark": {"shape": "underline", "box": [round(v) for v in text1.box]}}  # the line that is there
     assert _shots(tmp_path, plan, capsys)[0] == 0
@@ -931,3 +933,51 @@ def test_a_broken_run_shape_is_not_a_doodle_to_draw(tmp_path, capsys):
     code, out = _shots(tmp_path, plan, capsys)
     assert code == 2 and "Traceback" not in out.err and "doodle shape 'rong'" in out.err
     assert list(_ok_lines(tmp_path)) == ["1", "3"]
+
+
+def test_the_stamp_follows_the_pictures_the_cards_and_the_animation(tmp_path):
+    _shots_run(tmp_path)
+    run = Run(tmp_path)
+    stamp = lambda ids=(1, 2, 3): cli._shots_stamp(run, ids)
+    before = stamp()
+    assert before == stamp() == json.loads(json.dumps(before))  # unchanged: equal, also after a round trip through ok.json
+    Image.new("RGB", (720, 1280), (1, 2, 3)).save(tmp_path / "frames" / "1.png")  # a re-patched still or a swapped photo
+    after = stamp()
+    assert after != before and after["pictures"]["1"] != before["pictures"]["1"]
+    assert after["pictures"]["2"] == before["pictures"]["2"] and stamp((2, 3)) == cli._shots_stamp(run, ["2", "3"])
+    assert stamp((2, 3)) != stamp((2,))  # a line's own picture and card are in
+    before = after
+    (tmp_path / "visuals" / "3.svg").write_text(SHOT_CARD.replace("Cập nhật", "Cập nhật lại"), encoding="utf-8")
+    after = stamp()
+    assert after != before and after["cards"]["3"] != before["cards"]["3"] and after["pictures"] == before["pictures"]
+    assert list(after["cards"]) == ["3"] and stamp((1, 2))["cards"] == {}  # which lines are cards
+    before = after
+    (tmp_path / "motion.json").write_text("{}")
+    (tmp_path / "motion.bind.json").write_text('{"lines": [4, 2]}')  # a re-bind that animates lines
+    after = stamp()
+    assert after != before and after["animated"] == [2, 4]
+    (tmp_path / "motion.bind.json").write_text('{"lines": [2, 4, 5]}')
+    assert stamp()["animated"] == [2, 4, 5] != after["animated"]
+
+
+@pytest.mark.parametrize("write", [None, "{oops", "[]"])
+def test_a_plan_that_is_gone_or_unreadable_takes_its_ok_json_with_it(tmp_path, capsys, write):
+    _shots_run(tmp_path)
+    assert _shots(tmp_path, _good_plan(tmp_path), capsys)[0] == 0 and (tmp_path / "shots" / "ok.json").exists()
+    (tmp_path / "shots.json").unlink()
+    if write:
+        (tmp_path / "shots.json").write_text(write)
+    assert main(["shots", str(tmp_path)]) == 2
+    assert not (tmp_path / "shots" / "ok.json").exists()  # render must not go on with the beats of a plan that is not there
+
+
+def test_ok_json_is_written_before_the_sheet_is_drawn(tmp_path, capsys, monkeypatch):
+    _shots_run(tmp_path)
+
+    def boom(lines):
+        raise RuntimeError("sheet")
+
+    monkeypatch.setattr(cli, "_shots_sheet", boom)
+    with pytest.raises(RuntimeError):
+        _shots(tmp_path, _good_plan(tmp_path), capsys)
+    assert list(_ok_lines(tmp_path)) == ["1", "2", "3"]  # the verdicts are not lost with the sheet

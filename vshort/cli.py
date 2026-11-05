@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 import time
+import zlib
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -407,12 +408,10 @@ def _shots_lines(run: Run) -> _ShotLines | None:
     items = _load(run, "visuals.json")
     if any(x is BAD_JSON for x in (doc, bind, items)):
         return None
-    refs = {it["id"]: it for it in items if isinstance(it, dict) and it.get("kind") in ("svg", "photo")
-            and isinstance(it.get("file"), str)} if isinstance(items, list) else {}
+    refs = _refs(items)
     group = {f["id"]: f["group"] for f in frames}
     spoken = {r["id"] for r in script if r["phrases"].strip()}
-    kind = {i: "still" if group[i].startswith("s") else refs.get(i, {}).get("kind", "photo")
-            for i in sorted((spoken & set(group) & set(seg)) - motion.lines(bind))}
+    kind = {i: _shot_kind(group[i], refs.get(i)) for i in sorted((spoken & set(group) & set(seg)) - motion.lines(bind))}
     if gone := [f["file"] for f in frames if f["id"] in kind and not run.file(f["file"]).exists()]:
         _err("thiếu file khung hình: " + ", ".join(gone) + " (chạy lại `vshort visuals`)")
         return None
@@ -422,13 +421,48 @@ def _shots_lines(run: Run) -> _ShotLines | None:
                       min([p["y"] for p in plates if p["y"] < SUBTITLE[1]], default=SUBTITLE[1]))
 
 
+def _refs(items) -> dict[int, dict]:
+    """The references of visuals.json (a card or a photo) by line id."""
+    return {it["id"]: it for it in items if isinstance(it, dict) and it.get("kind") in ("svg", "photo")
+            and isinstance(it.get("file"), str)} if isinstance(items, list) else {}
+
+
+def _shot_kind(group: str, ref: dict | None) -> str:
+    """"still" (a NotebookLM picture), "svg" (a card) or "photo"; a reference whose visuals.json item is gone counts as a photo."""
+    return "still" if group.startswith("s") else (ref or {}).get("kind", "photo")
+
+
+def _crc(path: Path) -> int | None:
+    try:
+        return zlib.crc32(path.read_bytes())
+    except OSError:
+        return None
+
+
+def _quiet(run: Run, name: str):
+    """RUN/name as JSON; None when it is missing, null or not JSON (the commands that own it say so)."""
+    try:
+        return motion.load(run.file(name))
+    except ValueError:
+        return None
+
+
 def _shots_stamp(run: Run, ids) -> dict:
-    """What the beats of lines `ids` stand on: their words, where the voice puts them and the frames. `shots/ok.json` is
+    """What the beats of lines `ids` stand on: their words, where the voice puts them, the frames and the bytes of each
+    frame, the cards' SVGs (the keys of "cards" are the card lines) and the lines that are animated. `shots/ok.json` is
     only good for as long as this is what it was when it was written."""
     want = {int(i) for i in ids}  # ok.json's keys are strings
+    frames = run.read("frames.json")
+    bind = _quiet(run, "motion.bind.json") if _quiet(run, "motion.json") is not None else None
+    refs = _refs(_quiet(run, "visuals.json"))
+    mine = [f for f in frames if f["id"] in want]
     return {"script": {str(r["id"]): r["phrases"] for r in run.read("script.vi.json") if r["id"] in want},
             "timeline": [p for p in run.read("timeline.json")["placements"] if p["id"] in want],
-            "frames": run.read("frames.json")}
+            "frames": frames,
+            "pictures": {str(f["id"]): _crc(run.file(f["file"])) for f in mine},
+            "cards": {str(f["id"]): _crc(run.file(refs[f["id"]]["file"])) for f in mine
+                      if _shot_kind(f["group"], refs.get(f["id"])) == "svg"},
+            "animated": sorted(motion.lines(bind))}
 
 
 def _a_piece_a_line(reveal: dict[str, list[dict]]) -> str:
@@ -502,9 +536,11 @@ def _shots_line(run: Run, w: _ShotLines, i: int, rows: list[dict]):
         for what, box in (("focus", focus), ("mark", b.mark and b.mark["box"])):
             late = [q.t1 for q in pieces if box and _touch(box, q.box) and b.t - shots.LEAD < q.t1 - 1e-9]
             if late:
-                probs.append(who + f"{what} box {list(box)} bắt đầu lúc {shots._secs(b.t - shots.LEAD - seg.start)} s của câu, "
-                             f"dòng chưa viết tới: thẻ viết xong chỗ đó lúc {shots._secs(max(late) - seg.start)} s "
-                             "(shots/reveal.json): dời nhịp muộn hơn hoặc chọn dòng đã viết")
+                start, done = b.t - shots.LEAD, max(late)  # reveal.json counts in absolute seconds: say both
+                probs.append(who + f"{what} box {list(box)} bắt đầu lúc {shots._secs(start - seg.start)} s của câu "
+                             f"({round(start, 3)} s như shots/reveal.json), dòng chưa viết tới: thẻ viết xong chỗ đó lúc "
+                             f"{shots._secs(done - seg.start)} s của câu ({round(done, 3)} s như shots/reveal.json): "
+                             "dời nhịp muộn hơn hoặc chọn dòng đã viết")
     return probs, (i, bs, seg, lambda t: render.draw(shots.draw_overlays(base(t), bs, t, run.path, ref=ref), *cam(t)))
 
 
@@ -536,16 +572,20 @@ def cmd_shots(a) -> int:
         return BAD_INPUT
     if a.prep:
         return _shots_prep(run, w)
+    ok = run.file("shots/ok.json")
     if not run.file("shots.json").exists():
+        ok.unlink(missing_ok=True)  # a plan that is gone or unreadable leaves no verdicts for render to go on with
         _err("thiếu shots.json: chạy `vshort shots --prep`, đọc shots/phrases.txt rồi viết kế hoạch nhịp vào shots.json")
         return BAD_INPUT
     try:
         doc = json.loads(run.file("shots.json").read_text(encoding="utf-8"))
     except ValueError as e:
+        ok.unlink(missing_ok=True)
         _err(f"shots.json không phải JSON hợp lệ: {e}")
         return BAD_INPUT
     probs = shots.schema_problems(doc, w.script, set(w.kind), lambda s: (d := shapes.find(s, run.path)) is not None and not shapes.problems(d, s))
     if not isinstance(doc, dict):
+        ok.unlink(missing_ok=True)
         for p in probs:
             _err(p)
         return BAD_INPUT
@@ -567,10 +607,10 @@ def cmd_shots(a) -> int:
             good[i] = rows
     out = run.file("shots")
     out.mkdir(exist_ok=True)
-    _shots_sheet(plans).save(out / "sheet.png")
     run.write("shots/ok.json", {"stamp": _shots_stamp(run, good), "lines": {str(i): rows for i, rows in good.items()}})
-    for p in probs:
+    for p in probs:  # the verdicts are on disk and said before the sheet, which can fail on its own
         _err(p)
+    _shots_sheet(plans).save(out / "sheet.png")
     if probs:
         return BAD_INPUT
     print(f"nhịp hình: {len(good)} câu, {sum(map(len, good.values()))} nhịp; ảnh để xem: {out / 'sheet.png'}")
