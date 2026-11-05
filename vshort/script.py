@@ -156,6 +156,33 @@ def check_style(script: list[dict]) -> list[str]:
     return probs
 
 
+NUMBER = re.compile(r"\d+(?:[.,]\d+)*")
+
+
+def _numbers(text: str) -> set[str]:
+    """Digits of each number, separators dropped: "2.7" and "2,7", "9,402" and "9.402" are the same number."""
+    return {re.sub(r"[.,]", "", m) for m in NUMBER.findall(text)}
+
+
+def check_numbers(sentences: list[Sentence], script: list[dict]) -> list[str]:
+    """Every number the English says is said in Vietnamese too: a figure dropped or changed in translation.
+
+    The opening line is the brief's title, not a translation, and is left out. The other way round is not checked: a
+    Vietnamese number the English lacks was mostly "October" → "tháng 10" or "ten" → "10" (5 runs, 03–05/11/2026).
+    """
+    spoken = {row["id"] for row in script if row["phrases"].strip()}
+    said: dict[int, str] = {}  # a line left empty hands its English to the spoken line before it, as its time
+    for s in sentences:
+        if s.id in spoken or not said:
+            said[s.id] = ""
+        said[next(reversed(said))] += " " + s.en
+    title = next(iter(said), None)
+    return [f"Câu {row['id']}: câu tiếng Anh có số {n} mà lời Việt không có; giữ đúng số, hoặc ghi note nhắc số đó "
+            "và vì sao bỏ"
+            for row in script if row["id"] in said and row["id"] in spoken and row["id"] != title
+            for n in sorted(_numbers(said[row["id"]]) - _numbers(row["phrases"]) - _numbers(row.get("note", "")))]
+
+
 def check_brief(script: list[dict], brief: str) -> list[str]:
     """What only the brief can catch: absolute claims left unexplained, and an ending that is not the approved call to action."""
     probs = []

@@ -1,5 +1,6 @@
 from vshort.captions import Fragment
-from vshort.script import Sentence, check_brief, check_script, check_style, group_sentences, merge_text, merged, syllables
+from vshort.script import (Sentence, check_brief, check_numbers, check_script, check_style, group_sentences, merge_text,
+                           merged, syllables)
 
 
 def test_merge_drops_ui_label_and_scene_cut_duplicate():
@@ -105,3 +106,20 @@ def test_translationese_needs_rewording_or_a_note():
         "Câu 2: 'một cách'", "Câu 3: 'bị nhắm tới bởi'", "Câu 4: 'lấy “chỉ kinh thánh” làm ví dụ'"]
     script[0]["note"] = "Giữ 'một cách' vì brief dùng đúng chữ này."
     assert len(check_style(script)) == 2
+
+
+
+def test_numbers_said_in_english_are_said_in_vietnamese():
+    # polymarket: "2.7" written "2,7", one English sentence spread over two lines, the second left empty
+    sents = [Sentence(1, 0, 2, "CVE-2026-98432 explained."), Sentence(2, 2, 6, "On October 29th, it drained 2.7 million"),
+             Sentence(3, 6, 8, "from over 700 wallets.")]
+    script = [{"id": 1, "phrases": "AI viết exploit"}, {"id": 2, "phrases": "Ngày 29 tháng 10, rút 2,7 triệu đô | từ hơn 700 ví."},
+              {"id": 3, "phrases": ""}]
+    assert check_numbers(sents, script) == []  # the title is the brief's; "tháng 10" for "October" is fine
+    script[1]["phrases"] = "Ngày 29 tháng 10, rút 27 triệu đô | từ hàng trăm ví."
+    assert check_numbers(sents, script) == [
+        "Câu 2: câu tiếng Anh có số 700 mà lời Việt không có; giữ đúng số, hoặc ghi note nhắc số đó và vì sao bỏ"]
+    script[1]["note"] = "Bỏ 700 cho gọn."
+    assert check_numbers(sents, script) == []
+    script[1]["phrases"] = "Ngày 29 tháng 10, rút 7,2 triệu đô | từ hơn 700 ví."
+    assert check_numbers(sents, script)[0].startswith("Câu 2: câu tiếng Anh có số 27 ")  # a changed figure

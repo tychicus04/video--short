@@ -17,7 +17,8 @@ from vshort.media import frame_at, probe
 from vshort.plates import Plate, build_plates, scene_cuts
 from vshort.render import OUTRO, build_ass, clean_video, export_outro, render_video, segments
 from vshort.run import Run, config
-from vshort.script import Sentence, check_brief, check_script, check_style, group_sentences, merge_text, merged
+from vshort.script import (Sentence, check_brief, check_numbers, check_script, check_style, group_sentences,
+                           merge_text, merged)
 from vshort.stills import NLM_OUTRO, contact_sheet, grid_image, pick_still, scene_of
 from vshort.tts import (Clip, QuotaExceeded, clip_paths, gemini_speaker, load_api_key, synth_lines, synth_script,
                         zerotts_speaker)
@@ -137,7 +138,8 @@ def cmd_text(a) -> int:
 def cmd_check(a) -> int:
     run = Run(a.run)
     script = run.read("script.vi.json")
-    probs = check_script(_sentences(run), script) + check_style(script)
+    sents = _sentences(run)
+    probs = check_script(sents, script) + check_style(script) + check_numbers(sents, script)
     if run.file("brief.vi.md").exists():
         probs += check_brief(script, run.file("brief.vi.md").read_text(encoding="utf-8"))
     for p in probs:
