@@ -186,7 +186,8 @@ class FakeCms:
 
     def articles_transform_preview(self, v):
         t = v["b"]["target_type"]
-        return {"title": f"Tiêu đề {t}", "caption": f"Lời {t}", "hashtags": ["#baomat", f"#t{t}"]}
+        # the CMS's AI gives hashtags without "#" (seen on dev); CMS-Admin adds it (socialDraftToComposerData)
+        return {"title": f"Tiêu đề {t}", "caption": f"Lời {t}", "hashtags": ["#baomat", f" t{t} ", ""]}
 
     def propose_zernio_post(self, v):
         return {"publishId": f"pub{len(self.ops('propose_zernio_post'))}", "status": "PROPOSED"}
@@ -535,3 +536,16 @@ def test_trashed_during_the_upload_writes_nothing(fake, run_dir):
     (run_dir / "cover" / "gemini-16x9.jpg").write_bytes(b"gemini-wide")
     fake.during_upload = lambda: fake.articles[aid].update(personal_status_id=4)
     assert publish.send(run_dir)["state"] == "deleted" and not fake.ops("articles_update")
+
+
+def test_social_ai_reads_what_the_video_says(fake, run_dir):
+    """The article body is only the video: without text the CMS's AI writes "the source gives no detail" (seen on dev)."""
+    (run_dir / "script.vi.json").write_text(json.dumps([{"id": 1, "phrases": "Mã độc | đang nhắm vào NAS"},
+                                                        {"id": 2, "phrases": "Hãy cập nhật | DSM <ngay>"}],
+                                                       ensure_ascii=False), encoding="utf-8")
+    publish.send(run_dir)
+    src = fake.ops("articles_transform_preview")[0]["b"]["sources"]
+    assert [(x["article_id"], x["role"]) for x in src] == [(22501, "primary")]
+    c = src[0]["content"]
+    assert "NAS Synology chưa vá bị tống tiền" in c and META["sapo"] in c
+    assert "Mã độc đang nhắm vào NAS" in c and "Hãy cập nhật DSM &lt;ngay&gt;" in c and "|" not in c

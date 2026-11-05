@@ -226,6 +226,24 @@ def _article(s: Settings, rec: dict) -> dict | None:
     return a
 
 
+def _source_text(run_dir: Path) -> str:
+    """What the CMS's social AI reads instead of the article body (only the video): the title, the sapo and what the
+    video says. articles_transform_preview takes it as the source's live content and still checks the article's rights."""
+    def load(name: str):
+        try:
+            return json.loads((run_dir / name).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+
+    title = (load("cover/cover.json") or {}).get("title") or ""
+    meta = load(META)
+    sapo = meta.get("sapo", "") if isinstance(meta, dict) else ""
+    script = load("script.vi.json")
+    said = " ".join(" ".join(r["phrases"].replace("|", " ").split()) for r in script
+                    if isinstance(r, dict) and isinstance(r.get("phrases"), str)) if isinstance(script, list) else ""
+    return "".join(f"<{tag}>{html.escape(x)}</{tag}>" for tag, x in (("h1", title), ("p", sapo), ("p", said)) if x)
+
+
 def _has(content: str, url: str | None) -> bool:
     return bool(url) and html.escape(url, quote=True) in (content or "")
 
@@ -347,13 +365,16 @@ def _send(s: Settings, run_dir: Path, rec: dict, step) -> None:
         step("social", "skip")
     else:
         step("social")
+        text = _source_text(run_dir)
         for t, _ in platforms:
             if str(t) not in rec["social"]:
-                out = cms.gql(s, cms.TRANSFORM, {"b": {"target_type": t, "sources": [{"article_id": aid,
-                                                                                       "role": "primary"}]}})
+                out = cms.gql(s, cms.TRANSFORM, {"b": {"target_type": t, "sources": [
+                    {"article_id": aid, "role": "primary", **({"content": text} if text else {})}]}})
                 r = out["articles_transform_preview"]
-                rec["social"][str(t)] = {"title": r.get("title") or "", "caption": r.get("caption") or "",
-                                         "hashtags": [h for h in r.get("hashtags") or [] if isinstance(h, str)]}
+                # "#" in front of each, as CMS-Admin does (socialDraftToComposerData): the AI gives them bare
+                tags = [h.strip().lstrip("#").strip() for h in r.get("hashtags") or [] if isinstance(h, str)]
+                rec["social"][str(t)] = {"title": r.get("title") or "", "caption": (r.get("caption") or "").strip(),
+                                         "hashtags": [f"#{h}" for h in tags if h]}
                 _save(run_dir, s.env, rec)
         step("social", "done")
 
