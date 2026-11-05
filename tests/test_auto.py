@@ -752,6 +752,27 @@ def test_a_crash_in_a_planned_render_renders_again_on_the_old_camera(flow, monke
     assert auto.run_auto(run) == OK and fk.cmds.count("render") == 2  # a resume does not render (or crash) again
 
 
+def test_a_crash_in_the_render_after_a_stale_plan_is_checked_again_renders_on_the_old_camera(flow, monkeypatch):
+    run, fk = flow
+    _approved(run)
+    fk.codes["render"] = [2]  # the plan is stale: `vshort shots` checks it again and writes a new ok.json
+    inner, renders = fk.vshort, []
+
+    def vshort(args):
+        if args[0] == "shots" and "--prep" not in args:
+            run.file("shots").mkdir(exist_ok=True)
+            run.write("shots/ok.json", {"stamp": {}, "lines": {"1": [{"phrase": 1, "focus": None}]}})
+        if args[0] == "render":
+            renders.append(run.file("shots/ok.json").exists())
+            if len(renders) == 2:  # the render after that check, with the plan in place
+                fk.cmds.append("render")
+                raise RuntimeError("thẻ không vẽ được")
+        return inner(args)
+    monkeypatch.setattr(auto, "run_vshort", vshort)
+    assert auto.run_auto(run) == OK
+    assert renders == [True, True, False] and not run.file("shots/ok.json").exists() and run.done("render")
+
+
 def test_a_crash_in_render_without_a_plan_is_not_hidden(flow, monkeypatch):
     run, fk = flow
     _approved(run)

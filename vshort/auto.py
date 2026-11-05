@@ -657,7 +657,8 @@ def _render(run: Run) -> None:
             # the plan may only be stale too (script, pictures, voice); after the motion check, which can drop the canvas
             # and so change the lines that are animated, which the plan's stamp includes
             _check_shots(run)
-            _vs(run, "render")
+            if code := _vshort_render(run):  # the check may have written a plan again: a crash in it is no more fatal than the first
+                raise Stop(code, f"`vshort render {run.path}` lỗi (mã {code}); xem auto.log")
 
 
 def _build(run: Run) -> None:
