@@ -603,10 +603,12 @@ def _tts_result(run: Run, code: int) -> None:
 def _render(run: Run) -> None:
     if not run.done("render"):
         if run_vshort(["render", str(run.path)]) == 2:
-            _check_shots(run)  # the plan may only be stale (the script, pictures or voice changed since): ok.json for what is now
             # as the skill did: check motion again (it may only be stale), drop it only if it no longer passes
             if run_vshort(["motion", str(run.path)]):
                 _no_motion(run)
+            # the plan may only be stale too (script, pictures, voice); after the motion check, which can drop the canvas
+            # and so change the lines that are animated, which the plan's stamp includes
+            _check_shots(run)
             _vs(run, "render")
 
 

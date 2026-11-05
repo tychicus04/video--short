@@ -715,8 +715,20 @@ def test_a_stale_plan_is_checked_again_when_render_says_2(flow):
     fk.codes["render"] = [2]  # shots/ok.json older than the script, the pictures or the voice
     assert auto.run_auto(run) == OK
     tail = fk.order[fk.order.index("render"):]
-    assert tail[:4] == ["render", "shots", "motion", "render"]  # `vshort shots` once, then the motion check as before
+    assert tail[:4] == ["render", "motion", "shots", "render"]  # the motion check as before, then `vshort shots` once
     assert fk.args["shots"][-1][2:] == [] and fk.agents["vs-nhip"] == 1  # a check, not a new plan
+
+
+def test_the_plan_is_checked_after_a_canvas_is_dropped(flow):
+    run, fk = flow
+    _approved(run)
+    fk.codes["render"] = [2]
+    fk.codes["motion"] = [0, 0, 2]  # --design, the binding, then the check after render's 2 fails: no animation any more
+    assert auto.run_auto(run) == OK
+    assert run.file("motion.loi.json").exists()
+    last = lambda name: len(fk.order) - 1 - fk.order[::-1].index(name)  # noqa: E731
+    # ok.json's stamp holds which lines are animated: written before the canvas goes, render would say 2 again and stop
+    assert last("motion") < last("shots") < last("render")
 
 
 def test_review_finding_for_shots_goes_to_vs_nhip(flow):
