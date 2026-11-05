@@ -570,10 +570,23 @@ def _visuals(run: Run, prompt: str, step: str = "visuals_agent") -> None:
         raise Stop(code, f"`vshort visuals` lỗi cả khi không có tư liệu (mã {code}); xem auto.log")
 
 
+def _vshort_shots(run: Run, *extra: str) -> int | None:
+    """`vshort shots`: its exit code, or None when it crashed (a card an agent wrote that will not draw…). A crash goes to
+    auto.log with its traceback and leaves no shots/ok.json: the video goes on with the old camera, and a rerun would
+    only hit the same crash."""
+    try:
+        return run_vshort(["shots", str(run.path), *extra])
+    except Exception:
+        traceback.print_exc()
+        print("Nhịp hình: `vshort shots` hỏng (traceback ở trên); video dùng camera cũ.", flush=True)
+        run.file("shots/ok.json").unlink(missing_ok=True)
+        return None
+
+
 def _check_shots(run: Run) -> None:
     """`vshort shots` over the agent's plan: it writes shots/ok.json with the lines that pass, whatever the exit code says;
     the lines that don't render on the old camera, so no code stops the video."""
-    run_vshort(["shots", str(run.path)])
+    _vshort_shots(run)
     run.mark("shots")  # ends the step's time (run_vshort started it); the check itself is what is done
 
 
@@ -581,7 +594,9 @@ def _shots(run: Run, prompt: str, step: str = "shots_agent") -> None:
     """The beat plan by the agent. A failed agent or a plan that does not pass never stops the video: the lines that
     pass follow their beats, the rest (all of them, with no plan) keep the old camera."""
     if not run.done(step):
-        if run_vshort(["shots", str(run.path), "--prep"]):  # nothing to plan from (no frames, a broken card): don't pay an agent
+        code = _vshort_shots(run, "--prep")
+        timing.end(run.path, "shots")  # the step is the check below: "Nhịp hình" does not run while the agent does
+        if code != 0:  # nothing to plan from (no frames, a broken card): don't pay an agent
             print("Nhịp hình: chưa chuẩn bị được dữ liệu (`vshort shots --prep` lỗi); video dùng camera cũ.", flush=True)
         else:
             try:

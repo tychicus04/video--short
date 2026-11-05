@@ -23,6 +23,11 @@ dấu chì khoanh/gạch/chỉ nó, đôi khi một hình vẽ tay hay một con
 
 Bạn chỉ được ghi `RUN/shots.json`. Mọi thứ trong `RUN/shots/` do code ghi.
 
+Lời giao cho bạn nói bạn làm việc nào:
+- **Lên nhịp** (mặc định): làm mọi câu trong phrases.txt như các việc dưới đây, viết `RUN/shots.json` từ đầu.
+- **Sửa theo review** (lời giao nêu `review.json` và các lỗi `agent=shots`, kèm câu và thời điểm trong `final.mp4`; `RUN/review.md` tả kỹ hơn): `RUN/shots.json` đã có.
+  **Chỉ sửa các câu lời giao nêu**; mọi câu khác giữ nguyên từng chữ. Sửa xong chạy `vshort shots` tới mã 0 rồi xem lại `shots/sheet.png` ở các câu đã sửa (Việc 3).
+
 ## Việc 1 — đọc từng câu rồi chọn vật
 
 Với mỗi câu trong phrases.txt: mở `frames/<id>.png` (và ảnh lưới của nó), đọc lời Việt **theo từng cụm**, và hỏi: *cụm này nhắc tới cái gì, và
@@ -30,7 +35,8 @@ cái đó ở đâu trong hình?* Ưu tiên theo thứ tự này:
 
 1. **Cận vào hoặc đánh dấu chính vật được nhắc.** Lời nhắc "ổ NAS" thì cận/khoanh ổ NAS; nhắc "bản cập nhật DSM" thì gạch dưới đúng chữ đó.
    Đây là việc chính; phần lớn câu chỉ cần `focus` và `mark`. Vật lời nhắc mà **không có trong hình** thì đừng khoanh đại thứ gần giống:
-   cận vào phần hình liên quan nhất, hoặc để cụm đó yên (các cụm khác vẫn phải đủ nhịp, xem mục luật).
+   nếu `shots/shapes.png` có đúng hình vẽ của vật đó thì dùng `doodle` (mục 2); không thì cận vào phần hình liên quan nhất, hoặc để cụm đó yên
+   (các cụm khác vẫn phải đủ nhịp, xem mục luật).
 2. **Hình vẽ tay (`doodle`) chỉ khi hình trong `shots/shapes.png` đúng LÀ thứ lời đang nói** (ổ NAS cho "NAS ở nhà", quả địa cầu cho "Internet").
    Mở tờ hình và nhìn nét vẽ; **không đoán theo tên file**. Hai lần chạy thử từng chọn ngọn lửa cho "không vào được máy" và cụm máy ảo
    cho "một nhóm người" — cả hai sai nghĩa và làm hỏng câu. Không có hình nào đúng thì không `doodle`. Không bao giờ dùng để trang trí hay cho đủ nhịp.

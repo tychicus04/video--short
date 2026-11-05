@@ -16,7 +16,7 @@ nhịp (`null` = nhịp bị bỏ) `{"line", "phrase", "at"}` là câu, cụm ph
 lấy `start`, `dur` của câu trong `timeline.json`, chia `dur` cho các cụm theo số âm tiết như phụ đề. Hình mới của video này nằm
 trong `RUN/shapes/` (xem `RUN/shapes/sheet.png`). `shots/ok.json` (nếu có): `lines` là các câu **có nhịp hình** — id câu → danh sách nhịp
 `{"phrase", "at", "focus", "mark", "doodle", "pop"}` (`phrase`, `at` đếm như trên; `focus` là box máy quay bật tới, `null` toàn cảnh; `mark` là dấu chì khoanh/gạch/chỉ
-một box; `doodle` hình vẽ tay ở lề; `pop` chữ/số nảy ra); `RUN/shots/sheet.png` là khung của từng nhịp. Câu có lời mà không có trong `lines` dựng kiểu cũ.
+một box; `doodle` hình vẽ tay ở lề; `pop` chữ/số nảy ra); `RUN/shots/sheet.png` là khung của từng nhịp. Câu có lời, không phải hình động, mà không có trong `lines` dựng kiểu cũ.
 
 Lấy khung hình bằng Python trong `~/video-pipeline` (ví dụ; `mkdir -p /tmp/vs_review` trước):
 `cd ~/video-pipeline && uv run python -c "from vshort.media import frame_at; from PIL import Image; from pathlib import Path; Image.fromarray(frame_at(Path('RUN/final.mp4'), 12.5)).resize((360,640)).save('/tmp/vs_review/f12.5.png')"`
@@ -32,6 +32,7 @@ Kiểm:
    outro logo ANM, im lặng, đúng thiết kế; không được có đoạn logo Gemini. Kiểm 1 và 3 chỉ xét khung trước `total`.
 2. **Chuyển động mượt**: ở ba chỗ (đầu, giữa, cuối; một trong ba nằm ngay chỗ chuyển giữa hai câu) lấy 6 khung liên tiếp
    và xếp cạnh nhau. Hình phải dịch/phóng đều từng khung hình: không nhảy bậc, không giật, không lóe, không vỡ nét.
+   Ở câu có nhịp hình, máy quay bật sang khung mới trong 0,25 s (có ease) là chủ ý, miễn mượt (từng khung dịch/phóng liền nhau): không phải lỗi.
 3. **Không khung gần trắng**: lấy khung mỗi 0,5 giây; khung nào có độ lệch chuẩn xám dưới 8
    (`np.asarray(Image.fromarray(f).convert('L')).std()`) hoặc nhìn thấy gần như chỉ còn giấy thì ghi thời điểm.
 4. **Không lặng dài**: đo `narration.wav` (ví dụ đọc bằng `wave` + numpy, cửa sổ 20 ms, im lặng là RMS dưới 2 % đỉnh);
@@ -74,7 +75,7 @@ Kiểm:
     - **chữ thẻ không bị cắt mép**: khi camera cận vào thẻ tư liệu, mọi chữ của thẻ còn trọn trong khung; thẻ đã viết xong ở cuối câu;
     - **nhịp không rối**: các thay đổi cách nhau vừa phải, dấu không chồng thành mớ, camera không giật qua lại; máy quay về toàn cảnh trước chỗ chuyển câu, không
       kéo hình cận sang câu sau; dấu/hình vẽ/số nằm trong vùng không bị TikTok/Reels/Shorts che.
-    Lỗi của câu có nhịp thì `agent` là `"shots"`. Ghi vào `review.md`: các câu có nhịp, số nhịp mỗi câu, các câu rơi về kiểu cũ.
+    Chỉ lỗi của chính các nhịp (dấu, hình vẽ, số, camera của câu có nhịp) mới là `agent` `"shots"`; lỗi dịch hay chỗ vá chữ trên câu đó vẫn gửi `"translator"`/`"visuals"`. Ghi vào `review.md`: các câu có nhịp, số nhịp mỗi câu, các câu rơi về kiểu cũ (câu có lời, không phải hình động, mà không có trong `lines`).
 11. Liệt kê mọi `note` khác rỗng trong `script.vi.json` (lời Việt khác lời Anh và lý do), và toàn bộ `visuals.json`
    (mỗi chỗ vá: câu, chữ cũ → chữ mới; mỗi hình tư liệu: câu, loại, `source`, `accessed`, `note`).
 
@@ -85,7 +86,7 @@ Ghi `RUN/review.md` bằng tiếng Việt: kết luận một dòng (Đạt / C�
 Ghi thêm `RUN/review.json` (`vshort auto` đọc file này để giao việc sửa):
 `{"verdict": "Đạt" | "Cần sửa", "findings": [{"agent": "...", "ids": [số câu], "at": "mm:ss", "what": "lỗi, một câu"}]}`.
 `agent` là ai sửa được lỗi đó: `"motion"` (hình động: `motion.json`, `motion.bind.json`, hình mới), `"visuals"` (chỗ vá chữ, hình tư liệu: `visuals.json`),
-`"shots"` (nhịp hình của câu có nhịp: dấu lệch vật, cận quá sát hay mờ, chữ thẻ cắt mép, nhịp rối: `shots.json`),
+`"shots"` (chỉ lỗi của chính các nhịp trên câu có nhịp: dấu lệch vật, hình vẽ/số sai, cận quá sát hay mờ, chữ thẻ cắt mép do camera, nhịp rối: `shots.json`; lỗi dịch hay vá chữ trên câu đó thì gửi `"translator"`/`"visuals"`),
 `"translator"` (lời Việt/phụ đề sai nghĩa, nói quá so với brief), `"none"` (chỉ người sửa được, vd. hình NotebookLM sai mà không vá được).
 Chỉ ghi lỗi cần sửa; "Đạt" thì `findings` rỗng.
 Trả về: kết luận và tối đa 5 phát hiện quan trọng nhất.

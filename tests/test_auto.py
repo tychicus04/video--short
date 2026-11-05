@@ -700,6 +700,55 @@ def test_a_plan_that_does_not_pass_does_not_stop_the_video(flow):
     assert auto.run_auto(run) == OK and "render" in fk.cmds and run.done("shots")
 
 
+def test_a_crash_in_vshort_shots_does_not_stop_the_video(flow, capsys):
+    run, fk = flow
+    _approved(run)
+    run.file("shots").mkdir()
+    run.write("shots/ok.json", {"stamp": {}, "lines": {"1": [{"phrase": 1, "focus": None}]}})  # left by a check that crashed on the sheet
+    fk.boom = {"shots"}  # --prep and the check both raise
+    assert auto.run_auto(run) == OK
+    assert fk.cmds.count("render") == 1 and fk.agents["vs-nhip"] == 0 and run.done("shots") and run.done("shots_agent")
+    assert not run.file("shots/ok.json").exists()  # no verdicts from a crashed check for render to go on with
+    err = capsys.readouterr()
+    assert "Traceback" in err.err and "shots hỏng" in err.err and "Nhịp hình" in err.out
+    assert "Nhịp hình: không có" in auto.get_state(run)["message"]
+    assert auto.run_auto(run) == OK and fk.cmds.count("shots") == 2  # a resume does not run it again
+
+
+def test_a_crash_in_the_check_after_the_agent_still_renders(flow, monkeypatch):
+    run, fk = flow
+    _approved(run)
+    inner = fk.vshort
+
+    def vshort(args):
+        if args[0] == "shots" and "--prep" not in args:
+            raise RuntimeError("không vẽ được thẻ")  # the sheet of an agent-made card
+        return inner(args)
+    monkeypatch.setattr(auto, "run_vshort", vshort)
+    assert auto.run_auto(run) == OK and fk.agents["vs-nhip"] == 1 and fk.cmds.count("render") == 1
+    assert "Nhịp hình: không có" in auto.get_state(run)["message"]
+
+
+def test_the_shots_timer_is_closed_before_the_agent_runs(flow, monkeypatch):
+    from vshort import timing
+    run, fk = flow
+    _approved(run)
+    seen = []
+
+    def vshort(args):  # like the real run_vshort: the step's start goes to times.json; `vshort shots` marks nothing itself
+        timing.start(run.path, args[0])
+        return 0 if args[0] == "shots" else fk.vshort(args)
+
+    def claude(r, step, agent, prompt, timeout):
+        if agent == "vs-nhip":
+            seen.append(timing.read(run.path).get("shots", {}))
+        return fk.claude(r, step, agent, prompt, timeout)
+    monkeypatch.setattr(auto, "run_vshort", vshort)
+    monkeypatch.setattr(auto, "run_claude", claude)
+    assert auto.run_auto(run) == OK
+    assert len(seen) == 1 and "start" in seen[0] and "end" in seen[0]  # "Nhịp hình" does not run while the agent does
+
+
 def test_no_data_to_plan_from_means_no_agent(flow, capsys):
     run, fk = flow
     _approved(run)
