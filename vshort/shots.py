@@ -15,7 +15,7 @@ from vshort import kit, shapes
 from vshort.fit import Placement, phrase_fracs
 from vshort.kit import ease
 from vshort.textfit import UI_RIGHT, UI_RIGHT_FROM, UI_TOP
-from vshort.visuals import MIN_CONTRAST, PAPER, SUBTITLE
+from vshort.visuals import LUMA, MIN_CONTRAST, PAPER, SUBTITLE
 
 LEAD = 0.2  # the picture moves this long before the word
 SNAP = 0.25  # the camera's move to a new framing
@@ -281,13 +281,14 @@ def _arrow(box, img) -> list[list[tuple[float, float]]]:
     x0, y0, x1, y1 = box
     cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
     ax, ay = max(x1 - x0, 100) / 2, max(y1 - y0, 100) / 2  # a strip is at least 100 px across
+    bg = _background(img) if img is not None else None
     sides = []  # (ink in the REACH - GAP px strip beside the box, has room, direction to the tail, middle of the box's side)
     for u in ((1, 0), (-1, 0), (0, 1), (0, -1)):  # a tie goes to the first
         edge = (cx + u[0] * (x1 - x0) / 2, cy + u[1] * (y1 - y0) / 2)
         far = (edge[0] + u[0] * REACH, edge[1] + u[1] * REACH)
         xs = sorted((edge[0] + u[0] * GAP, far[0])) if u[0] else (cx - ax, cx + ax)  # from where the tip stops, so the
         ys = sorted((edge[1] + u[1] * GAP, far[1])) if u[1] else (cy - ay, cy + ay)  # box's own outline is not counted
-        sides.append((ink_share(img, (xs[0], ys[0], xs[1], ys[1])) if img is not None else 0.0,
+        sides.append((ink_share(img, (xs[0], ys[0], xs[1], ys[1]), bg) if img is not None else 0.0,
                       8 <= far[0] <= W - 8 and 8 <= far[1] <= H - 8, u, edge))
     _, _, u, edge = min([s for s in sides if s[1]] or sides, key=lambda s: s[0])
     tip = (edge[0] + u[0] * GAP, edge[1] + u[1] * GAP)
@@ -423,18 +424,26 @@ def _grain(size: tuple[int, int]) -> Image.Image:
     return Image.fromarray((205 + 50 * np.random.default_rng(3).uniform(size=(size[1], size[0]))).astype(np.uint8))
 
 
-def draw_overlays(img: Image.Image, bs: list[Beat], t: float, run_dir=None) -> Image.Image:
+def _pencil(pic: Image.Image) -> tuple[int, int, int]:
+    """Graphite on a light picture, paper-coloured pencil on a dark one."""
+    return kit.INK if _background(pic) @ LUMA >= 128 else PAPER
+
+
+def draw_overlays(img: Image.Image, bs: list[Beat], t: float, run_dir=None, ref: Image.Image | None = None) -> Image.Image:
     """A copy of `img` (720x1280, or a card frame at 2x) with every mark, doodle and pop showing at t drawn on in pencil:
-    marks and doodles draw on over DRAW from LEAD before their word, a pop bounces in. `img` itself if none is showing."""
+    marks and doodles draw on over DRAW from LEAD before their word, a pop bounces in. `img` itself if none is showing.
+    Where an arrow comes from and whether the pencil is graphite or light is judged by `ref` (a card's finished frame,
+    so they do not change while it writes itself out), or by `img` without one."""
     live = _live(bs, t)
     if not live:
         return img
+    pic = ref if ref is not None else img
     W, H, *_ = _frame()
     mask = Image.new("L", (W * kit.SS, H * kit.SS))
     d = ImageDraw.Draw(mask)
     for b, kind, start, opacity in sorted((e for e in live if e[1] != "pop"), key=lambda e: e[3]):  # the fading ones under
         item = getattr(b, kind)
-        _paint(d, _strokes(kind, item, run_dir, img), _out((t - start) / DRAW), _width(kind), opacity,
+        _paint(d, _strokes(kind, item, run_dir, pic), _out((t - start) / DRAW), _width(kind), opacity,
                zlib.crc32(f"{kind}{item['shape']}{item['box']}".encode()))
     for b, _, start, _ in (e for e in live if e[1] == "pop"):
         u = (t - start) / POP_T
@@ -445,15 +454,21 @@ def draw_overlays(img: Image.Image, bs: list[Beat], t: float, run_dir=None) -> I
     if mask.getbbox() is None:
         return img
     out = img.copy()
-    out.paste(kit.INK, mask=mask)
+    out.paste(_pencil(pic), mask=mask)
     return out
 
 
 # ---- checks against the picture and the phone's UI ----
 
 
-def ink_share(img: Image.Image, box) -> float:
-    """The share of the pixels in `box` (frame pixels; `img` may be at any size) that are further than MIN_CONTRAST from the paper."""
+def _background(img: Image.Image) -> np.ndarray:
+    """The picture's own colour: the median of its pixels (sampled at 72x128), paper on a paper picture, dark on a dark one."""
+    return np.median(np.asarray(img.resize((72, 128), Image.NEAREST).convert("RGB")).reshape(-1, 3), axis=0)
+
+
+def ink_share(img: Image.Image, box, bg=None) -> float:
+    """The share of the pixels in `box` (frame pixels; `img` may be at any size) that are further than MIN_CONTRAST from the
+    picture's background (`bg`, by default the median colour of `img`)."""
     W, H, *_ = _frame()
     x0, y0, x1, y1 = box
     sx, sy = img.width / W, img.height / H
@@ -461,7 +476,7 @@ def ink_share(img: Image.Image, box) -> float:
     if x1 <= x0 or y1 <= y0:
         return 0.0
     crop = np.asarray(img.crop((x0, y0, x1, y1)).convert("RGB")).astype(int)
-    return float((np.abs(crop - PAPER).max(2) > MIN_CONTRAST).mean())
+    return float((np.abs(crop - (_background(img) if bg is None else bg)).max(2) > MIN_CONTRAST).mean())
 
 
 def to_screen(box, cam: tuple[float, float, float]) -> tuple[float, float, float, float]:
@@ -490,12 +505,18 @@ def _pct(x: float) -> str:
     return f"{100 * x:.1f}%".replace(".", ",")
 
 
-def image_problems(id: int, bs: list[Beat], img: Image.Image, cam: Callable[[float], tuple], run_dir=None,
-                   end: float | None = None) -> list[str]:
-    """What is wrong with the marks, doodles and pops of a line over its picture `img`: a mark whose box is blank paper, a
-    doodle or pop on top of the picture, and any of them where the phone draws over the screen. The screen is
-    checked once the drawing is done and again when the item goes: when the next mark starts for a mark, at `end` (the
-    line's end, if given) for the others."""
+STEP = 0.05  # image_problems looks at the camera this often while an item is up
+
+
+def image_problems(id: int, bs: list[Beat], img: Image.Image, cam: Callable[[float], tuple], run_dir=None, *,
+                   end: float, ref: Image.Image | None = None) -> list[str]:
+    """What is wrong with the marks, doodles and pops of a line over its picture `img` (or `ref`, its finished frame, when
+    `img` is still being written): a mark whose box is blank, a doodle or pop on top of the picture, and any of them
+    where the phone draws over the screen. Blank and ink are measured from the picture's own colour. The camera is
+    sampled every STEP s from when the item is drawn until it goes: when the next mark starts for a mark, at `end` (the
+    line's end) for the rest. Each item is reported once, at the first time it is covered."""
+    pic = ref if ref is not None else img
+    bg = _background(pic)
     probs = []
     for n, b in enumerate(bs, 1):
         who = f"shots.json câu {id} nhịp {n}: "
@@ -503,22 +524,20 @@ def image_problems(id: int, bs: list[Beat], img: Image.Image, cam: Callable[[flo
             item = getattr(b, kind)
             if item is None:
                 continue
-            box, share = list(item["box"]), ink_share(img, item["box"])
+            box, share = list(item["box"]), ink_share(pic, item["box"], bg)
             if kind == "mark" and share < INK_MIN:
                 probs.append(who + f"mark: box {box} trúng giấy trống ({_pct(share)} điểm ảnh có mực, cần ≥ {_pct(INK_MIN)}): "
                              "đặt box ôm vật được chỉ")
             elif kind != "mark" and share > PAPER_MAX:
                 probs.append(who + f"{kind}: box {box} đè lên hình ({_pct(share)} điểm ảnh có mực, tối đa {_pct(PAPER_MAX)}): "
                              "chọn chỗ giấy trống")
-            gone = _next_mark(bs, n - 1) if kind == "mark" else end
-            seen = []
-            for when in (b.t - LEAD + DRAW, gone):
-                if when is None:
-                    continue
-                on_screen = to_screen(_bbox(kind, b, run_dir, img), cam(when))
-                for side in _covered(on_screen):
-                    if side not in seen:
-                        seen.append(side)
-                        probs.append(who + f"{kind} bị che ở {side}: trên màn hình nó nằm ở x {on_screen[0]:.0f}–{on_screen[2]:.0f}, "
-                                     f"y {on_screen[1]:.0f}–{on_screen[3]:.0f}")
+            nxt = _next_mark(bs, n - 1)
+            lo, hi = sorted((b.t - LEAD + DRAW, nxt if kind == "mark" and nxt is not None else end))
+            box_at = _bbox(kind, b, run_dir, pic)
+            for when in [lo + STEP * k for k in range(int((hi - lo) / STEP + 1e-9))] + [hi]:
+                on_screen = to_screen(box_at, cam(when))
+                if sides := _covered(on_screen):
+                    probs.append(who + f"{kind} bị che ở {'; '.join(sides)}: {_secs(when - b.t)} s sau lời của nhịp, trên màn hình nó nằm ở "
+                                 f"x {on_screen[0]:.0f}–{on_screen[2]:.0f}, y {on_screen[1]:.0f}–{on_screen[3]:.0f}")
+                    break
     return probs

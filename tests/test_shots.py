@@ -315,6 +315,15 @@ def test_to_screen_follows_the_camera_like_render_draw():
 
 
 WIDE = lambda t: (MIN_ZOOM, W / 2, H / 2)
+END = 12.0
+
+
+def inked(*boxes):
+    """A paper picture with dark ink under each box."""
+    img = paper()
+    for box in boxes:
+        img.paste((40, 40, 40), tuple(box))
+    return img
 
 
 def test_image_checks():
@@ -322,15 +331,20 @@ def test_image_checks():
     ink.paste((40, 40, 40), (100, 300, 700, 700))  # a big dark picture
     mark = lambda box, shape="circle": beat(5.0, mark={"shape": shape, "box": box})
     # a mark needs ink under it, a doodle and a pop need paper
-    (p,) = image_problems(7, [mark([200, 800, 400, 900])], ink, WIDE)
+    (p,) = image_problems(7, [mark([200, 800, 400, 900])], ink, WIDE, end=END)
     assert p.startswith("shots.json câu 7 nhịp 1: ") and "giấy trống" in p
-    assert image_problems(7, [mark([200, 400, 400, 500])], ink, WIDE) == []
+    assert image_problems(7, [mark([200, 400, 400, 500])], ink, WIDE, end=END) == []
     doodle = beat(5.0, doodle={"shape": "internet", "box": [200, 400, 400, 560]})
-    (p,) = image_problems(7, [beat(4.0, focus=None), doodle], ink, WIDE)
+    (p,) = image_problems(7, [beat(4.0, focus=None), doodle], ink, WIDE, end=END)
     assert p.startswith("shots.json câu 7 nhịp 2: ") and "đè lên hình" in p
-    assert image_problems(7, [doodle], paper(), WIDE) == []
-    (p,) = image_problems(7, [beat(5.0, pop={"text": "2024", "box": [200, 400, 400, 500]})], ink, WIDE)
+    assert image_problems(7, [doodle], paper(), WIDE, end=END) == []
+    (p,) = image_problems(7, [beat(5.0, pop={"text": "2024", "box": [200, 400, 400, 500]})], ink, WIDE, end=END)
     assert "pop" in p and "đè lên hình" in p
+
+
+def test_the_end_of_the_line_is_not_optional():
+    with pytest.raises(TypeError):
+        image_problems(7, [beat(5.0, mark={"shape": "tick", "box": [300, 500, 400, 560]})], inked([300, 500, 400, 560]), WIDE)
 
 
 @pytest.mark.parametrize("box, word", [
@@ -341,29 +355,112 @@ def test_image_checks():
     ([650, 300, 700, 340], "phải"),  # above the button column the margin is 24 px: x 696
 ])
 def test_a_mark_outside_the_phones_safe_zone_names_the_side(box, word):
-    img = Image.new("RGB", (720, 1280), (40, 40, 40))  # ink everywhere: only the zone is wrong
-    (p,) = image_problems(7, [beat(5.0, mark={"shape": "tick", "box": box})], img, WIDE)
+    (p,) = image_problems(7, [beat(5.0, mark={"shape": "tick", "box": box})], inked(box), WIDE, end=END)  # ink under it: only the zone is wrong
     assert word in p and p.startswith("shots.json câu 7 nhịp 1: ")
 
 
-def test_a_mark_in_the_open_is_fine_and_each_side_is_named_once():
-    img = Image.new("RGB", (720, 1280), (40, 40, 40))
-    assert image_problems(7, [beat(5.0, mark={"shape": "tick", "box": [100, 300, 560, 700]})], img, WIDE) == []
-    probs = image_problems(7, [beat(5.0, mark={"shape": "tick", "box": [620, 780, 680, 820]})], img, WIDE, end=12.0)
-    assert len(probs) == 1  # at the end of drawing and at the end of the line: the same side, once
+def test_a_mark_in_the_open_is_fine_and_a_covered_one_is_named_once():
+    box = [100, 300, 560, 700]
+    assert image_problems(7, [beat(5.0, mark={"shape": "tick", "box": box})], inked(box), WIDE, end=END) == []
+    box = [620, 780, 680, 820]
+    probs = image_problems(7, [beat(5.0, mark={"shape": "tick", "box": box})], inked(box), WIDE, end=END)
+    assert len(probs) == 1  # covered from the end of drawing to the end of the line: one problem, not one per sample
 
 
 def test_the_camera_decides_what_the_phone_covers():
-    img = Image.new("RGB", (720, 1280), (40, 40, 40))
-    bs = [beat(5.0, mark={"shape": "tick", "box": [300, 500, 400, 560]})]
-    assert image_problems(7, bs, img, WIDE) == []
-    zoomed = lambda t: (2.0, 520, 640)  # the window now starts at x 340: the mark lands near the left edge of the screen
-    assert any("trái" in p for p in image_problems(7, bs, img, zoomed))
+    box = [300, 500, 400, 560]
+    bs = [beat(5.0, mark={"shape": "tick", "box": box})]
+    assert image_problems(7, bs, inked(box), WIDE, end=END) == []
+    zoomed = lambda t: (2.0, 520, 640)  # the window now starts at x 340: the mark lands off the left edge of the screen
+    assert any("trái" in p for p in image_problems(7, bs, inked(box), zoomed, end=END))
 
 
 def test_a_mark_is_checked_just_before_it_fades_not_after():
-    img = Image.new("RGB", (720, 1280), (40, 40, 40))
-    bs = [beat(5.0, mark={"shape": "tick", "box": [300, 500, 400, 560]}), beat(9.0, mark={"shape": "tick", "box": [300, 700, 400, 760]})]
+    boxes = [[300, 500, 400, 560], [300, 700, 400, 760]]
+    bs = [beat(5.0, mark={"shape": "tick", "box": boxes[0]}), beat(9.0, mark={"shape": "tick", "box": boxes[1]})]
     late = lambda t: WIDE(t) if t < 8.85 else (2.0, 520, 640)  # the camera moves off once the second mark has begun (8.8)
-    probs = image_problems(7, bs, img, late)
-    assert not any("nhịp 1" in p for p in probs)
+    probs = image_problems(7, bs, inked(*boxes), late, end=END)
+    assert not any("nhịp 1" in p for p in probs) and any("nhịp 2" in p and "trái" in p for p in probs)
+
+
+def test_the_last_mark_of_a_line_is_checked_to_the_end_of_the_line():
+    box = [300, 500, 400, 560]
+    bs = [beat(5.0, mark={"shape": "tick", "box": box})]
+    away = lambda t: WIDE(t) if t < 7.0 else (2.0, 520, 640)  # the camera moves off two seconds after the mark is up
+    (p,) = image_problems(7, bs, inked(box), away, end=END)
+    assert "trái" in p and p.startswith("shots.json câu 7 nhịp 1: ")
+
+
+def test_a_framing_between_the_two_ends_is_checked_too():
+    box = [300, 500, 400, 560]
+    bs = [beat(5.0, doodle={"shape": "internet", "box": box})]
+    zoom_in_the_middle = lambda t: (2.0, 520, 640) if 7.0 <= t < 10.0 else WIDE(t)  # wide when it is drawn and wide at the end
+    (p,) = image_problems(7, bs, paper(), zoom_in_the_middle, end=END)
+    assert "trái" in p and "doodle" in p
+    assert image_problems(7, bs, paper(), WIDE, end=END) == []
+
+
+def test_an_arrow_keeps_its_side_while_the_picture_fills_in():
+    box = [250, 500, 470, 700]
+    bs = [beat(5.0, mark={"shape": "arrow", "box": box})]
+    finished = paper()
+    writing = paper()
+    writing.paste((20, 20, 20), (480, 480, 660, 720))  # on a card, ink that arrives after the arrow began: judged by `img` alone, it flips the side
+    a, b = (draw_overlays(img, bs, 5.0 - LEAD + 1.0, ref=finished) for img in (finished, writing))
+    assert ink_bbox(a, finished) == pytest.approx(ink_bbox(b, writing), abs=2)
+    assert ink_bbox(a, finished)[0] > box[2]  # from the right, the first side with room, as the finished picture says
+    c = draw_overlays(writing, bs, 5.0 - LEAD + 1.0)
+    assert ink_bbox(c, writing)[2] < box[0]  # without the reference it comes from the left
+
+
+def test_checks_judge_the_reference_when_there_is_one():
+    box = [300, 500, 400, 560]
+    bs = [beat(5.0, mark={"shape": "tick", "box": box})]
+    assert image_problems(7, bs, paper(), WIDE, end=END, ref=inked(box)) == []  # the finished card has ink there
+    assert "giấy trống" in image_problems(7, bs, inked(box), WIDE, end=END, ref=paper())[0]
+
+
+# ---- dark pictures: the background is the picture's own colour; the pencil goes light on it ----
+
+DARK = (40, 40, 50)
+
+
+def dark_picture():
+    img = Image.new("RGB", (720, 1280), DARK)
+    img.paste((225, 225, 225), (150, 350, 450, 550))  # a light shape on a dark picture
+    return img
+
+
+def test_on_a_dark_picture_blank_means_dark_not_paper():
+    img = dark_picture()
+    assert ink_share(img, [200, 800, 400, 960]) == 0  # empty dark area
+    assert ink_share(img, [150, 350, 450, 550]) == 1.0  # the light shape
+    assert ink_share(paper(), [200, 800, 400, 960]) == 0
+    doodle = beat(5.0, doodle={"shape": "internet", "box": [200, 800, 400, 960]})
+    mark = beat(5.0, mark={"shape": "underline", "box": [150, 350, 450, 550]})
+    assert image_problems(7, [doodle, mark], img, WIDE, end=END) == []
+    (p,) = image_problems(7, [beat(5.0, mark={"shape": "underline", "box": [200, 800, 400, 960]})], img, WIDE, end=END)
+    assert "giấy trống" in p  # the mark has nothing to point at
+    (p,) = image_problems(7, [beat(5.0, doodle={"shape": "internet", "box": [150, 350, 450, 550]})], img, WIDE, end=END)
+    assert "đè lên hình" in p
+
+
+def test_the_pencil_is_light_on_a_dark_picture_and_graphite_on_a_light_one():
+    box = [150, 350, 450, 550]
+    bs = [beat(5.0, mark={"shape": "underline", "box": box})]
+    for img, light in ((dark_picture(), True), (inked(box), False)):
+        out = draw_overlays(img, bs, 7.0)
+        a, b = np.asarray(out).astype(int), np.asarray(img).astype(int)
+        drawn = (np.abs(a - b).max(2) > 2) & (b.max(2) < 100 if light else b.max(2) > 200)  # where the pencil is on the background
+        assert drawn.sum() > 200
+        mean = a[drawn].mean()
+        assert (mean > 150) if light else (mean < 100)
+    out = draw_overlays(dark_picture(), [beat(5.0, pop={"text": "2024", "box": [200, 800, 520, 900]})], 9.0)
+    assert np.asarray(out.crop((200, 800, 520, 900))).max() > 200  # a pop is light on it too
+
+
+def test_the_pencil_colour_follows_the_reference_picture():
+    box = [150, 350, 450, 550]
+    bs = [beat(5.0, mark={"shape": "underline", "box": box})]
+    out = draw_overlays(inked(box), bs, 7.0, ref=dark_picture())  # the finished card is dark: light pencil
+    assert np.asarray(out.crop((100, 540, 500, 580))).max() > 200
