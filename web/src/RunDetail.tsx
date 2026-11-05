@@ -201,10 +201,10 @@ export function RunDetail({
           )}
 
           {c?.locked && (
-            <Alert className="border-sky-500/30 bg-sky-500/10 text-sky-200">
+            <Alert className="border-transparent bg-brand/15 text-brand-text">
               <Loader2 className="animate-spin" />
               <AlertTitle>Video đang chạy</AlertTitle>
-              <AlertDescription className="text-sky-100/80">Lúc này chưa sửa hay duyệt được. Trang tự làm mới, chạy xong thì sửa được.</AlertDescription>
+              <AlertDescription className="text-foreground/85">Lúc này chưa sửa hay duyệt được. Trang tự làm mới, chạy xong thì sửa được.</AlertDescription>
             </Alert>
           )}
 

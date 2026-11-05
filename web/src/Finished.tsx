@@ -138,7 +138,7 @@ function GeminiDrop({ c, shape }: { c: Ctx; shape: Shape }) {
   }
 
   return (
-    <figure className="flex flex-col gap-2">
+    <figure className="flex w-min flex-col gap-2">
       <label
         htmlFor={id}
         onDragOver={(e) => {
@@ -172,7 +172,7 @@ function GeminiDrop({ c, shape }: { c: Ctx; shape: Shape }) {
           </span>
         )}
       </label>
-      <figcaption className="flex items-center justify-between gap-2 text-sm">
+      <figcaption className="flex flex-wrap items-center justify-between gap-2 text-sm">
         <span>
           <span className="font-semibold">Ảnh Gemini {label}</span>
           {v != null && <span className="text-muted-foreground"> · dùng khi đăng</span>}

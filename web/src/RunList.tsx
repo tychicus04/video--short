@@ -55,7 +55,7 @@ function NeedsYou({ row }: { row: Row }) {
       ? firstLine(row.message) || 'Không có lời nhắn, mở ra xem nhật ký'
       : row.state === 'dead'
         ? need.why + at
-        : `${need.why} · dừng ${fmtAgo(row.since)}`
+        : `${need.why} · ${fmtAgo(row.since) === 'vừa xong' ? 'vừa dừng' : `dừng ${fmtAgo(row.since)}`}`
   return (
     <div className={cn('flex flex-wrap items-center gap-4 rounded-lg p-4', bad ? 'bg-err/10' : 'bg-wait-bg')}>
       <span className={cn('grid size-12 shrink-0 place-items-center rounded-lg', bad ? 'bg-err/15 text-err-text' : 'bg-wait/15 text-wait')}>
