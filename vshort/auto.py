@@ -10,6 +10,7 @@ import traceback
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+from vshort import timing
 from vshort.run import Run
 
 ROOT = Path(__file__).resolve().parent.parent  # agents run here: Sonnet session, advisor off, `model:` of the agent
@@ -42,6 +43,7 @@ def _agent_env() -> dict[str, str]:
 
 def run_claude(run: Run, step: str, agent: str, prompt: str, timeout: int) -> str:
     """Run one agent headless; its reply text. AgentError (reason in Vietnamese) when it fails or overruns."""
+    timing.start(run.path, step)
     t = time.monotonic()
     try:
         cp = subprocess.run([*CLAUDE, "-p", "--agent", agent, "--output-format", "json", prompt], cwd=ROOT,
@@ -202,7 +204,10 @@ class Stop(Exception):
 
 
 def run_vshort(args: list[str]) -> int:
+    """`vshort <step> <run> …`; the step's start goes to times.json (its end comes with Run.mark)."""
     from vshort import cli
+    if len(args) >= 2 and Path(args[1]).is_dir():
+        timing.start(Path(args[1]), args[0])
     return cli.main(args)
 
 
@@ -263,6 +268,7 @@ def _flow(run: Run) -> int:
         raise Stop(WAIT_BRIEF, f"Duyệt brief: {p}/brief.vi.md (sửa thì sửa cả brief.en.md), rồi "
                                f"`vshort approve {p} brief` và `vshort auto {p}`.", "wait_brief")
     if not run.done("source"):
+        timing.start(run.path, "source")
         if code := notebooklm(["source", "add", "-n", meta["notebook_id"], "--type", "text", "--title",
                                f"# BRIEF (EN) – {meta['slug']}", run.file("brief.en.md").read_text()]):
             from vshort.cli import AUTH, RELOGIN
@@ -582,6 +588,7 @@ def _build(run: Run) -> None:
 def run_auto(run: Run) -> int:
     """Run from the first unfinished step to the next stop; auto.json always says where it ended."""
     from vshort.cli import FAILED, OK
+    timing.close_open(run.path)  # steps the last process died in: not "running for 9 hours"
     set_state(run, "running")
     try:
         code = _flow(run)

@@ -38,6 +38,8 @@ class Run:
             self.state = self._load()
             self.state[step] = "done"
             self._save()
+        from vshort import timing  # here, not at the top: keep run.py free of imports from vshort
+        timing.end(self.path, step)
 
     def unmark(self, *steps: str) -> None:
         with _STATE_LOCK:
