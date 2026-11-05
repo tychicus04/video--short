@@ -1,14 +1,13 @@
 // Paste topics, one per line; each gets a folder name (a guess Tai can edit) and goes into the queue together or not at all.
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { ListPlus, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { ApiError, errorMessage, post } from '@/api'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
+import { cn } from '@/lib/utils'
 
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,59}$/ // as vshort/queue.py SLUG_RE
 const MAX_TOPIC = 500
@@ -84,27 +83,30 @@ export function AddTopics({
   }
 
   return (
-    <Card size="sm">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-sm">
-          <ListPlus className="size-4 text-muted-foreground" /> Thêm chủ đề
-        </CardTitle>
-        <CardDescription className="text-xs">
-          Mỗi dòng một chủ đề, hoặc một link bài báo.
-          <span className="hidden sm:inline"> Chạy tối đa {maxRunning} video cùng lúc, phần còn lại xếp hàng.</span>
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
+    <section aria-labelledby="new-h" className="flex flex-wrap gap-6 rounded-lg bg-card p-6">
+      <div className="flex flex-[1_1_280px] flex-col gap-2">
+        <h1 id="new-h" className="text-2xl leading-tight font-bold sm:text-[28px]">
+          Tạo video ngắn từ một bài báo
+        </h1>
+        <p className="text-muted-foreground">
+          Dán link bài báo hoặc gõ chủ đề, mỗi dòng một video. Chạy tối đa {maxRunning} video cùng lúc, phần còn lại xếp hàng.
+        </p>
+      </div>
+      <div className="flex min-w-0 flex-[999_1_480px] flex-col gap-3">
+        <label htmlFor="topics" className="text-sm text-muted-foreground">
+          Link bài báo hoặc chủ đề
+        </label>
         <Textarea
-          rows={2}
+          id="topics"
+          rows={3}
           value={text}
           onChange={(e) => change(() => setText(e.target.value))}
-          placeholder={'Ví dụ:\nLỗ hổng nhân Linux CVE-2026-98432\nhttps://example.com/bai-viet-ve-chu-de-khac'}
-          aria-label="Danh sách chủ đề, mỗi dòng một chủ đề"
+          placeholder={'Ví dụ:\nhttps://thehackernews.com/2026/11/...\nLỗ hổng nhân Linux CVE-2026-98432'}
+          className="px-4 py-3"
         />
 
         {items.length > 0 && (
-          <div className="overflow-hidden rounded-lg border">
+          <div className="overflow-hidden rounded-lg bg-muted">
             <Table className="table-fixed">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
@@ -122,22 +124,40 @@ export function AddTopics({
         )}
 
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
-          <label htmlFor="auto-brief" className="flex cursor-pointer items-center gap-2 text-sm">
-            <Checkbox id="auto-brief" checked={auto} onCheckedChange={(v) => setAuto(v === true)} />
-            Bỏ duyệt brief
-            <span className="hidden text-xs text-muted-foreground sm:inline">· chạy thẳng, không dừng chờ bạn duyệt brief</span>
-          </label>
+          <Switch id="auto-brief" checked={auto} onChange={setAuto}>
+            <span className="font-semibold">Bỏ duyệt brief</span>
+            <span className="text-sm text-muted-foreground"> · chạy thẳng tới bước duyệt bản dịch</span>
+          </Switch>
           <div className="flex w-full items-center gap-3 sm:w-auto">
             {!canWrite && <span className="text-sm text-muted-foreground">Cần mã truy cập</span>}
             <Button size="lg" className="flex-1 sm:flex-none" onClick={submit} disabled={!canWrite || busy || !items.length || local.some(Boolean)}>
               {busy ? <Loader2 className="animate-spin" /> : <ListPlus />}
-              Thêm vào hàng đợi
+              Tạo video
               {items.length > 1 && ` (${items.length})`}
             </Button>
           </div>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
+  )
+}
+
+/** An on/off switch: a real button with role="switch", the whole label is the target. */
+function Switch({ id, checked, onChange, children }: { id: string; checked: boolean; onChange: (v: boolean) => void; children: ReactNode }) {
+  return (
+    <button
+      id={id}
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+    >
+      <span aria-hidden className={cn('relative h-6 w-11 shrink-0 rounded-full transition-colors', checked ? 'bg-brand' : 'bg-secondary')}>
+        <span className={cn('absolute top-0.5 left-0.5 size-5 rounded-full bg-foreground transition-transform', checked && 'translate-x-5')} />
+      </span>
+      <span>{children}</span>
+    </button>
   )
 }
 

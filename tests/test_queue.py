@@ -222,6 +222,7 @@ def test_running_row_has_progress(tmp_runs, tmp_path):
     p = row["r2"]["progress"]
     assert p["n"] == 2 and p["label"] == "Duyệt brief" and p["status"] == "running" and 0 <= p["percent"] <= 99
     assert p["eta"]["stop"] == "Duyệt bản dịch"
+    assert 4 <= p["elapsed"] <= 60  # machine time so far: the stages' own times, waits for Tai left out
     assert row["five-solas"]["progress"] is None  # not started: nothing to show
 
 

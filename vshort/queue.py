@@ -200,7 +200,7 @@ def status(run: Run, queued: bool, typ: dict[str, float] | None = None) -> dict:
                         typical() if typ is None else typ, time.time())
         at = v["stages"][v["current"]]
         progress = {"percent": v["percent"], "n": v["current"] + 1, "label": at["label"], "status": at["status"],
-                    "eta": v["eta"]}
+                    "eta": v["eta"], "elapsed": sum(st["seconds"] or 0 for st in v["stages"])}
     return {"slug": run.path.name, "topic": str(meta.get("topic") or ""), "auto": bool(meta.get("auto")),
             "title": str(_read(run, "cover/cover.json").get("title") or ""),
             "state": "queued" if queued else state,

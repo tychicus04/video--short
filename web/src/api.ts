@@ -18,6 +18,7 @@ export interface Progress {
   label: string
   status: StageStatus
   eta: Eta
+  elapsed: number // seconds the stages have run so far, waits for Tai left out
 }
 
 export interface StageStep {

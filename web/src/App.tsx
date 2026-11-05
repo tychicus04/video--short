@@ -185,21 +185,14 @@ export default function App() {
         {state && !state.can_write && <AccessCode tokenSet={state.token_set} refresh={refresh} />}
 
         {/* hidden, not unmounted: a half-pasted list of topics survives a look at one video */}
-        <div hidden={route.name !== 'list'} className="space-y-6">
+        <div hidden={route.name !== 'list'} className="space-y-10">
           {state ? (
             <AddTopics canWrite={state.can_write} maxRunning={state.max_running} refresh={refresh} />
           ) : (
-            <Skeleton className="h-44 rounded-xl" />
+            <Skeleton className="h-44 rounded-lg" />
           )}
-          <section className="space-y-4">
-            <div className="flex items-end justify-between gap-3">
-              <h1 className="text-xl font-semibold tracking-tight">Video</h1>
-              {at && (
-                <span className="text-xs text-muted-foreground">Cập nhật {at.toLocaleTimeString('vi-VN')}</span>
-              )}
-            </div>
-            <RunList rows={state?.rows ?? null} canWrite={!!state?.can_write} refresh={refresh} />
-          </section>
+          <RunList rows={state?.rows ?? null} canWrite={!!state?.can_write} refresh={refresh} />
+          {at && <p className="text-right text-xs text-muted-foreground">Cập nhật {at.toLocaleTimeString('vi-VN')}</p>}
         </div>
         {route.name === 'run' && (
           <RunDetail

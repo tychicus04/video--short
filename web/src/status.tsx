@@ -103,3 +103,46 @@ export function fmtAgo(since: number | null): string {
 export const money = (usd: number) => `$${usd.toFixed(2)}`
 
 export const firstLine = (text: string) => text.split('\n').find((l) => l.trim())?.trim() ?? ''
+
+/** A video's length as on a player: "1:03". */
+export function fmtClockLength(s: number): string {
+  const t = Math.round(s)
+  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`
+}
+
+/** Clipcup's tabs: a dark track, the chosen one white with dark text. Wraps on a phone. */
+export function Tabs<T extends string>({
+  value,
+  options,
+  onChange,
+  label,
+  className,
+}: {
+  value: T
+  options: [T, string][]
+  onChange: (v: T) => void
+  label: string
+  className?: string
+}) {
+  return (
+    <div role="tablist" aria-label={label} className={cn('flex flex-wrap gap-1 rounded-xl bg-card p-1', className)}>
+      {options.map(([v, text]) => (
+        <button
+          key={v}
+          type="button"
+          role="tab"
+          aria-selected={v === value}
+          onClick={() => onChange(v)}
+          className={cn(
+            'min-h-[42px] flex-1 rounded-lg px-4 text-sm whitespace-nowrap outline-none focus-visible:ring-3 focus-visible:ring-ring/50',
+            v === value
+              ? 'bg-foreground font-bold text-card shadow-[-20px_10px_30px_rgba(0,0,0,0.25)]'
+              : 'font-semibold text-foreground hover:bg-secondary',
+          )}
+        >
+          {text}
+        </button>
+      ))}
+    </div>
+  )
+}
