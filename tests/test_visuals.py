@@ -138,15 +138,18 @@ def test_reference_ink_where_the_platforms_draw_is_flagged():
 def test_pencil_keeps_the_edges_of_a_photo():
     photo = Image.new("RGB", (400, 400), "white")
     ImageDraw.Draw(photo).rectangle((100, 100, 300, 300), fill=(20, 20, 20))
-    f = np.asarray(pencil(photo, "x")).astype(int)
-    assert f[100:940, 40:680].min() < 90  # dark strokes survive
-    assert np.abs(f[420:620, 260:460] - PAPER).max() <= 6  # the flat interior dodges to paper
+    f = np.asarray(pencil(photo, "")).astype(int)  # no credit: its ink is dark too
+    ys, xs = np.nonzero(f.min(2) < 90)  # dark strokes survive: the square's outline
+    cy, cx = (ys.min() + ys.max()) // 2, (xs.min() + xs.max()) // 2
+    assert ys.max() - ys.min() > 200 and xs.max() - xs.min() > 200
+    assert np.abs(f[cy - 60:cy + 60, cx - 60:cx + 60] - PAPER).max() <= 6  # the flat interior dodges to paper
 
 
 def test_pencil_shrinks_a_long_credit_to_the_frame():
-    f = np.asarray(pencil(Image.new("RGB", (400, 400), "gray"), "Nguồn: " + "rất dài " * 12)).astype(int)
-    cols = (np.abs(f[846:900] - PAPER).max(2) > 40).any(0).nonzero()[0]
-    assert len(cols) and cols.min() >= 16 and cols.max() <= 704
+    img = pencil(Image.new("RGB", (400, 400), "gray"), "Nguồn: " + "rất dài " * 12)
+    f, bare = (np.asarray(i).astype(int) for i in (img, pencil(Image.new("RGB", (400, 400), "gray"), "")))
+    cols = (np.abs(f - bare).max(2) > 40).any(0).nonzero()[0]
+    assert len(cols) and cols.max() - cols.min() > 400 and ui_problems(img) == []  # wide, still left of the buttons
 
 
 def _svg(tmp_path, family):
