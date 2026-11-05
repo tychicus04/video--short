@@ -11,7 +11,7 @@ from vshort.fit import Placement
 from vshort.media import FF, frame_at, probe
 from vshort.kit import Act
 from vshort.motion import Scene
-from vshort.render import FPS, H, W, Segment, _kinds, build_ass, draw, render_video, segments, view
+from vshort.render import FPS, H, OUTRO_S, W, Segment, _kinds, build_ass, draw, export_outro, render_video, segments, view
 
 
 def test_build_ass_layout():
@@ -137,8 +137,11 @@ def test_logo_in_the_corner_then_the_outro(tmp_path):
     write_silence(tmp_path / "n.wav", 1.0)
     ass = tmp_path / "s.ass"
     ass.write_text(build_ass([]), encoding="utf-8")
-    out = tmp_path / "o.mp4"
-    render_video(segs, ass, tmp_path / "n.wav", 1.0, out, outro=2.5)
+    out, clip = tmp_path / "o.mp4", tmp_path / "outro.mp4"
+    export_outro(clip)
+    err = subprocess.run([FF, "-hide_banner", "-i", str(clip)], capture_output=True, text=True).stderr
+    assert "Audio:" in err and abs(probe(clip).duration - OUTRO_S) < 0.1  # a silent track: concat-ready on its own
+    render_video(segs, ass, tmp_path / "n.wav", 1.0, out, outro=clip)
     assert abs(probe(out).duration - 3.5) < 0.1
     first = frame_at(out, 0.5).astype(int)
     mark = first[24:80, 481:704]
@@ -151,6 +154,19 @@ def test_logo_in_the_corner_then_the_outro(tmp_path):
     assert np.abs(end[300, 360].astype(int) - B).max() > 100  # the outro has replaced the frame
     assert end[480:640, 260:460].std() > 30 and end[780:900, 60:660].std() > 30  # shield and words drawn
     assert np.abs(end[24:80, 481:704].astype(int) - end[300, 360]).max() < 40  # no corner logo on the outro
+
+
+def test_any_outro_clip_is_appended_scaled_to_the_frame(tmp_path):
+    Image.new("RGB", (720, 1280), (40, 40, 40)).save(tmp_path / "1.png")
+    segs = segments([Placement(1, 0.0, 1.0)], [{"id": 1, "file": "1.png", "group": "a"}], tmp_path, 1.0)
+    write_silence(tmp_path / "n.wav", 1.0)
+    ass = tmp_path / "s.ass"
+    ass.write_text(build_ass([]), encoding="utf-8")
+    clip, out = tmp_path / "mine.mp4", tmp_path / "o.mp4"  # a hand-made outro: other size, other length
+    subprocess.run([FF, "-loglevel", "error", "-f", "lavfi", "-i", "color=c=0xC03020:s=1080x1920:r=30:d=4", str(clip)], check=True)
+    render_video(segs, ass, tmp_path / "n.wav", 1.0, out, outro=clip)
+    assert abs(probe(out).duration - 5.0) < 0.1 and (probe(out).width, probe(out).height) == (W, H)
+    assert np.abs(frame_at(out, 4.5)[640, 360].astype(int) - (0xC0, 0x30, 0x20)).max() < 20
 
 
 def test_reference_shots_only_zoom_and_keep_the_credit_line_in_view():

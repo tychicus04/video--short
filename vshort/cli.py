@@ -15,7 +15,7 @@ from vshort.captions import Fragment, detect_fragments, write_sheets
 from vshort.fit import Placement, build_narration, phrase_times, sequence, total
 from vshort.media import frame_at, probe
 from vshort.plates import Plate, build_plates, scene_cuts
-from vshort.render import OUTRO, build_ass, clean_video, render_video, segments
+from vshort.render import OUTRO, build_ass, clean_video, export_outro, render_video, segments
 from vshort.run import Run, config
 from vshort.script import Sentence, check_brief, check_script, check_style, group_sentences, merge_text, merged
 from vshort.stills import NLM_OUTRO, contact_sheet, grid_image, pick_still, scene_of
@@ -470,10 +470,18 @@ def cmd_render(a) -> int:
     animated = {i: k for k, sc in enumerate(scenes) for i in sc.lines}
     ass = run.file("subs.ass")
     ass.write_text(build_ass(phrase_times(placements, script)), encoding="utf-8")
+    if not OUTRO.exists():
+        export_outro()
     render_video(segments(placements, frames, run.path, fitted["total"], animated), ass, run.file("narration.wav"),
                  fitted["total"], run.file("final.mp4"), scenes, OUTRO)
     run.mark("render")
     print(run.file("final.mp4"))
+    return OK
+
+
+def cmd_outro(a) -> int:
+    export_outro(Path(a.out))
+    print(Path(a.out).resolve())
     return OK
 
 
@@ -573,6 +581,9 @@ def main(argv: list[str] | None = None) -> int:
             p.add_argument("--design", action="store_true", help="check the canvas against the brief, before the voice")
         if name == "cover":
             p.add_argument("--candidates", action="store_true", help="gather the sources' lead images for an agent to pick")
+    p = sub.add_parser("outro", help="vẽ lại outro logo ANM ra mp4; mọi video render sau đó ghép file này vào cuối")
+    p.add_argument("out", nargs="?", default=str(OUTRO))
+    p.set_defaults(fn=cmd_outro)
     p = sub.add_parser("approve")
     p.add_argument("run")
     p.add_argument("what", choices=["brief", "script"])

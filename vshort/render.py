@@ -12,7 +12,7 @@ from PIL import Image
 
 from vshort import kit
 from vshort.fit import Placement
-from vshort.media import FF, probe
+from vshort.media import FF, iter_frames, probe
 from vshort.motion import Scene
 from vshort.plates import Plate
 from vshort.textfit import FONTS, MAX_TEXT_W, text_width
@@ -32,7 +32,8 @@ LOGO = Path(__file__).resolve().parent.parent / "assets" / "brand" / "anm-logo.p
 LOGO_BOX = (481, 24, 704, 80)  # top right, clear of the captions and the erased watermark
 LOGO_ALPHA = 0.35  # faint: a grey mark, not a sticker
 SHIELD_W = 185  # the logo's shield ends here; its words start at x 188
-OUTRO = 2.5  # seconds of logo after the last line, silent
+OUTRO = LOGO.with_name("anm-outro.mp4")  # appended to every video; `vshort outro` redraws it, or drop in any 720x1280 clip
+OUTRO_S = 2.5  # length of the drawn outro
 
 
 @lru_cache
@@ -62,6 +63,27 @@ def end_card(t: float, paper: Image.Image) -> Image.Image:
         w = words.crop((0, 0, q, words.height))
         img.paste(w, ((W - words.width) // 2, 760), w)
     return img
+
+
+def export_outro(out: Path = OUTRO) -> None:
+    """end_card alone as an mp4 with a silent track (vshort's 24 kHz mono), to append to this or any other video."""
+    paper = kit._paper().reduce(kit.SS)
+    tmp = out.resolve().with_name(f"{out.stem}.tmp{out.suffix}")  # every render reads `out`: never leave it half-written
+    cmd = [FF, "-loglevel", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", str(FPS),
+           "-i", "-", "-f", "lavfi", "-i", "anullsrc=r=24000:cl=mono", "-map", "0:v", "-map", "1:a", "-t", str(OUTRO_S),
+           "-c:v", "libx264", "-crf", "18", "-preset", "medium", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k",
+           "-movflags", "+faststart", str(tmp)]
+    try:
+        with subprocess.Popen(cmd, stdin=subprocess.PIPE) as p:
+            for n in range(math.ceil(OUTRO_S * FPS)):
+                p.stdin.write(end_card(n / FPS, paper).tobytes())
+            p.stdin.close()
+        if p.returncode:
+            raise subprocess.CalledProcessError(p.returncode, cmd)
+        os.replace(tmp, out)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 def fs(em: float) -> int:
@@ -257,8 +279,8 @@ def draw(img: Image.Image, scale: float, cx: float, cy: float) -> Image.Image:
 
 
 def render_video(segs: list[Segment], ass: Path, narration: Path, total: float, out: Path,
-                 scenes: list[Scene] = (), outro: float = 0.0) -> None:
-    """`total` s of lines with the logo in the corner, then `outro` s of end_card faded in from the last frame."""
+                 scenes: list[Scene] = (), outro: Path | None = None) -> None:
+    """`total` s of lines with the logo in the corner, then the `outro` clip faded in from the last frame, silent."""
     cache: dict[Path, Image.Image] = {}
 
     def load(f: Path) -> Image.Image:
@@ -282,22 +304,25 @@ def render_video(segs: list[Segment], ass: Path, narration: Path, total: float, 
         return img
 
     mark = _logo()[0]
-    paper = kit._paper().reduce(kit.SS) if outro else None
-    last = None
+    tail = iter_frames(outro, fps=FPS, gray=False) if outro else iter(())
+    extra = probe(outro).duration if outro else 0.0
+    last = end = None
     tmp = out.resolve().with_name(f"{out.stem}.tmp{out.suffix}")  # a failed render must not replace a good `out`
     cmd = [FF, "-loglevel", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", str(FPS),
            "-i", "-", "-i", str(narration.resolve()), "-vf", f"ass={ass.name}:fontsdir={FONTS}", "-af", "apad",
-           "-map", "0:v", "-map", "1:a", "-t", str(total + outro), "-c:v", "libx264", "-crf", "18", "-preset", "medium",
+           "-map", "0:v", "-map", "1:a", "-t", str(total + extra), "-c:v", "libx264", "-crf", "18", "-preset", "medium",
            "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(tmp)]
     try:
         with subprocess.Popen(cmd, stdin=subprocess.PIPE, cwd=ass.parent) as p:
             try:
-                for n in range(math.ceil((total + outro) * FPS)):
+                for n in range(math.ceil((total + extra) * FPS)):
                     t = n / FPS
                     if t < total:
                         img = last = frame(t)
                     else:
-                        img = end_card(t - total, paper)
+                        if (f := next(tail, None)) is not None:  # one short: hold its last frame
+                            end = Image.fromarray(f[1]).resize((W, H), Image.LANCZOS)  # no-op on a 720x1280 clip
+                        img = end
                         if last is not None and t - total < XF:
                             img = Image.blend(last, img, (t - total) / XF)
                     p.stdin.write(img.tobytes())
