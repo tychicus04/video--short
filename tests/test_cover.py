@@ -3,6 +3,7 @@ from io import BytesIO
 from urllib.error import URLError
 
 import numpy as np
+import pytest
 from PIL import Image
 
 from vshort import cover
@@ -164,3 +165,47 @@ def test_poster_prompt_goes_with_the_covers_and_the_export(tmp_path):
     (run / "cover" / "pick.json").write_text(json.dumps({"n": None, "why": "", "title": "T"}))
     assert main(["cover", str(run)]) == 0  # no poster this time: no old prompt left beside the new pick
     assert not (run / "cover" / "prompt.txt").exists() and not (run / "xuat" / "T" / "prompt-anh-bia.txt").exists()
+
+
+def _png(w, h, color=(200, 0, 0)) -> bytes:
+    buf = BytesIO()
+    Image.new("RGB", (w, h), color).save(buf, "PNG")
+    return buf.getvalue()
+
+
+def test_save_gemini_converts_and_caps_size(tmp_path):
+    p = cover.save_gemini(tmp_path, "9x16", _png(3000, 5333))
+    assert p == tmp_path / "cover" / "gemini-9x16.jpg"
+    with Image.open(p) as im:
+        assert im.format == "JPEG" and max(im.size) == 2048 and abs(im.width / im.height - 3000 / 5333) < 0.01
+    assert cover.save_gemini(tmp_path, "16x9", _png(1900, 1080)).name == "gemini-16x9.jpg"  # 1 % off: fine
+
+
+def test_save_gemini_refuses_wrong_ratio_bad_shape_non_image_and_huge(tmp_path):
+    cases = [("4x3", _png(90, 160), "Khổ ảnh phải là 9x16 hoặc 16x9"),
+             ("9x16", b"x" * (cover.MAX_UPLOAD + 1), "Ảnh lớn quá 15 MB"),
+             ("9x16", b"not an image", "File này không phải ảnh"),
+             ("9x16", _png(100, 100), "Ảnh 100×100 không đúng khổ 9x16 \\(lệch quá 5 %\\)"),
+             ("16x9", _png(1080, 1920), "không đúng khổ 16x9")]
+    for shape, data, msg in cases:
+        with pytest.raises(ValueError, match=msg):
+            cover.save_gemini(tmp_path, shape, data)
+    assert not list(tmp_path.rglob("*gemini*"))
+
+
+def test_save_gemini_refuses_too_many_pixels(tmp_path, monkeypatch):
+    monkeypatch.setattr(cover, "MAX_PIXELS", 90 * 160 - 1)  # read from the header, before the picture is decoded
+    with pytest.raises(ValueError, match="Ảnh lớn quá"):
+        cover.save_gemini(tmp_path, "9x16", _png(90, 160))
+
+
+def test_package_prefers_gemini(tmp_path):
+    run = _run(tmp_path)
+    assert main(["cover", str(run)]) == 0
+    cover.save_gemini(run, "9x16", _png(1080, 1920, (255, 0, 0)))
+    cover.package(run)
+    [folder] = (run / "xuat").iterdir()
+    with Image.open(folder / "thumb-doc-9x16.jpg") as im:
+        r, g, b = im.convert("RGB").getpixel((540, 960))
+    assert r > 200 and g < 60 and b < 60
+    assert (folder / "thumb-ngang-16x9.jpg").read_bytes() == (run / "cover" / "thumb-16x9.jpg").read_bytes()  # no Gemini one

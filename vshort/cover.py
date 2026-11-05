@@ -18,7 +18,7 @@ from urllib.parse import urljoin
 from urllib.request import Request, urlopen
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 
 from vshort.textfit import FONTS
 
@@ -55,6 +55,12 @@ no real company or agency logos, no watermark."""
 WIDE = """Now make the same poster as a horizontal 16:9 image: same scene and the same headline text, rearranged for the wide \
 frame, with the headline on the left half."""
 LINE_LOOK = ["red, biggest", "white with the last word in red, big", "yellow, smaller", "white, smaller"]
+# the covers Tai draws in the Gemini app from that prompt and drops on the video's page; the export uses them when there
+GEMINI = {"9x16": "gemini-9x16.jpg", "16x9": "gemini-16x9.jpg"}
+RATIO_TOL = 0.05  # how far off 9:16 or 16:9 an upload may be: Gemini's sizes are not exact
+MAX_SIDE = 2048
+MAX_UPLOAD = 15_000_000  # bytes of the file as uploaded
+MAX_PIXELS = 50_000_000  # a small file may still decode to gigabytes (a "decompression bomb"): refused from its header
 
 
 class _Lead(HTMLParser):
@@ -276,6 +282,33 @@ def make(run_dir: Path) -> dict:
     return info
 
 
+def save_gemini(run_dir: Path, shape: str, data: bytes) -> Path:
+    """cover/gemini-<shape>.jpg from an uploaded JPEG, PNG or WebP: turned upright, at most MAX_SIDE px, as JPEG. Never cut:
+    a picture of the wrong shape is refused. ValueError (in Vietnamese) and nothing written when it is not fit."""
+    if shape not in GEMINI:
+        raise ValueError("Khổ ảnh phải là 9x16 hoặc 16x9")
+    if len(data) > MAX_UPLOAD:
+        raise ValueError(f"Ảnh lớn quá {MAX_UPLOAD // 1_000_000} MB")
+    try:
+        img = Image.open(BytesIO(data))
+        if img.width * img.height > MAX_PIXELS:
+            raise ValueError(f"Ảnh lớn quá ({img.width}×{img.height} điểm ảnh)")
+        img = ImageOps.exif_transpose(img).convert("RGB")
+    except (OSError, Image.DecompressionBombError, SyntaxError) as e:  # SyntaxError: what Pillow raises for some broken files
+        raise ValueError("File này không phải ảnh") from e
+    w, h = img.size
+    a, b = map(int, shape.split("x"))
+    if abs((w / h) / (a / b) - 1) > RATIO_TOL:
+        raise ValueError(f"Ảnh {w}×{h} không đúng khổ {shape} (lệch quá {RATIO_TOL * 100:.0f} %)")
+    img.thumbnail((MAX_SIDE, MAX_SIDE))
+    out = run_dir / "cover" / GEMINI[shape]
+    out.parent.mkdir(exist_ok=True)
+    tmp = out.with_name(f".{out.name}.{os.getpid()}.tmp")
+    img.save(tmp, "JPEG", quality=92)
+    tmp.replace(out)  # whole or not at all: the export never copies half a picture
+    return out
+
+
 def package(run_dir: Path) -> Path:
     """xuat/<title>/: <title>.mp4, both headline covers, tieu-de.txt (title, picture credit) and the Gemini prompt, built aside and
     swapped in whole, so the Mac's pull (rsync of */xuat/) never takes half a video or an old title's folder."""
@@ -285,7 +318,8 @@ def package(run_dir: Path) -> Path:
     (tmp / name).mkdir(parents=True)
     shutil.copy2(run_dir / "final.mp4", tmp / name / f"{name}.mp4")
     for shape, word in (("16x9", "ngang"), ("9x16", "doc")):
-        shutil.copy2(run_dir / "cover" / f"thumb-{shape}.jpg", tmp / name / f"thumb-{word}-{shape}.jpg")
+        drawn = run_dir / "cover" / GEMINI[shape]  # Tai's Gemini cover over the composed one
+        shutil.copy2(drawn if drawn.exists() else run_dir / "cover" / f"thumb-{shape}.jpg", tmp / name / f"thumb-{word}-{shape}.jpg")
     if (run_dir / "cover" / "prompt.txt").exists():
         (tmp / name / "prompt-anh-bia.txt").write_text(
             (run_dir / "cover" / "prompt.txt").read_text(encoding="utf-8") + "\n\n----- Có ảnh dọc rồi thì dán tiếp câu "

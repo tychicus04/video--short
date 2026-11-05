@@ -1,3 +1,5 @@
+import base64
+import io
 import json
 import os
 import subprocess
@@ -8,7 +10,7 @@ from starlette.applications import Starlette
 from starlette.routing import Mount
 from starlette.testclient import TestClient
 
-from vshort import auto, cli, queue, web
+from vshort import auto, cli, cover, queue, web
 from vshort.cli import RELOGIN
 from vshort.run import Run
 
@@ -539,3 +541,42 @@ def test_state_survives_broken_times(client_anon, run_s, run_wait_script):
     row = next(x for x in r.json()["rows"] if x["slug"] == "w")
     assert row["progress"]["label"] == "Duyệt bản dịch" and row["progress"]["status"] == "you"
     assert client_anon.get("/api/runs/w").json()["progress"]["current"] == 5
+
+
+def _b64_png(w, h, color=(255, 0, 0)) -> str:
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new("RGB", (w, h), color).save(buf, "PNG")
+    return base64.b64encode(buf.getvalue()).decode()
+
+
+def test_cover_upload_errors(client_anon, client, run_s):
+    url = "/api/runs/s/cover"
+    assert client_anon.post(url, json={"shape": "9x16", "data": _b64_png(90, 160)}).status_code == 403
+    assert client.post(url, content=b"x", headers={"content-type": "multipart/form-data"}).status_code == 415
+    r = client.post(url, json={"shape": "4x3", "data": ""})
+    assert r.status_code == 400 and r.json()["error"] == "Khổ ảnh phải là 9x16 hoặc 16x9"
+    assert client.post(url, json={"shape": "9x16", "data": "!!không phải base64"}).status_code == 400
+    assert client.post(url, json={"shape": "9x16", "data": 5}).status_code == 400
+    assert client.post(url, json={"shape": "9x16", "data": "A" * (cover.MAX_UPLOAD * 4 // 3 + 8)}).status_code == 413
+    assert not list(run_s.path.rglob("*gemini*"))
+
+
+def test_cover_upload_saves_serves_and_repackages(client, run_s):
+    from PIL import Image
+    (run_s.path / "cover").mkdir()
+    for shape, size in cover.SIZES.items():
+        Image.new("RGB", size, (0, 0, 255)).save(run_s.path / "cover" / f"thumb-{shape}.jpg")
+    (run_s.path / "cover" / "cover.json").write_text(json.dumps({"title": "Tên bài", "from": "video", "why": ""}))
+    row = lambda: next(r for r in client.get("/api/state").json()["rows"] if r["slug"] == "s")
+    assert row()["cover"]["name"] == "cover/thumb-9x16.jpg"
+    assert client.post("/api/runs/s/cover", json={"shape": "9x16", "data": _b64_png(1080, 1920)}).status_code == 204
+    g = client.get("/files/s/cover/gemini-9x16.jpg")
+    assert g.status_code == 200 and g.headers["content-type"] == "image/jpeg"
+    j = client.get("/api/runs/s").json()
+    assert isinstance(j["gemini"]["9x16"], int) and j["gemini"]["16x9"] is None
+    assert row()["cover"]["name"] == "cover/gemini-9x16.jpg"
+    [folder] = (run_s.path / "xuat").iterdir()
+    with Image.open(folder / "thumb-doc-9x16.jpg") as im:
+        r, g_, b = im.convert("RGB").getpixel((540, 960))
+    assert r > 200 and b < 60

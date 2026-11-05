@@ -3,6 +3,7 @@ iOS will not play a video without it), the shared access-code login, the edits T
 approve, retry), the loop that starts what the queue says, and the built UI. Read endpoints are plain `def`: Starlette
 runs them in its threadpool, so a slow `ps` or file read does not hold up the others. A write reads its body in async
 code and does the rest in the threadpool too (`_post`): it may wait for LOCK, a `vshort` command or an agent."""
+import base64
 import difflib
 import hmac
 import json
@@ -34,7 +35,8 @@ COOKIE = "vshort_token"
 YEAR = 365 * 24 * 3600
 LOG_LINES = 50
 TICK = 5  # seconds between two looks at the queue
-COVERS = {"cover/thumb-9x16.jpg", "cover/thumb-16x9.jpg"}  # the only files served besides final.mp4
+# the only files served besides final.mp4
+COVERS = {"cover/thumb-9x16.jpg", "cover/thumb-16x9.jpg", *(f"cover/{n}" for n in cover.GEMINI.values())}
 LOCK = threading.Lock()  # every load -> change -> save of queue.json, in tick() and in the routes. Not reentrant: take it last.
 BAD_BODY = "Dữ liệu gửi lên sai dạng"
 BRIEF_SYNC = ("RUN={run}. Tai vừa sửa {run}/brief.vi.md (diff bên dưới). Sửa {run}/brief.en.md cho khớp đúng những chỗ đó, "
@@ -149,7 +151,8 @@ def run_detail(request: Request) -> JSONResponse:
                          "log_tail": "\n".join((_text(slug, "auto.log") or "").splitlines()[-LOG_LINES:]),
                          "video": queue.safe_file(slug, "final.mp4") is not None and not locked,
                          "cover_v": _version(slug, "cover/cover.json"), "prompt": _text(slug, "cover/prompt.txt"),
-                         "prompt_wide": cover.WIDE, "progress": progress, "now": now})
+                         "prompt_wide": cover.WIDE, "progress": progress, "now": now,
+                         "gemini": {shape: _version(slug, f"cover/{n}") for shape, n in cover.GEMINI.items()}})
 
 
 def _version(slug: str, name: str) -> int | None:
@@ -424,6 +427,31 @@ def retry(slug: str, body: dict) -> Response:
     return Response(status_code=204)
 
 
+def save_cover(slug: str, body: dict) -> Response:
+    """A cover Tai drew in the Gemini app, as base64 in JSON (a form upload could come from another site, see _not_json);
+    the export folder is laid out again so the Mac pulls it."""
+    data = body.get("data")
+    if not isinstance(data, str):
+        return _error(BAD_BODY, 400)
+    if len(data) > cover.MAX_UPLOAD * 4 // 3 + 4:
+        return _error(f"Ảnh lớn quá {cover.MAX_UPLOAD // 1_000_000} MB", 413)
+    try:
+        raw = base64.b64decode(data, validate=True)
+    except ValueError:  # binascii.Error, or a character that is not ascii
+        return _error("Ảnh gửi lên bị hỏng, thử chọn lại file", 400)
+    run_dir = queue.run_path(slug)
+    try:
+        cover.save_gemini(run_dir, body.get("shape"), raw)
+    except ValueError as e:
+        return _error(str(e), 400)
+    if (run_dir / "final.mp4").is_file() and (run_dir / "cover" / "cover.json").is_file():
+        try:
+            cover.package(run_dir)
+        except (OSError, ValueError, KeyError) as e:
+            return _error(f"Đã lưu ảnh, nhưng chưa làm lại được thư mục xuất: {e}", 500)
+    return Response(status_code=204)
+
+
 def _http_error(request: Request, exc: HTTPException) -> JSONResponse:
     """Starlette's own 404 and 405 are English text."""
     return _error({404: "Không có trang này", 405: "Không dùng được cách gọi này"}.get(exc.status_code, "Có lỗi"), exc.status_code)
@@ -447,6 +475,7 @@ ROUTES = [
     Route("/api/runs/{slug}/proposal", _post(answer_proposal, run=True), methods=["POST"]),
     Route("/api/runs/{slug}/approve", _post(approve, run=True), methods=["POST"]),
     Route("/api/runs/{slug}/retry", _post(retry, run=True), methods=["POST"]),
+    Route("/api/runs/{slug}/cover", _post(save_cover, run=True), methods=["POST"]),
 ]
 class Dist(StaticFiles):
     """The built UI. Assets have a hash in their name and may be cached; index.html names them, so it is revalidated

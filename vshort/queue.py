@@ -193,6 +193,7 @@ def status(run: Run, queued: bool, typ: dict[str, float] | None = None) -> dict:
         cost = 0.0
     seconds = _read(run, "timeline.json").get("total")
     stamped = next((f for f in (run.file("auto.json"), run.file("run.json")) if f.exists()), None)
+    pic = next((n for n in ("cover/gemini-9x16.jpg", "cover/thumb-9x16.jpg") if run.file(n).is_file()), None)
     progress = None
     if not queued and state in PROGRESS:
         v = stages.view(state, bool(meta.get("auto")), done_steps(run), timing.read(run.path),
@@ -207,7 +208,9 @@ def status(run: Run, queued: bool, typ: dict[str, float] | None = None) -> dict:
             "step": _step(run, bool(meta.get("auto"))),
             "since": stamped.stat().st_mtime if stamped else None,
             "cost": cost, "verdict": _read(run, "review.json").get("verdict"), "seconds": seconds,
-            "relogin": relogin, "removable": False, "progress": progress}
+            "relogin": relogin, "removable": False, "progress": progress,
+            # the card's picture: Tai's Gemini cover, else the composed one
+            "cover": {"name": pic, "v": int(run.file(pic).stat().st_mtime)} if pic else None}
 
 
 class _Folder(Run):
@@ -227,7 +230,7 @@ def rows(q: Queue, typ: dict[str, float] | None = None) -> list[dict]:
     have = {r["slug"] for r in found}
     waiting = [{"slug": it["slug"], "topic": it["topic"], "auto": it["auto"], "title": "", "state": "queued", "message": "",
                 "step": STEPS[0][1], "since": it["added"], "cost": 0.0, "verdict": None, "seconds": None,
-                "relogin": False, "removable": True, "progress": None} for it in q.new if it["slug"] not in have]
+                "relogin": False, "removable": True, "progress": None, "cover": None} for it in q.new if it["slug"] not in have]
     place = {s: i for i, s in enumerate([*q.resume, *(it["slug"] for it in q.new)])}
     # queued: in the order of the queue; done: the newest first
     return sorted(found + waiting, key=lambda r: (ORDER[r["state"]], place[r["slug"]] if r["state"] == "queued"
