@@ -1,28 +1,31 @@
 """`vshort <command> <run_dir>`: every pipeline step as a command that can be re-run."""
 import argparse
 import json
+import math
+import re
 import shutil
 import subprocess
 import sys
 import time
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from PIL import Image, ImageOps
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 
-from vshort import auto, cms, cover, motion, publish, shapes, sound
+from vshort import auto, cards, cms, cover, motion, publish, render, shapes, shots, sound
 from vshort.captions import Fragment, detect_fragments, write_sheets
-from vshort.fit import Placement, build_narration, phrase_times, sequence, total
+from vshort.fit import Placement, build_narration, phrase_fracs, phrase_times, sequence, total
 from vshort.media import frame_at, probe
 from vshort.plates import Plate, build_plates, scene_cuts
 from vshort.render import OUTRO, build_ass, clean_video, export_outro, render_video, segments
 from vshort.run import Run, config
 from vshort.script import (Sentence, check_brief, check_numbers, check_script, check_style, group_sentences,
                            merge_text, merged)
-from vshort.stills import NLM_OUTRO, contact_sheet, grid_image, pick_still, scene_of
+from vshort.stills import NLM_OUTRO, _label, contact_sheet, grid_image, pick_still, scene_of
+from vshort.textfit import FONTS
 from vshort.tts import (Clip, QuotaExceeded, clip_paths, gemini_speaker, load_api_key, synth_lines, synth_script,
                         zerotts_speaker)
-from vshort.visuals import patch_text, pencil, svg_frame, ui_problems, validate
+from vshort.visuals import SUBTITLE, patch_text, pencil, svg_frame, ui_problems, validate
 
 ROOT = Path(__file__).resolve().parent.parent
 OK, FAILED, BAD_INPUT, AUTH, QUOTA = 0, 1, 2, 4, 75
@@ -372,6 +375,208 @@ def cmd_visuals(a) -> int:
     return OK
 
 
+SHOT_KINDS = {"still": "ảnh NotebookLM", "svg": "thẻ tư liệu", "photo": "ảnh tư liệu"}
+CELL_W, CELL_H = 180, 320  # a beat on shots/sheet.png
+
+
+@dataclass
+class _ShotLines:
+    """What a beat plan stands on: the script, the timeline, the frames, and which lines may have beats."""
+    script: list[dict]
+    place: dict[int, Placement]
+    seg: dict[int, render.Segment]  # the render's own: a line runs from the cut before it to the cut after it
+    kind: dict[int, str]  # the lines that may have beats -> "still" | "svg" | "photo"
+    cards: dict[int, Path]  # the svg of each card line
+    plate_top: int  # the old captions start here on a NotebookLM still
+
+
+def _shots_lines(run: Run) -> _ShotLines | None:
+    """The lines that may have beats = those with words, not animated, with a frame and a place in the timeline; None (after
+    saying why) when a file is missing or broken."""
+    for name, redo in (("script.vi.json", ""), ("timeline.json", " (chạy `vshort timeline`)"), ("frames.json", " (chạy `vshort visuals`)")):
+        if not run.file(name).exists():
+            _err(f"thiếu {name}{redo}")
+            return None
+    script, fitted, frames = run.read("script.vi.json"), run.read("timeline.json"), run.read("frames.json")
+    placements = [Placement(**p) for p in fitted["placements"]]
+    have = {f["id"] for f in frames}
+    rows = frames + [{"id": p.id, "file": "", "group": ""} for p in placements if p.id not in have]  # the cuts need every voice
+    seg = {s.id: s for s in segments(placements, rows, run.path, fitted["total"])}
+    doc = _motion(run)
+    bind = _bind(run) if doc is not None and doc is not BAD_JSON else None
+    items = _load(run, "visuals.json")
+    if any(x is BAD_JSON for x in (doc, bind, items)):
+        return None
+    refs = {it["id"]: it for it in items if isinstance(it, dict) and it.get("kind") in ("svg", "photo")
+            and isinstance(it.get("file"), str)} if isinstance(items, list) else {}
+    group = {f["id"]: f["group"] for f in frames}
+    spoken = {r["id"] for r in script if r["phrases"].strip()}
+    kind = {i: "still" if group[i].startswith("s") else refs.get(i, {}).get("kind", "photo")
+            for i in sorted((spoken & set(group) & set(seg)) - motion.lines(bind))}
+    if gone := [f["file"] for f in frames if f["id"] in kind and not run.file(f["file"]).exists()]:
+        _err("thiếu file khung hình: " + ", ".join(gone) + " (chạy lại `vshort visuals`)")
+        return None
+    plates = run.read("plates/plates.json") if run.file("plates/plates.json").exists() else []
+    return _ShotLines(script, {p.id: p for p in placements}, seg, kind,
+                      {i: run.file(refs[i]["file"]) for i, k in kind.items() if k == "svg"},
+                      min([p["y"] for p in plates if p["y"] < SUBTITLE[1]], default=SUBTITLE[1]))
+
+
+def _shots_stamp(run: Run, ids) -> dict:
+    """What the beats of lines `ids` stand on: their words, where the voice puts them and the frames. `shots/ok.json` is
+    only good for as long as this is what it was when it was written."""
+    want = {int(i) for i in ids}  # ok.json's keys are strings
+    return {"script": {str(r["id"]): r["phrases"] for r in run.read("script.vi.json") if r["id"] in want},
+            "timeline": [p for p in run.read("timeline.json")["placements"] if p["id"] in want],
+            "frames": run.read("frames.json")}
+
+
+def _a_piece_a_line(reveal: dict[str, list[dict]]) -> str:
+    """reveal.json as JSON with one piece of a card to a line: a card has dozens, and an agent reads this."""
+    cards_ = [f' "{i}": [\n' + ",\n".join("  " + json.dumps(q, ensure_ascii=False) for q in rows) + "\n ]" for i, rows in reveal.items()]
+    return "{" + ",\n".join(cards_) + "\n}\n" if cards_ else "{}\n"
+
+
+def _shots_prep(run: Run, w: _ShotLines) -> int:
+    """The files an agent plans the beats from: the words with their times, when a card writes each element, the frames
+    under a grid, the shapes it may draw."""
+    out = run.file("shots")
+    out.mkdir(exist_ok=True)
+    (run.file("frames") / "grid").mkdir(exist_ok=True)  # `vshort visuals` made frames/, or there is no line to plan
+    say = {r["id"]: r["phrases"] for r in w.script}
+    text, reveal = [], {}
+    for i, k in w.kind.items():
+        p, seg = w.place[i], w.seg[i]
+        text.append(f"câu {i} ({seg.start:.2f}–{seg.end:.2f}s, ảnh frames/{i}.png, {SHOT_KINDS[k]})")
+        for n, ((f0, _), phrase) in enumerate(zip(phrase_fracs(say[i]), say[i].split("|")), 1):
+            text.append(f"  cụm {n} @{p.start + f0 * p.dur:.2f}s: {_speech(phrase)}")
+        grid_image(Image.open(seg.file).convert("RGB")).save(run.file(f"frames/grid/{i}.png"))
+        if k == "svg":
+            try:
+                pieces = cards.Card(w.cards[i], seg.start, seg.end, render.XF).pieces
+            except Exception as e:  # agent-made file: any decoder error is a bad card
+                _err(f"câu {i}: không đọc được {w.cards[i].name}: {e}")
+                return BAD_INPUT
+            reveal[str(i)] = [{"t0": round(q.t0, 3), "t1": round(q.t1, 3), "border": q.border,
+                               "box": [math.floor(q.box[0]), math.floor(q.box[1]), math.ceil(q.box[2]), math.ceil(q.box[3])]}
+                              for q in pieces]
+    text.append(f"Dải phụ đề cũ trên ảnh NotebookLM bắt đầu ở y {w.plate_top}: đừng cận vào đó.")
+    (out / "phrases.txt").write_text("\n".join(text) + "\n", encoding="utf-8")
+    (out / "reveal.json").write_text(_a_piece_a_line(reveal), encoding="utf-8")
+    shapes.sheet(run.path, library=True).save(out / "shapes.png")
+    print(f"{len(w.kind)} câu được lên nhịp\nđọc: {out / 'phrases.txt'}, {out / 'reveal.json'}\n"
+          f"xem: {out / 'shapes.png'}, {run.file('frames/grid')}/<câu>.png")
+    return OK
+
+
+def _touch(a, b) -> bool:
+    return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
+
+
+def _shots_line(run: Run, w: _ShotLines, i: int, rows: list[dict]):
+    """(problems, (id, beats, segment, how to draw a frame of it at t)) for one line whose beats have the right form."""
+    seg, p = w.seg[i], w.place[i]
+    bs = shots.beats(rows, next(r["phrases"] for r in w.script if r["id"] == i), p)
+    try:
+        if w.kind[i] == "svg":
+            card = cards.Card(w.cards[i], seg.start, seg.end, render.XF)
+            cap, final, pieces, base = cards.cap(card), card.frame(seg.end), card.pieces, card.frame
+            ref = final
+        else:
+            final, ref, pieces = Image.open(seg.file).convert("RGB"), None, []
+            cap, base = shots.MAX_ZOOM_STILL, lambda t: final
+    except Exception as e:  # agent-made file: any decoder error
+        return [f"shots.json câu {i}: không đọc/vẽ được {w.cards.get(i, seg.file).name}: {e}"], None
+
+    def cam(t):
+        return shots.camera_at(bs, t, seg.start - render.XF / 2, cap)
+
+    probs = shots.gap_problems(i, seg.start, seg.end, shots.changes(bs, [q.t0 for q in pieces]))
+    probs += shots.image_problems(i, bs, final, cam, run.path, end=seg.end, ref=ref)
+    for n, b in enumerate(bs, 1):
+        who = f"shots.json câu {i} nhịp {n}: "
+        focus = b.focus if isinstance(b.focus, tuple) else None  # None and KEEP frame nothing
+        if w.kind[i] == "still" and focus and focus[3] > w.plate_top - 10:
+            probs.append(who + f"focus {list(focus)} xuống tới y {focus[3]}, vào dải phụ đề cũ của ảnh NotebookLM (bắt đầu ở "
+                         f"y {w.plate_top}; focus phải kết thúc trên y {w.plate_top - 10}): đừng cận vào đó")
+        for what, box in (("focus", focus), ("mark", b.mark and b.mark["box"])):
+            late = [q.t1 for q in pieces if box and _touch(box, q.box) and b.t - shots.LEAD < q.t1 - 1e-9]
+            if late:
+                probs.append(who + f"{what} box {list(box)} bắt đầu lúc {shots._secs(b.t - shots.LEAD - seg.start)} s của câu, "
+                             f"dòng chưa viết tới: thẻ viết xong chỗ đó lúc {shots._secs(max(late) - seg.start)} s "
+                             "(shots/reveal.json): dời nhịp muộn hơn hoặc chọn dòng đã viết")
+    return probs, (i, bs, seg, lambda t: render.draw(shots.draw_overlays(base(t), bs, t, run.path, ref=ref), *cam(t)))
+
+
+def _drawn(b: shots.Beat) -> float:
+    """How long after its start a beat's marks are all there: drawn on, bounced in, and the camera arrived."""
+    return max([shots.DRAW] * (b.mark is not None or b.doodle is not None) + [shots.POP_T] * (b.pop is not None)
+               + [shots.SNAP] * (b.focus is not shots.KEEP))
+
+
+def _shots_sheet(lines: list[tuple[int, list[shots.Beat], render.Segment, object]]) -> Image.Image:
+    """A row per line, a cell per beat: the frame as rendered when the beat's marks are drawn, with `line.beat` on it."""
+    img = Image.new("RGB", (max([len(bs) for _, bs, _, _ in lines], default=1) * CELL_W, max(len(lines), 1) * CELL_H), "white")
+    font = ImageFont.truetype(str(FONTS / "BeVietnamPro-Bold.ttf"), 22)
+    for row, (i, bs, seg, frame) in enumerate(lines):
+        for n, b in enumerate(bs, 1):
+            cell = frame(min(b.t - shots.LEAD + _drawn(b), seg.end)).resize((CELL_W, CELL_H), Image.LANCZOS)
+            d = ImageDraw.Draw(cell)
+            d.rectangle((0, 0, CELL_W - 1, CELL_H - 1), outline=(150, 150, 150))
+            _label(d, (6, 4), f"{i}.{n}", font)
+            img.paste(cell, ((n - 1) * CELL_W, row * CELL_H))
+    return img
+
+
+def cmd_shots(a) -> int:
+    """`--prep`: the files the beats are planned from. Without: shots.json checked line by line; the good lines go to
+    shots/ok.json (what render uses) and every line is drawn on shots/sheet.png."""
+    run = Run(a.run)
+    if (w := _shots_lines(run)) is None:
+        return BAD_INPUT
+    if a.prep:
+        return _shots_prep(run, w)
+    if not run.file("shots.json").exists():
+        _err("thiếu shots.json: chạy `vshort shots --prep`, đọc shots/phrases.txt rồi viết kế hoạch nhịp vào shots.json")
+        return BAD_INPUT
+    try:
+        doc = json.loads(run.file("shots.json").read_text(encoding="utf-8"))
+    except ValueError as e:
+        _err(f"shots.json không phải JSON hợp lệ: {e}")
+        return BAD_INPUT
+    probs = shots.schema_problems(doc, w.script, set(w.kind), lambda s: shapes.find(s, run.path) is not None)
+    if not isinstance(doc, dict):
+        for p in probs:
+            _err(p)
+        return BAD_INPUT
+    broken = {int(m[1]) for p in probs if (m := re.match(r"shots\.json câu (-?\d+)", p))}  # the form is wrong: nothing more to check
+    rows_of = {}
+    for k, v in doc.items():
+        try:
+            rows_of[int(k)] = v
+        except ValueError:  # schema_problems has named the key
+            pass
+    plans, good = [], {}
+    for i, rows in sorted(rows_of.items()):
+        if i in broken or i not in w.kind:
+            continue
+        found, plan = _shots_line(run, w, i, rows)
+        probs += found
+        plans += [plan] if plan else []
+        if not found:
+            good[i] = rows
+    out = run.file("shots")
+    out.mkdir(exist_ok=True)
+    _shots_sheet(plans).save(out / "sheet.png")
+    run.write("shots/ok.json", {"stamp": _shots_stamp(run, good), "lines": {str(i): rows for i, rows in good.items()}})
+    for p in probs:
+        _err(p)
+    if probs:
+        return BAD_INPUT
+    print(f"nhịp hình: {len(good)} câu, {sum(map(len, good.values()))} nhịp; ảnh để xem: {out / 'sheet.png'}")
+    return OK
+
+
 def _tts_lines(run: Run) -> list[tuple[int, str]]:
     return [(row["id"], _speech(row["phrases"])) for row in run.read("script.vi.json") if row["phrases"].strip()]
 
@@ -670,13 +875,16 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--prompt", help="video description passed to NotebookLM")
     p.set_defaults(fn=cmd_fetch)
     for name, fn in [("detect", cmd_detect), ("text", cmd_text), ("check", cmd_check), ("plates", cmd_plates),
-                     ("tts", cmd_tts), ("stills", cmd_stills), ("motion", cmd_motion), ("visuals", cmd_visuals), ("timeline", cmd_timeline),
+                     ("tts", cmd_tts), ("stills", cmd_stills), ("motion", cmd_motion), ("visuals", cmd_visuals), ("shots", cmd_shots),
+                     ("timeline", cmd_timeline),
                      ("render", cmd_render), ("status", cmd_status), ("cover", cmd_cover)]:
         p = sub.add_parser(name)
         p.add_argument("run")
         p.set_defaults(fn=fn)
         if name == "motion":
             p.add_argument("--design", action="store_true", help="check the canvas against the brief, before the voice")
+        if name == "shots":
+            p.add_argument("--prep", action="store_true", help="write the files the beats are planned from")
         if name == "cover":
             p.add_argument("--candidates", action="store_true", help="gather the sources' lead images for an agent to pick")
     p = sub.add_parser("outro", help="vẽ lại outro logo ANM ra mp4; mọi video render sau đó ghép file này vào cuối")

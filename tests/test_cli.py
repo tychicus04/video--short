@@ -682,3 +682,241 @@ def test_auto_with_topic_refuses_an_existing_video(tmp_path, capsys):
     assert main(["auto", "s", "--topic", "mới", "--runs-dir", str(tmp_path), "--foreground"]) == 2
     assert json.loads((tmp_path / "s" / "run.json").read_text())["notebook_id"] == "nb"
     assert "vshort auto" in capsys.readouterr().err
+
+
+# ---- vshort shots ----
+
+SHOT_SAY = {1: "Máy chủ của bạn | nằm ở Hà Nội | chạy suốt ngày đêm",
+            2: "Dữ liệu đi qua | bốn trạm trung gian | rồi mới tới bạn",
+            3: "Thẻ này ghi lại | điều nhà cung cấp | khuyến cáo người dùng",
+            4: "Ảnh này chụp lại | bài báo gốc đó | đăng cuối tháng mười"}
+SHOT_AT = {1: (0.2, 3.6), 2: (4.0, 3.6), 3: (7.8, 3.6), 4: (11.8, 3.6)}  # voice start, length; the cuts fall mid-gap
+SHOT_SEG = {1: (0.0, 3.9), 2: (3.9, 7.7), 3: (7.7, 11.6), 4: (11.6, 15.6)}
+_CARD_TEXT = '<text x="100" y="{y}" font-family="Be Vietnam Pro, sans-serif" font-size="{em}" fill="#222">{t}</text>'
+SHOT_CARD = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 1280" width="720" height="1280">'
+             '<rect x="60" y="300" width="600" height="420" rx="18" fill="none" stroke="#4a4a4a" stroke-width="3"/>'
+             + _CARD_TEXT.format(y=400, em=32, t="Máy chủ ở Hà Nội đang chạy") + _CARD_TEXT.format(y=520, em=32, t="Cập nhật ngay hôm nay")
+             + _CARD_TEXT.format(y=660, em=22, t="Nguồn: Synology, 29/10/2026") + "</svg>")
+
+
+def _shots_run(tmp_path):
+    """Four lines of 3.6 s: two NotebookLM stills (a dark picture at 100,300–500,500 on cream), a reference card and a photo.
+    The old caption band starts at y 1000."""
+    from vshort.visuals import svg_frame
+    for d in ("frames", "visuals", "plates"):
+        (tmp_path / d).mkdir()
+    for i in (1, 2, 4):
+        img = Image.new("RGB", (720, 1280), (243, 239, 230))
+        ImageDraw.Draw(img).rectangle((100, 300, 500, 500), fill=(50, 50, 50))
+        img.save(tmp_path / "frames" / f"{i}.png")
+    (tmp_path / "visuals" / "3.svg").write_text(SHOT_CARD, encoding="utf-8")
+    svg_frame(tmp_path / "visuals" / "3.svg").save(tmp_path / "frames" / "3.png")
+    (tmp_path / "script.vi.json").write_text(json.dumps([{"id": i, "phrases": p} for i, p in SHOT_SAY.items()]), encoding="utf-8")
+    (tmp_path / "timeline.json").write_text(json.dumps({"total": 15.6, "placements": [
+        {"id": i, "start": s, "dur": d} for i, (s, d) in SHOT_AT.items()]}))
+    groups = {1: "s0", 2: "s0", 3: "v3", 4: "v4"}
+    (tmp_path / "frames.json").write_text(json.dumps([{"id": i, "file": f"frames/{i}.png", "group": g} for i, g in groups.items()]))
+    (tmp_path / "visuals.json").write_text(json.dumps([
+        {"kind": "svg", "id": 3, "file": "visuals/3.svg", "source": "https://a.example", "accessed": "2026-11-05", "note": "n"},
+        {"kind": "photo", "id": 4, "file": "visuals/4.jpg", "source": "https://a.example", "accessed": "2026-11-05",
+         "credit": "Nguồn: A", "note": "n"}]))
+    (tmp_path / "plates" / "plates.json").write_text(json.dumps(
+        [{"name": "p00", "x": 54, "y": 1000, "start": 0, "end": 15.6, "method": "clean", "moving": False}]))
+    return tmp_path
+
+
+def _card_pieces(run):
+    from vshort import cards, render
+    return cards.Card(run / "visuals" / "3.svg", *SHOT_SEG[3], render.XF).pieces
+
+
+def _good_plan(run):
+    """A plan every line of which is fine: marks on the dark picture, pops and doodles on paper; on the card a doodle on
+    paper first, then a mark on each line once it has been written."""
+    _, text1, text2, _ = (list(map(round, p.box)) for p in _card_pieces(run))
+    return {
+        "1": [{"phrase": 1, "mark": {"shape": "circle", "box": [120, 320, 480, 480]}},
+              {"phrase": 2, "pop": {"text": "Hà Nội", "box": [100, 700, 300, 780]}},
+              {"phrase": 3, "mark": {"shape": "tick", "box": [150, 350, 450, 450]}}],
+        "2": [{"phrase": 1, "focus": [100, 300, 500, 500], "mark": {"shape": "underline", "box": [150, 330, 420, 470]}},
+              {"phrase": 2, "focus": None},
+              {"phrase": 3, "doodle": {"shape": "internet", "box": [200, 700, 400, 800]}}],
+        "3": [{"phrase": 1, "doodle": {"shape": "internet", "box": [150, 800, 350, 900]}},
+              {"phrase": 2, "mark": {"shape": "underline", "box": text1}},
+              {"phrase": 3, "mark": {"shape": "circle", "box": text2}}]}
+
+
+def _shots(run, plan, capsys):
+    (run / "shots").mkdir(exist_ok=True)
+    (run / "shots.json").write_text(json.dumps(plan))
+    capsys.readouterr()
+    code = main(["shots", str(run)])
+    return code, capsys.readouterr()
+
+
+def _ok_lines(run):
+    return json.loads((run / "shots" / "ok.json").read_text())["lines"]
+
+
+def test_prep_writes_helpers(tmp_path, capsys):
+    _shots_run(tmp_path)
+    assert main(["shots", str(tmp_path), "--prep"]) == 0
+    text = (tmp_path / "shots" / "phrases.txt").read_text(encoding="utf-8").splitlines()
+    assert "câu 1 (0.00–3.90s, ảnh frames/1.png, ảnh NotebookLM)" in text
+    assert "  cụm 1 @0.20s: Máy chủ của bạn" in text and "  cụm 2 @1.40s: nằm ở Hà Nội" in text  # the words, without | and *
+    assert "câu 3 (7.70–11.60s, ảnh frames/3.png, thẻ tư liệu)" in text
+    assert "câu 4 (11.60–15.60s, ảnh frames/4.png, ảnh tư liệu)" in text
+    assert text[-1] == "Dải phụ đề cũ trên ảnh NotebookLM bắt đầu ở y 1000: đừng cận vào đó."
+    reveal = json.loads((tmp_path / "shots" / "reveal.json").read_text())
+    assert list(reveal) == ["3"] and reveal["3"][0]["border"] is True  # only the card line writes itself out
+    assert all(set(r) == {"t0", "t1", "box", "border"} for r in reveal["3"]) and len(reveal["3"]) == 4
+    assert reveal["3"][0]["t1"] == 7.7
+    for i in (1, 2, 3, 4):
+        assert Image.open(tmp_path / "frames" / "grid" / f"{i}.png").size == (720, 1280)
+    assert Image.open(tmp_path / "shots" / "shapes.png").width > 6 * 240  # the library's shapes are there, not only the run's
+    assert not (tmp_path / "shots" / "ok.json").exists()
+
+
+def test_shots_ok_writes_ok_json_and_sheet(tmp_path, capsys):
+    _shots_run(tmp_path)
+    plan = _good_plan(tmp_path)
+    code, out = _shots(tmp_path, plan, capsys)
+    assert code == 0 and out.err == ""
+    assert out.out.strip() == f"nhịp hình: 3 câu, 9 nhịp; ảnh để xem: {tmp_path}/shots/sheet.png"
+    ok = json.loads((tmp_path / "shots" / "ok.json").read_text())
+    assert ok["lines"] == plan  # the beats as written, line 4 (no plan) is not there
+    assert ok["stamp"] == cli._shots_stamp(Run(tmp_path), [1, 2, 3]) == cli._shots_stamp(Run(tmp_path), ok["lines"])  # ids or its keys
+    assert set(ok["stamp"]) == {"script", "timeline", "frames"}
+    assert ok["stamp"]["script"] == {str(i): SHOT_SAY[i] for i in (1, 2, 3)}
+    assert [p["id"] for p in ok["stamp"]["timeline"]] == [1, 2, 3] and len(ok["stamp"]["frames"]) == 4
+    sheet = Image.open(tmp_path / "shots" / "sheet.png")
+    assert sheet.size == (3 * 180, 3 * 320)  # a row per line, a cell per beat
+    assert np.asarray(sheet).std() > 10  # something was drawn in the cells
+
+
+def test_the_stamp_follows_what_a_beat_stands_on(tmp_path):
+    _shots_run(tmp_path)
+    run, before = Run(tmp_path), cli._shots_stamp(Run(tmp_path), [1])
+    assert before == cli._shots_stamp(run, [1])
+    script = json.loads((tmp_path / "script.vi.json").read_text())
+    script[1]["phrases"] = "đổi lời | câu hai"
+    (tmp_path / "script.vi.json").write_text(json.dumps(script, ensure_ascii=False))
+    assert cli._shots_stamp(run, [1]) == before and cli._shots_stamp(run, [1, 2]) != before
+    script[0]["phrases"] = "đổi lời | câu một"
+    (tmp_path / "script.vi.json").write_text(json.dumps(script, ensure_ascii=False))
+    assert cli._shots_stamp(run, [1]) != before
+    tl = json.loads((tmp_path / "timeline.json").read_text())
+    tl["placements"][0]["dur"] += 0.1
+    (tmp_path / "timeline.json").write_text(json.dumps(tl))
+    assert cli._shots_stamp(run, [1]) != cli._shots_stamp(run, [2])
+
+
+@pytest.mark.parametrize("what, word", [
+    ({"phrase": 1, "mark": {"shape": "circle", "box": [200, 800, 400, 900]}}, "giấy trống"),  # a mark on blank paper
+    ({"phrase": 7, "mark": {"shape": "circle", "box": [120, 320, 480, 480]}}, "phrase"),  # a plan that breaks its form
+])
+def test_one_bad_line_is_left_out_of_ok_json_and_exit_2(tmp_path, capsys, what, word):
+    _shots_run(tmp_path)
+    plan = _good_plan(tmp_path)
+    plan["2"] = [what] + plan["2"][1:]
+    code, out = _shots(tmp_path, plan, capsys)
+    errors = out.err.strip().splitlines()
+    assert code == 2 and any(word in e for e in errors) and all(e.startswith("shots.json câu 2") for e in errors)
+    assert list(_ok_lines(tmp_path)) == ["1", "3"] and _ok_lines(tmp_path)["1"] == plan["1"]  # the good ones are kept
+    assert "nhịp hình" not in out.out
+
+
+def test_a_card_line_counts_its_elements_as_changes_and_a_gap_is_refused(tmp_path, capsys):
+    _shots_run(tmp_path)
+    plan = _good_plan(tmp_path)
+    plan["3"] = [{"phrase": 2, "focus": None}]  # the card is written out by 9.3 s, nothing changes to the end at 11.6
+    code, out = _shots(tmp_path, plan, capsys)
+    (err,) = out.err.splitlines()
+    assert code == 2 and err.startswith("shots.json câu 3: ") and "không có thay đổi nào" in err
+    plan["3"] = [{"phrase": 2, "focus": None}, {"phrase": 3, "focus": None}]  # a beat at 10.0 s closes it
+    assert _shots(tmp_path, plan, capsys)[0] == 0
+
+
+@pytest.mark.parametrize("field", ["mark", "focus"])
+def test_mark_before_the_card_line_is_written_is_refused(tmp_path, capsys, field):
+    _shots_run(tmp_path)
+    plan = _good_plan(tmp_path)
+    border, text1, text2, source = _card_pieces(tmp_path)
+    assert text2.t1 > 8.8 >= text1.t1  # beat 2 starts at 8.8: text 1 is written by then, text 2 is not
+    box = [round(v) for v in text2.box]
+    plan["3"][1] = {"phrase": 2, field: box} if field == "focus" else {"phrase": 2, "mark": {"shape": "underline", "box": box}}
+    code, out = _shots(tmp_path, plan, capsys)
+    assert code == 2
+    (err,) = [e for e in out.err.splitlines() if "câu 3" in e and "dòng chưa viết tới" in e]
+    assert "nhịp 2" in err and field in err
+    assert list(_ok_lines(tmp_path)) == ["1", "2"]
+    plan["3"][1] = {"phrase": 2, "mark": {"shape": "underline", "box": [round(v) for v in text1.box]}}  # the line that is there
+    assert _shots(tmp_path, plan, capsys)[0] == 0
+
+
+@pytest.mark.parametrize("y1, refused", [(1000, True), (991, True), (989, False)])
+def test_focus_into_the_old_caption_band_is_refused(tmp_path, capsys, y1, refused):
+    _shots_run(tmp_path)
+    plan = _good_plan(tmp_path)
+    plan["1"] = [{"phrase": 1, "focus": None}, {"phrase": 2, "focus": [100, 700, 600, y1]}, {"phrase": 3, "focus": None}]
+    # the band starts at 1000: no focus within 10 px of it
+    plan["3"][0] = {"phrase": 1, "focus": [100, 800, 600, 1000]}  # a card has no old caption: the same box is fine there
+    code, out = _shots(tmp_path, plan, capsys)
+    band = [e for e in out.err.splitlines() if "phụ đề cũ" in e]
+    assert bool(band) is refused and all("câu 1 nhịp 2" in e and "1000" in e for e in band)
+    assert ("1" in _ok_lines(tmp_path)) is not refused and not any("câu 3" in e and "phụ đề cũ" in e for e in out.err.splitlines())
+
+
+def test_lines_with_motion_are_not_allowed(tmp_path, capsys):
+    _shots_run(tmp_path)
+    (tmp_path / "motion.json").write_text("{}")
+    (tmp_path / "motion.bind.json").write_text('{"lines": [2]}')
+    assert main(["shots", str(tmp_path), "--prep"]) == 0
+    assert "câu 2 (" not in (tmp_path / "shots" / "phrases.txt").read_text(encoding="utf-8")
+    assert not (tmp_path / "frames" / "grid" / "2.png").exists()
+    code, out = _shots(tmp_path, _good_plan(tmp_path), capsys)
+    assert code == 2 and [e for e in out.err.splitlines() if "câu 2" in e] and "hình động" in out.err
+    assert list(_ok_lines(tmp_path)) == ["1", "3"]
+
+
+def test_lines_without_a_voice_or_a_frame_are_not_allowed(tmp_path, capsys):
+    _shots_run(tmp_path)
+    (tmp_path / "frames.json").write_text(json.dumps([r for r in json.loads((tmp_path / "frames.json").read_text()) if r["id"] != 4]))
+    script = json.loads((tmp_path / "script.vi.json").read_text())
+    script.append({"id": 5, "phrases": ""})
+    (tmp_path / "script.vi.json").write_text(json.dumps(script, ensure_ascii=False))
+    assert main(["shots", str(tmp_path), "--prep"]) == 0  # line 4 has a voice but no frame yet: the cuts around it still hold
+    text = (tmp_path / "shots" / "phrases.txt").read_text(encoding="utf-8")
+    assert "câu 3 (7.70–11.60s" in text and "câu 4 (" not in text and "câu 5 (" not in text
+    plan = _good_plan(tmp_path) | {"4": [{"phrase": 1, "focus": None}], "5": [{"phrase": 1, "focus": None}]}
+    code, out = _shots(tmp_path, plan, capsys)
+    assert code == 2 and all("không thuộc" in e for e in out.err.splitlines()) and list(_ok_lines(tmp_path)) == ["1", "2", "3"]
+
+
+def test_pops_are_counted_over_the_whole_video(tmp_path, capsys):
+    _shots_run(tmp_path)
+    plan = _good_plan(tmp_path)
+    pop = lambda phrase, text: {"phrase": phrase, "pop": {"text": text, "box": [100, 700, 300, 780]}}
+    plan["1"] = [pop(1, "Máy chủ"), pop(2, "Hà Nội"), pop(3, "ngày đêm")]  # three: the most there may be
+    plan["2"] = [pop(1, "Dữ liệu")] + plan["2"][1:]  # the fourth is the second line's
+    code, out = _shots(tmp_path, plan, capsys)
+    assert code == 2 and len(out.err.splitlines()) == 1 and "câu 2" in out.err and "tối đa 3 pop" in out.err
+    assert list(_ok_lines(tmp_path)) == ["1", "3"]
+
+
+def test_shots_needs_a_readable_shots_json(tmp_path, capsys):
+    _shots_run(tmp_path)
+    assert main(["shots", str(tmp_path)]) == 2 and "thiếu shots.json" in capsys.readouterr().err
+    (tmp_path / "shots.json").write_text("{oops")
+    assert main(["shots", str(tmp_path)]) == 2 and "shots.json" in capsys.readouterr().err
+    (tmp_path / "shots.json").write_text("[]")
+    assert main(["shots", str(tmp_path)]) == 2 and "object" in capsys.readouterr().err
+    assert not (tmp_path / "shots" / "ok.json").exists()
+
+
+def test_shots_names_a_missing_frame_file_like_render_does(tmp_path, capsys):
+    _shots_run(tmp_path)
+    (tmp_path / "frames" / "2.png").unlink()
+    assert main(["shots", str(tmp_path), "--prep"]) == 2
+    err = capsys.readouterr().err
+    assert "frames/2.png" in err and "vshort visuals" in err

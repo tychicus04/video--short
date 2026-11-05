@@ -82,12 +82,20 @@ def strokes_in_box(doc: dict, box) -> list[list[tuple[float, float]]]:
     return [[(ox + k * x, oy + k * y) for x, y in s] for s in doc["strokes"]]
 
 
-def sheet(run_dir: Path) -> Image.Image:
-    """The run's shapes side by side, each in a CELL px square with its name under it: drawn as the kit draws them."""
-    docs = [(f.stem, _read(f)) for f in sorted((run_dir / "shapes").glob("*.json"))]
+SHEET_COLS = 6  # the library sheet wraps here: 25 shapes in one row would be too small to read
+
+
+def sheet(run_dir: Path, library: bool = False) -> Image.Image:
+    """The run's shapes side by side, each in a CELL px square with its name under it: drawn as the kit draws them.
+    `library`: the library's too, in rows of SHEET_COLS; where a name is in both, the run's."""
+    files = {f.stem: f for f in sorted((run_dir / "shapes").glob("*.json"))}
+    if library:
+        files = {f.stem: f for f in LIBRARY.glob("*.json")} | files
+    docs = [(s, _read(files[s])) for s in sorted(files)]
     docs = [(s, d) for s, d in docs if not problems(d, s)]
+    cols = max(1, min(len(docs), SHEET_COLS) if library else len(docs))
     h = CELL + 64
-    img = Image.new("RGB", (max(1, len(docs)) * (CELL + 4), h), "white")
+    img = Image.new("RGB", (cols * (CELL + 4), max(1, -(-len(docs) // cols)) * h), "white")
     font = ImageFont.truetype(str(FONTS / "BeVietnamPro-Bold.ttf"), 18)
     for n, (slug, doc) in enumerate(docs):
         cell = kit._paper().crop((0, 0, CELL * kit.SS, h * kit.SS))
@@ -97,5 +105,5 @@ def sheet(run_dir: Path) -> Image.Image:
         cell = cell.reduce(kit.SS)
         for k, line in enumerate((slug, doc["name"])):  # two lines: a long name must not run into the next cell
             ImageDraw.Draw(cell).text((CELL / 2, CELL + 16 + 26 * k), line, fill="black", font=font, anchor="mm")
-        img.paste(cell, (n * (CELL + 4), 0))
+        img.paste(cell, (n % cols * (CELL + 4), n // cols * h))
     return img

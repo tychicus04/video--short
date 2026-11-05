@@ -60,3 +60,24 @@ def test_sheet_names_fit_their_cell(tmp_path):
     under = a[shapes.CELL:, :]
     cols = np.where((under < 100).any(axis=0))[0]
     assert cols.min() > 4 and cols.max() < shapes.CELL - 4
+
+
+def test_library_sheet_has_the_library_shapes_and_the_run_wins(tmp_path, monkeypatch):
+    monkeypatch.setattr(shapes, "LIBRARY", tmp_path / "lib")
+    (tmp_path / "lib").mkdir()
+    (tmp_path / "run" / "shapes").mkdir(parents=True)
+    for slug in ("a", "b", "c"):
+        (tmp_path / "lib" / f"{slug}.json").write_text(json.dumps({"name": f"lib {slug}", "strokes": [[[0, 0], [100, 100]]]}))
+    (tmp_path / "run" / "shapes" / "b.json").write_text(json.dumps({"name": "run b", "strokes": [[[0, 100], [100, 0]]]}))
+    (tmp_path / "run" / "shapes" / "z.json").write_text(json.dumps({"name": "run z", "strokes": [[[0, 0], [100, 100]]]}))
+    seen = []
+    real = shapes.strokes_in_box
+    monkeypatch.setattr(shapes, "strokes_in_box", lambda doc, box: seen.append(doc["name"]) or real(doc, box))
+    assert shapes.sheet(tmp_path / "run").width == 2 * 244  # without the flag: the run's own, as before
+    assert seen == ["run b", "run z"]
+    seen.clear()
+    img = shapes.sheet(tmp_path / "run", library=True)
+    assert seen == ["lib a", "run b", "lib c", "run z"]  # a name once, the run's copy over the library's
+    assert img.width == 4 * 244
+    monkeypatch.setattr(shapes, "LIBRARY", tmp_path / "missing")  # no library folder: the run's shapes alone
+    assert shapes.sheet(tmp_path / "run", library=True).width == 2 * 244
