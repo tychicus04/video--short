@@ -11,11 +11,13 @@
   <key>ProgramArguments</key>
   <array>
     <string>/bin/zsh</string>
+    <string>-f</string>
     <string>/Users/Apple/video-pipeline/scripts/push-outro.sh</string>
   </array>
   <key>WatchPaths</key>
   <array>
     <string>/Users/Apple/video-pipeline/assets/brand</string>
+    <string>/Users/Apple/video-pipeline/assets/brand/anm-outro.mp4</string>
   </array>
   <key>StandardOutPath</key>
   <string>/Users/Apple/Library/Logs/vshort-outro.log</string>
