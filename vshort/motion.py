@@ -3,12 +3,13 @@ exists — checked, timed, previewed as a sheet. Earlier beats fade back as the 
 through the whole canvas."""
 import json
 import math
-from dataclasses import dataclass
+from itertools import combinations
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-from vshort import kit, shapes
+from vshort import camera, kit, shapes
 from vshort.fit import GAP, LEAD, Placement, phrase_fracs
 from vshort.script import syllables
 from vshort.textfit import FONTS, UI_RIGHT, UI_RIGHT_FROM, UI_TOP
@@ -16,19 +17,27 @@ from vshort.visuals import SAFE_TLDS, _int, _strip_marks
 
 # syllables any label may use besides the narration's own words
 COMMON = frozenset("điện thoại máy tính chủ dữ liệu hệ thống hacker kẻ tấn công nghe lén mạng trình duyệt người dùng nạn "
-                   "nhân gói tin tệp mật khẩu nhắn ví tiền thư khóa đã bị chiếm lấy cắp trang web an toàn lõi lớp bảo vệ"
-                   .split())
+                   "nhân gói tin tệp mật khẩu nhắn ví tiền thư khóa đã bị chiếm lấy cắp trang web an toàn lõi lớp bảo vệ "
+                   # the everyday props kit and the moves of its scenes
+                   "thẻ chìa cửa barie tòa nhà phòng két sắt phong bì hòm kiện hàng xe giao camera rào bảng tên danh sách "
+                   "quét bản sao kẹp cho vào đúng sai tầng cầu thang viên kỹ sư khách".split())
 MAX_SEEN, MAX_BEATS = 7, 6
 BEAT_EST = 3.0  # s per beat: the timing of a design, before any line is spoken
 SYL = 0.2  # s per syllable: the voice before the timeline exists
 MIN_ACT = 0.3  # shortest action, even at the very end of a line
 LEAD_IN = 0.35  # what opens the canvas starts drawing in the crossfade into it (half the gap + half the fade): no blank page
-ACTS = ("move", "bounce", "red", "pulse", "hide")
-DUR = {"draw": kit.DRAW, "red": kit.TURN, "hide": kit.HIDE, "move": kit.MOVE, "bounce": kit.MOVE}
+ACTS = ("move", "bounce", "red", "pulse", "hide", "attach", "open", "close")
+DUR = {"draw": kit.DRAW, "red": kit.TURN, "hide": kit.HIDE, "move": kit.MOVE, "bounce": kit.MOVE, "attach": kit.MOVE,
+       "open": kit.OPEN, "close": kit.OPEN}
+MOVERS = ", ".join(sorted(kit.MOVERS))
+MARKS = ("crack", "check", "cross")  # small marks: no label, not counted as things in view
 KINDS = kit.BOXED | kit.POINTED | {"path"}
 AREA = f"vùng an toàn x {kit.SAFE[0]}–{kit.SAFE[2]}, y {kit.SAFE[1]}–{kit.SAFE[3]}"
 SHEET_W = 240
 JUMP = 20  # px a mover may be off the start of the path it then runs along
+MAX_QUIET = 1.5  # s the canvas may hold with nothing drawing, moving, turning or the camera gliding
+MAX_SHARE = 0.55  # of the spoken syllables the mechanism may take
+LEAD_WORD = 0.2  # s each beat after the first starts before its words (kallaway-style: the picture leads)
 
 
 OLD = "motion.json dạng cũ (scenes): viết lại theo dạng nhịp (beats)"
@@ -39,6 +48,10 @@ class Scene:
     lines: list[int]
     things: list[dict]
     acts: list[kit.Act]
+    cams: list[tuple[float, float, float, float]] = field(default_factory=list)  # camera keys; [] is FULL throughout
+
+    def view(self, t: float) -> tuple[float, float, float]:
+        return camera.at(self.cams, t) if self.cams else kit.FULL
 
 
 def load(path: Path) -> dict | None:
@@ -101,24 +114,31 @@ def ui_problems(doc: dict) -> list[str]:
             th = things[a["thing"]]
             if a["do"] in ("move", "bounce") and th["kind"] in kit.MOVERS:
                 ends = [a["to"]] if "to" in a else things[a["path"]]["points"]
-                if any(_under_ui(kit.bbox({**th, "xy": p})) for p in ends):
+                if any(_under_ui(kit.bbox(kit.at_pos(th, p))) for p in ends):
                     probs.append(f"nhịp {k}: {a['thing']!r} đi vào {UI}")
     return probs
 
 
-def _text_problems(what: str, text, said: set[str]) -> list[str]:
+def _metaphor(run_dir: Path | None) -> set[str]:
+    """The words of the approved metaphor (RUN/an-du.md): a label or say may use them; none when there is no file."""
+    f = run_dir / "an-du.md" if run_dir else None
+    return set(_words(f.read_text(encoding="utf-8"))) if f and f.exists() else set()
+
+
+def _text_problems(what: str, text, said: set[str], extra: frozenset | set = frozenset()) -> list[str]:
     if not isinstance(text, str) or not text.strip() or "\n" in text:
         return [f"{what} phải là một dòng chữ, không rỗng"]
     probs = []
     if len(text) > kit.MAX_LABEL:
         probs.append(f"{what} {text!r} dài {len(text)} ký tự (tối đa {kit.MAX_LABEL})")
     for w in _words(text):
-        if not (w in said or w in COMMON or (len(w) == 1 and w.isalnum()) or ("." in w and w.endswith(SAFE_TLDS))):
+        if not (w in said or w in extra or w in COMMON or (len(w) == 1 and w.isalnum())
+                or ("." in w and w.endswith(SAFE_TLDS))):
             probs.append(f"{what} {text!r}: chữ {w!r} không có trong lời đọc của đoạn này hay danh sách danh từ thường")
     return probs
 
 
-def _thing_problems(th, said: set[str], run_dir: Path | None) -> list[str]:
+def _thing_problems(th, said: set[str], run_dir: Path | None, extra: frozenset | set = frozenset()) -> list[str]:
     if not isinstance(th, dict):
         return ["thing phải là object"]
     tid, kind = th.get("id"), th.get("kind")
@@ -151,15 +171,20 @@ def _thing_problems(th, said: set[str], run_dir: Path | None) -> list[str]:
             return [f"{what}: icon {th.get('icon')!r} không hợp lệ ({', '.join(sorted(kit.ICONS))})"]
         if kind == "text" and not th.get("label"):
             return [f"{what}: text cần label"]
-        if kind == "crack" and th.get("label"):
-            probs.append(f"{what}: crack không có nhãn")
+        if kind in MARKS and th.get("label"):
+            probs.append(f"{what}: {kind} không có nhãn")
+    if "role" in th and (kind != "figure" or th["role"] not in kit.ROLES):
+        probs.append(f"{what}: role chỉ dùng cho figure, một trong {', '.join(sorted(kit.ROLES))}")
     if not isinstance(th.get("color", "ink"), str) or th.get("color", "ink") not in kit.COLORS:
         probs.append(f"{what}: color {th['color']!r} không hợp lệ ({', '.join(kit.COLORS)})")
     if "label" in th:
-        found = _text_problems("nhãn", th["label"], said)
+        found = _text_problems("nhãn", th["label"], said, extra)
         probs += [f"{what}: {p}" for p in found]
         if not found and kind == "box" and kit.label_em(th) == 0:
             probs.append(f"{what}: nhãn {th['label']!r} không vừa hộp ở cỡ chữ nhỏ nhất {kit.MIN_LABEL_EM}")
+    if "means" in th:  # the technical half: only words of the brief or the voice, never the metaphor's own
+        probs += ([f"{what}: means cần label (means là dòng nghĩa dưới nhãn)"] if not th.get("label") else
+                  [f"{what}: {p}" for p in _text_problems("means", th["means"], said)])
     if "url" in th:
         url = th["url"]
         if kind not in ("phone", "computer"):
@@ -173,7 +198,8 @@ def _thing_problems(th, said: set[str], run_dir: Path | None) -> list[str]:
     return probs + _at_problems(what, th)
 
 
-def _act_problems(m: int, a, things: dict[str, dict], said: set[str]) -> list[str]:
+def _act_problems(m: int, a, things: dict[str, dict], said: set[str], hinged: frozenset | set = frozenset(),
+                  extra: frozenset | set = frozenset()) -> list[str]:
     if not isinstance(a, dict):
         return [f"act {m}: phải là object"]
     do, tid = a.get("do"), a.get("thing")
@@ -183,17 +209,27 @@ def _act_problems(m: int, a, things: dict[str, dict], said: set[str]) -> list[st
     if not isinstance(tid, str) or tid not in things:
         return [f"{what}: thing {tid!r} không có trong things"]
     th, probs = things[tid], []
-    if do in ("move", "bounce") and th["kind"] not in kit.MOVERS:
-        probs.append(f"{what}: {tid!r} ({th['kind']}) không được di chuyển — chỉ dot và icon")
+    if do in ("move", "bounce", "attach") and th["kind"] not in kit.MOVERS:
+        probs.append(f"{what}: {tid!r} ({th['kind']}) không được di chuyển hay gắn — chỉ {MOVERS}")
+    if do == "attach":
+        on = a.get("on")
+        if not isinstance(on, str) or on == tid or things.get(on, {}).get("kind") not in kit.MOVERS:
+            probs.append(f"{what}: on {on!r} phải là id một thứ di chuyển được ({MOVERS}), khác {tid!r}")
+        if not _xy(a.get("offset", [0, 0])):
+            probs.append(f"{what}: offset phải là [x, y] (chỗ nó nằm trên thứ mang nó)")
+    elif "on" in a or "offset" in a:
+        probs.append(f"{what}: on và offset chỉ dùng với attach")
     if do == "pulse" and th["kind"] != "dot":
         probs.append(f"{what}: chỉ dot mới pulse")
+    if do in ("open", "close") and tid not in hinged:
+        probs.append(f"{what}: {tid!r} không có phần mở/đóng (hinge trong file hình thư viện)")
     if "say" in a:
         if do != "red" or th["kind"] != "box":
             probs.append(f"{what}: say chỉ dùng với red trên một box")
         elif th["box"][3] - th["box"][1] < kit.SAY_BOX_H:
             probs.append(f"{what}: box {tid!r} thấp hơn {kit.SAY_BOX_H} px, không đủ chỗ cho say dưới nhãn")
         else:
-            probs += [f"{what}: {p}" for p in _text_problems("say", a["say"], said)]
+            probs += [f"{what}: {p}" for p in _text_problems("say", a["say"], said, extra)]
     if do not in ("move", "bounce") and ("to" in a or "path" in a):
         probs.append(f"{what}: to và path chỉ dùng với move hoặc bounce")
     if "vanish" in a and (do != "move" or not isinstance(a["vanish"], bool)):
@@ -212,7 +248,7 @@ def _act_problems(m: int, a, things: dict[str, dict], said: set[str]) -> list[st
             probs.append(f"{what}: path {a['path']!r} không phải một thing kind path")
         elif th["kind"] in kit.MOVERS:
             ends = [a["to"]] if has_to else things[a["path"]]["points"]
-            if not all(_inside(kit.bbox({**th, "xy": p})) for p in ends):
+            if not all(_inside(kit.bbox(kit.at_pos(th, p))) for p in ends):
                 probs.append(f"{what}: {tid!r} đi ra ngoài {AREA}")
     return probs + _at_problems(what, a)
 
@@ -229,9 +265,9 @@ def _actor_problems(doc: dict, things: dict[str, dict]) -> list[str]:
     """The red actor is drawn in beat 1 and runs through the whole canvas: never hidden, never vanishing."""
     actor = doc.get("actor")
     th = things.get(actor) if isinstance(actor, str) else None
-    if th is None or th["kind"] != "dot":
-        return [f"motion.json: actor {actor!r} phải là id của một thing kind dot (chấm đỏ đi suốt đoạn)"]
-    probs = [] if th["beat"] == 1 else [f"motion.json: actor {actor!r} phải được vẽ ở nhịp 1"]
+    if th is None or th["kind"] not in ("dot", "figure"):
+        return [f"motion.json: actor {actor!r} phải là id của một thing kind dot hoặc figure (kẻ tấn công đi suốt đoạn)"]
+    probs = []  # it comes in when the voice brings it in (beat 1 may be step 0, how it should work), then stays
     for k, b in enumerate(doc["beats"], 1):
         for a in b.get("acts", []):
             if a["thing"] == actor and (a["do"] == "hide" or a.get("vanish")):
@@ -248,7 +284,7 @@ def _order_problems(sc: Scene) -> list[str]:
             gone[a.thing] = min(gone.get(a.thing, math.inf), a.t1)
     probs = []
     for a in sc.acts:
-        if a.do in ("draw", "dim", "undim"):
+        if a.do in ("draw", "dim", "undim", "plain"):
             continue
         if a.t0 < drawn[a.thing] - 1e-9:
             probs.append(f"motion.json: {a.do} của {a.thing!r} bắt đầu trước khi nó được vẽ")
@@ -257,12 +293,13 @@ def _order_problems(sc: Scene) -> list[str]:
     by_id = {th["id"]: th for th in sc.things}
     for a in sc.acts:  # a path move starts where its path does: the mover must already be there
         if a.do == "move" and a.path:
-            x, y = kit._position(by_id[a.thing], [b for b in sc.acts if b.t0 < a.t0], a.t0)
+            x, y = kit._position(by_id[a.thing], [b for b in sc.acts if b.t0 < a.t0], a.t0, by_id)
             if (gap := math.hypot(x - a.path[0][0], y - a.path[0][1])) > JUMP:
                 probs.append(f"motion.json: {a.thing!r} nhảy {gap:.0f} px tới đầu path lúc {a.t0:.1f} s: cho nó tới đầu path "
                              "trước (move to), hoặc đừng bỏ nhịp đưa nó tới đó")
-    counted = [th["id"] for th in sc.things
-               if th["kind"] not in ("path", "crack") and (th["kind"] != "dot" or th.get("label"))]
+    carried = {a.thing for a in sc.acts if a.do == "attach"}  # a badge in a hand reads as part of whoever holds it
+    counted = [th["id"] for th in sc.things if th["id"] not in carried
+               and th["kind"] not in ("path", *MARKS) and (th["kind"] != "dot" or th.get("label"))]
     for t in sorted(drawn[i] for i in counted):
         seen = [i for i in counted if drawn[i] <= t + 1e-9 < gone.get(i, math.inf)]
         if len(seen) > MAX_SEEN:
@@ -271,14 +308,106 @@ def _order_problems(sc: Scene) -> list[str]:
     return probs
 
 
+def _attach_loops(beats: list[dict]) -> list[str]:
+    """Things carried, through attach, by something they themselves carry."""
+    on: dict[str, set[str]] = {}
+    for b in beats:
+        for a in b.get("acts", []):
+            if a["do"] == "attach":
+                on.setdefault(a["thing"], set()).add(a["on"])
+
+    def loop(path: list[str]) -> list[str] | None:
+        for nxt in sorted(on.get(path[-1], ())):
+            if nxt in path:
+                return path[path.index(nxt):] + [nxt]
+            if found := loop(path + [nxt]):
+                return found
+        return None
+
+    for start in sorted(on):
+        if found := loop([start]):
+            return [f"motion.json: attach tạo vòng ({' → '.join(found)}): một thứ không mang được thứ đang mang nó"]
+    return []
+
+
+def _quiet_problems(sc: Scene, end: float) -> list[str]:
+    """Stretches longer than MAX_QUIET where nothing happens: no act under way (a pulse does not count) and the camera
+    not gliding between two frames."""
+    busy = [(a.t0, a.t1) for a in sc.acts if a.do != "pulse" and math.isfinite(a.t1)]
+    busy += camera.glides(sc.cams)
+    draws = [a.t0 for a in sc.acts if a.do == "draw"]
+    if not draws:
+        return []
+    t, probs = min(draws), []
+    for s, e in sorted(busy) + [(end, end)]:
+        if s - t > MAX_QUIET:
+            probs.append(f"motion.json: {t:.1f}–{s:.1f} s không có gì chuyển động ({s - t:.1f} s, tối đa {MAX_QUIET}); "
+                         "thêm hành động cho nhịp đó")
+        t = max(t, e)
+    return probs
+
+
+def _meet(a, b, slack: float = 3) -> bool:
+    return min(a[2], b[2]) - max(a[0], b[0]) > slack and min(a[3], b[3]) - max(a[1], b[1]) > slack
+
+
+def _within(a, b, slack: float = 3) -> bool:
+    return a[0] >= b[0] - slack and a[1] >= b[1] - slack and a[2] <= b[2] + slack and a[3] <= b[3] + slack
+
+
+def _clash(bi, li, bj, lj, soft: bool = False) -> bool:
+    """Two things in each other's way: labels touching, a label on the other's drawing, or two drawings half over
+    each other. One drawing (or label) wholly inside another is nesting, not clutter: a room in a building. `soft`:
+    one is a dot or a mark (a packet on a machine's edge, a crack on a wall), whose drawing may sit on another's."""
+    if not soft and _meet(bi, bj) and not (_within(bi, bj) or _within(bj, bi)):
+        return True
+    return (any(_meet(l, m) for l in li for m in lj)
+            or any(_meet(l, bj) and not _within(l, bj) for l in li)
+            or any(_meet(m, bi) and not _within(m, bi) for m in lj))
+
+
+def _overlap_problems(sc: Scene) -> list[str]:
+    """Things that overlap where they come to rest (after each draw, move, attach or opening): code, not the agent's
+    eye, keeps the canvas clear. What someone carries may sit on them; a thing on its way somewhere is not checked."""
+    by_id = {th["id"]: th for th in sc.things}
+    drawn = {a.thing: a.t0 for a in sc.acts if a.do == "draw"}
+    gone: dict[str, float] = {}
+    for a in sc.acts:
+        if a.do == "hide" or (a.do == "move" and a.vanish):
+            gone[a.thing] = min(gone.get(a.thing, math.inf), a.t0)
+    found, probs = set(), []
+    for t in sorted({a.t1 + 0.01 for a in sc.acts if a.do in ("draw", "move", "attach", "open") and math.isfinite(a.t1)}):
+        here = []
+        for th in sc.things:
+            i = th["id"]
+            if th["kind"] == "path" or not drawn.get(i, math.inf) <= t < gone.get(i, math.inf):
+                continue
+            if th["kind"] in kit.MOVERS:
+                p = kit._position(th, sc.acts, t, by_id)
+                if math.dist(p, kit._position(th, sc.acts, t + 0.05, by_id)) > 0.5:
+                    continue  # still on its way
+                th = kit.at_pos(th, p)
+            body, labels = kit.parts(th)
+            here.append((i, body, labels, _holder(i, sc.acts, t), th["kind"] in ("dot", *MARKS)))
+        for (i, bi, li, hi, si), (j, bj, lj, hj, sj) in combinations(here, 2):
+            if (i, j) in found or j == hi or i == hj or (hi is not None and hi == hj):
+                continue
+            if _clash(bi, li, bj, lj, si or sj):
+                found.add((i, j))
+                probs.append(f"motion.json: lúc {t:.1f} s {i!r} đè lên {j!r} (hình hay nhãn chồng nhau): dời một trong hai "
+                             "ra, hoặc đặt hẳn cái nhỏ vào trong cái lớn")
+    return probs
+
+
 def brief_words(brief_md: str) -> set[str]:
     """The words of the brief: what a label may say before there is a Vietnamese script."""
     return set(_words(brief_md))
 
 
-def design_problems(doc, said: set[str], run_dir: Path | None) -> list[str]:
+def design_problems(doc, said: set[str], run_dir: Path | None, style: bool = True) -> list[str]:
     """Every problem of the canvas in motion.json, one line each; [] when it is safe to draw. `said`: the words a
-    label may use besides COMMON."""
+    label may use besides COMMON. `style=False` leaves out the rules of taste (dead time), which agents fix but which
+    must not stop an old canvas from being rendered."""
     if not isinstance(doc, dict):
         return ["motion.json phải là một object JSON (hoặc null khi không có hình động)"]
     if "scenes" in doc:
@@ -291,9 +420,9 @@ def design_problems(doc, said: set[str], run_dir: Path | None) -> list[str]:
         return probs + [f"motion.json: beats phải là danh sách 1–{MAX_BEATS} nhịp"]
     if not isinstance(things, list) or not things:
         return probs + ["motion.json: things phải là danh sách, không rỗng"]
-    by_id = {}
+    by_id, meta = {}, _metaphor(run_dir)
     for th in things:
-        probs += [f"motion.json: {p}" for p in _thing_problems(th, said, run_dir)]
+        probs += [f"motion.json: {p}" for p in _thing_problems(th, said, run_dir, meta)]
         if isinstance(th, dict) and isinstance(th.get("id"), str):
             if not (_int(th.get("beat")) and 1 <= th["beat"] <= len(beats)):
                 probs.append(f"motion.json: thing {th['id']!r}: beat {th.get('beat')!r} phải là số nhịp 1–{len(beats)}")
@@ -308,15 +437,24 @@ def design_problems(doc, said: set[str], run_dir: Path | None) -> list[str]:
             probs.append(f"motion.json nhịp {k}: thiếu idea: một dòng nói bước cơ chế của nhịp")
         if not isinstance(b.get("acts", []), list):
             probs.append(f"motion.json nhịp {k}: acts phải là danh sách")
+        v = b.get("view")
+        if "view" in b and not (isinstance(v, list) and len(v) == 4 and all(map(_num, v)) and v[0] < v[2]
+                                and v[1] < v[3] and _inside(v)):
+            probs.append(f"motion.json nhịp {k}: view phải là [x0, y0, x1, y1] trong {AREA}")
     if probs:
         return probs
+    hinged = {i for i, th in by_id.items() if th.get("kind") == "shape" and "hinge" in (shapes.find(th["shape"], run_dir) or {})}
     for k, b in enumerate(beats, 1):
         for m, a in enumerate(b.get("acts", []), 1):
-            probs += [f"motion.json nhịp {k}: {p}" for p in _act_problems(m, a, by_id, said)]
+            probs += [f"motion.json nhịp {k}: {p}" for p in _act_problems(m, a, by_id, said, hinged, meta)]
     if probs:
         return probs
+    probs += _attach_loops(beats)
     probs += _actor_problems(doc, by_id)
-    return probs or _order_problems(timed(doc, *estimated(doc), run_dir))
+    if probs:
+        return probs
+    sc = timed(doc, *estimated(doc), run_dir)
+    return _order_problems(sc) + (_quiet_problems(sc, estimated(doc)[1]) + _overlap_problems(sc) if style else [])
 
 
 def estimated(doc: dict) -> tuple[list[float], float]:
@@ -350,7 +488,10 @@ def timed(doc: dict, starts: list[float | None], end: float, run_dir: Path | Non
         if k == kept[0] and not at:
             t0 -= LEAD_IN
         if th["kind"] == "shape":
-            th = th | {"strokes": shapes.strokes_in_box(shapes.find(th["shape"], run_dir), th["box"])}
+            doc_ = shapes.find(th["shape"], run_dir)
+            th = th | {"strokes": shapes.strokes_in_box(doc_, th["box"])}
+            if hinge := shapes.hinge_in_box(doc_, th["box"]):
+                th["hinge"] = hinge
         things.append(th)
         acts.append(kit.Act("draw", th["id"], t0, t1))
         home[th["id"]] = k
@@ -360,21 +501,87 @@ def timed(doc: dict, starts: list[float | None], end: float, run_dir: Path | Non
         for a in doc["beats"][k].get("acts", []):
             if a["thing"] not in home or ("path" in a and a["path"] not in paths):
                 continue
-            touched[k] |= {a["thing"], a.get("path")} - {None}
+            touched[k] |= {a["thing"], a.get("path"), a.get("on")} - {None}  # an attach involves its carrier too
             acts.append(kit.Act(a["do"], a["thing"], *when(k, a.get("at", 0), a["do"], a.get("dur", DUR.get(a["do"], 0))),
                                 to=tuple(a["to"]) if "to" in a else None, path=paths.get(a.get("path")),
-                                say=a.get("say", ""), vanish=a.get("vanish", False)))
+                                say=a.get("say", ""), vanish=a.get("vanish", False), on=a.get("on", ""),
+                                offset=tuple(a["offset"]) if "offset" in a else None))
+    for h in [a for a in acts if a.do == "hide"]:  # what a hidden thing carries goes with it
+        acts += [kit.Act("hide", i, h.t0, h.t1) for i in sorted(_carried(h.thing, acts, h.t0))]
     gone = {a.thing: a.t0 for a in sorted(acts, key=lambda a: -a.t0) if a.do == "hide" or a.vanish}
     dim: set[str] = set()
     for k in kept[1:]:
         s = span[k][0]
         for i, h in home.items():
-            if i == doc.get("actor") or h >= k or gone.get(i, math.inf) <= s:
+            holder = _holder(i, acts, s)
+            if doc.get("actor") in (i, holder) or h >= k or gone.get(i, math.inf) <= s:
                 continue
-            if (i in touched[k]) == (i in dim):
+            if (i in touched[k] or holder in touched[k]) == (i in dim):
                 acts.append(kit.Act("undim" if i in dim else "dim", i, s, s + kit.TURN))
                 dim ^= {i}
-    return Scene(list(doc.get("lines", [])), things, acts)
+    for th in things:  # a means line goes plain as the next kept beat starts
+        later = [k for k in kept if k > home[th["id"]]]
+        if th.get("means") and later:
+            s = span[later[0]][0]
+            acts.append(kit.Act("plain", th["id"], s, s + kit.TURN))
+    return Scene(list(doc.get("lines", [])), things, acts, _cams(doc, kept, span, touched, things, acts))
+
+
+def _holder(thing: str, acts: list[kit.Act], t: float) -> str | None:
+    """Who carries the thing at t, at the end of a chain of attaches (a card on a figure on a truck: the truck)."""
+    seen, holder = {thing}, None
+    while True:
+        last = max((a for a in acts if a.thing == thing and a.do in ("move", "bounce", "attach") and a.t0 <= t),
+                   key=lambda a: a.t0, default=None)
+        if last is None or last.do != "attach" or last.on in seen:
+            return holder
+        thing = holder = last.on
+        seen.add(thing)
+
+
+def _carried(carrier: str, acts: list[kit.Act], t: float) -> set[str]:
+    """Things riding on `carrier` at t (attached, and not moved off since), and what those carry in turn."""
+    last: dict[str, kit.Act] = {}
+    for a in sorted((a for a in acts if a.do in ("move", "bounce", "attach") and a.t0 <= t), key=lambda a: a.t0):
+        last[a.thing] = a
+    out, todo = set(), [carrier]
+    while todo:
+        c = todo.pop()
+        for i, a in last.items():
+            if a.do == "attach" and a.on == c and i not in out:
+                out.add(i)
+                todo.append(i)
+    return out
+
+
+def _cams(doc: dict, kept: list[int], span: dict, touched: dict[int, set[str]], things: list[dict],
+          acts: list[kit.Act]) -> list[tuple[float, float, float, float]]:
+    """Camera keys: each kept beat framed on its `view`, or on all it draws, moves or acts on (a mover where the beat
+    finds it and where it leaves it)."""
+    if not kept:
+        return []
+    by_id = {th["id"]: th for th in things}
+    boxes = []
+    for k in kept:
+        if "view" in doc["beats"][k]:
+            boxes.append(tuple(doc["beats"][k]["view"]))
+            continue
+        s, e = span[k]
+        moments = [s + (e - s) * j / max(2, round((e - s) / 0.1)) for j in range(max(2, round((e - s) / 0.1)) + 1)]
+        actor = doc.get("actor")  # the attacker stays in frame once he is on the canvas, even standing still
+        drawn = actor in by_id and min((a.t0 for a in acts if a.thing == actor and a.do == "draw"), default=math.inf) <= e
+        ids = set(touched[k]) | ({actor} if drawn else set())
+        ids |= {c for i in set(ids) for t in (s, e) for c in _carried(i, acts, t)}
+        got = []
+        for i in ids & by_id.keys():
+            th = by_id[i]
+            if th["kind"] in kit.MOVERS:  # where it is all through the beat: a bounce or a walk may go far mid-beat
+                got += [kit.bbox(kit.at_pos(th, kit._position(th, acts, t, by_id))) for t in moments]
+            else:
+                got.append(kit.bbox(th))
+        boxes.append((min(b[0] for b in got), min(b[1] for b in got), max(b[2] for b in got), max(b[3] for b in got))
+                     if got else None)
+    return camera.keys([span[k] for k in kept], boxes, LEAD_IN)
 
 
 def design_sheet(doc: dict, run_dir: Path | None) -> Image.Image:
@@ -389,7 +596,7 @@ def _sheet(sc: Scene, ends: list[float]) -> Image.Image:
     d = ImageDraw.Draw(img)
     font = ImageFont.truetype(str(FONTS / "BeVietnamPro-Bold.ttf"), 28)
     for c, t in enumerate(ends):
-        frame = kit.draw(sc.things, sc.acts, t - 0.01).resize((SHEET_W, h), Image.LANCZOS)
+        frame = kit.draw(sc.things, sc.acts, t - 0.01, sc.view(t - 0.01)).resize((SHEET_W, h), Image.LANCZOS)
         img.paste(frame, (44 + c * (SHEET_W + 4), 0))
         d.text((44 + c * (SHEET_W + 4) + 6, 6), str(c + 1), fill="black", font=font)
     return img
@@ -406,7 +613,7 @@ def estimate(script: list[dict]) -> list[Placement]:
 
 
 def _lines_problems(want, text: dict[int, str]) -> list[str]:
-    """The animated lines: spoken, back to back, not the title, at most half of the video."""
+    """The animated lines: spoken, back to back, not the title, at most MAX_SHARE of the video."""
     if not (isinstance(want, list) and want and all(_int(i) for i in want)):
         return ["motion.bind.json: lines phải là danh sách id câu, không rỗng"]
     if missing := [i for i in want if i not in text]:
@@ -418,8 +625,9 @@ def _lines_problems(want, text: dict[int, str]) -> list[str]:
     if spoken[0] in want:
         probs.append(f"motion.bind.json: lines không được có câu {spoken[0]} (câu tiêu đề)")
     # ponytail: syllables stand in for seconds; the timeline does not exist yet
-    if 2 * sum(syllables(text[i]) for i in want) > sum(syllables(t) for t in text.values()):
-        probs.append("motion.bind.json: đoạn hình động dài hơn nửa video (tính theo số âm tiết lời đọc)")
+    if sum(syllables(text[i]) for i in want) > MAX_SHARE * sum(syllables(t) for t in text.values()):
+        probs.append(f"motion.bind.json: đoạn hình động dài hơn {MAX_SHARE:.0%} video (tính theo số âm tiết lời đọc)"
+                     .replace("%", " %"))
     return probs
 
 
@@ -439,14 +647,24 @@ def _cue_problems(k: int, cue, want: list[int], text: dict[int, str]) -> list[st
     return probs
 
 
+def _rebound(th, labels: dict, means: dict):
+    """One thing with the bind's label and means; a means of "" is dropped."""
+    if not (isinstance(th, dict) and isinstance(th.get("id"), str)):
+        return th
+    i = th["id"]
+    if i in labels:
+        th = th | {"label": labels[i]}
+    if i in means:
+        th = th | {"means": means[i]} if means[i] else {k: v for k, v in th.items() if k != "means"}
+    return th
+
+
 def bound(doc: dict, bind: dict) -> dict:
-    """The canvas with the bind's labels and lines: what render, visuals and the checks of the voice use."""
-    labels = bind.get("labels") or {}
-    ids = {i for i in labels if isinstance(i, str)} if isinstance(labels, dict) else set()
-    return doc | {"lines": list(bind["lines"]),
-                  "things": [th | {"label": labels[th["id"]]} if isinstance(th, dict) and isinstance(th.get("id"), str) and th["id"] in ids
-                             else th
-                             for th in doc["things"]]}
+    """The canvas with the bind's labels, means and lines: what render, visuals and the checks of the voice use."""
+    labels, means = bind.get("labels") or {}, bind.get("means") or {}
+    labels = {i: v for i, v in labels.items() if isinstance(i, str)} if isinstance(labels, dict) else {}
+    means = {i: v for i, v in means.items() if isinstance(i, str)} if isinstance(means, dict) else {}
+    return doc | {"lines": list(bind["lines"]), "things": [_rebound(th, labels, means) for th in doc["things"]]}
 
 
 def _starts(bind: dict, placements: list[Placement], script: list[dict]) -> tuple[list[float | None], float]:
@@ -459,10 +677,13 @@ def _starts(bind: dict, placements: list[Placement], script: list[dict]) -> tupl
         return p.start + p.dur * (f0 + (f1 - f0) * cue.get("at", 0))
 
     last = at[bind["lines"][-1]]
-    return [None if c is None else when(c) for c in bind["beats"]], last.start + last.dur
+    starts = [None if c is None else when(c) for c in bind["beats"]]
+    first = next((s for s in starts if s is not None), None)
+    return [s if s is None or s == first else max(s - LEAD_WORD, first) for s in starts], last.start + last.dur
 
 
-def bind_problems(doc, bind, script: list[dict], run_dir: Path | None, visuals: list | None = None) -> list[str]:
+def bind_problems(doc, bind, script: list[dict], run_dir: Path | None, visuals: list | None = None,
+                  style: bool = True) -> list[str]:
     """Every problem of motion.bind.json against the canvas (assumed to pass design_problems) and the script."""
     if not isinstance(bind, dict):
         return ["motion.bind.json phải là một object JSON"]
@@ -485,6 +706,11 @@ def bind_problems(doc, bind, script: list[dict], run_dir: Path | None, visuals: 
     ids = {th["id"] for th in doc["things"] if isinstance(th, dict) and isinstance(th.get("id"), str) and "label" in th}
     if not isinstance(labels, dict) or not all(isinstance(i, str) and i in ids for i in labels):
         probs.append("motion.bind.json: labels phải là {\"<id thing có nhãn>\": \"<nhãn mới>\"}")
+    means = bind.get("means", {})
+    mids = {th["id"] for th in doc["things"] if isinstance(th, dict) and isinstance(th.get("id"), str) and "means" in th}
+    if not isinstance(means, dict) or not all(isinstance(i, str) and i in mids and isinstance(v, str)
+                                              for i, v in means.items()):
+        probs.append("motion.bind.json: means phải là {\"<id thing có means>\": \"<chữ trong lời>\" hoặc \"\" (bỏ)}")
     if probs:
         return probs
     kept = [(k, c) for k, c in enumerate(cues, 1) if c is not None]
@@ -498,9 +724,11 @@ def bind_problems(doc, bind, script: list[dict], run_dir: Path | None, visuals: 
         probs.append("motion.bind.json: mốc các nhịp giữ lại phải tăng dần theo lời đọc; bỏ (null) nhịp đọc lệch thứ tự")
     said = {w for i in want for w in _words(text[i])}
     doc = bound(doc, bind)
-    probs += design_problems(doc, said, run_dir)  # the labels again, now against the words of the voice
+    probs += design_problems(doc, said, run_dir, style)  # the labels again, now against the words of the voice
     if not probs:
-        probs += _order_problems(timed(doc, *_starts(bind, estimate(script), script), run_dir))
+        starts, end = _starts(bind, estimate(script), script)
+        sc = timed(doc, starts, end, run_dir)
+        probs += _order_problems(sc) + (_quiet_problems(sc, end) + _overlap_problems(sc) if style else [])
     if visuals is not None:
         probs += clashes(visuals, set(want))
     return probs

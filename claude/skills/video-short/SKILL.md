@@ -21,8 +21,9 @@ Thiết kế: `~/video-pipeline/docs/superpowers/specs/2026-11-02-dieu-phoi-bang
    "không cần duyệt" (chỉ bỏ điểm dừng brief; bản dịch vẫn dừng cho Tai duyệt). Lệnh in `$RUN` rồi chạy nền.
 2. **Chờ** — chạy nền `vshort wait $RUN` và chờ thông báo (một video mất tới ~1,5 giờ); đừng hỏi dồn, đừng đọc file trong lúc chờ.
 3. **Theo mã thoát của `vshort wait`** (nó in trạng thái và lời nhắn của script):
-   - **20 — duyệt brief**: dán nội dung `$RUN/brief.vi.md` cho Tai (tiêu đề lên đầu). Tai sửa → sửa **cả** `brief.vi.md` lẫn
-     `brief.en.md`. Tai duyệt → `vshort approve $RUN brief` (mã 2 = `brief.en.md` cũ hơn bản tiếng Việt: cập nhật rồi duyệt lại) →
+   - **20 — duyệt brief**: dán nội dung `$RUN/brief.vi.md` cho Tai (tiêu đề lên đầu), rồi `$RUN/an-du.md` (ẩn dụ đời thường cho
+     hình động) nếu có. Tai sửa brief → sửa **cả** `brief.vi.md` lẫn `brief.en.md`. Tai sửa ẩn dụ → chỉ sửa `an-du.md` (ẩn dụ không
+     gửi NotebookLM). Tai duyệt → `vshort approve $RUN brief` (mã 2 = `brief.en.md` cũ hơn bản tiếng Việt: cập nhật rồi duyệt lại) →
      `vshort auto $RUN` → bước 2.
    - **21 — duyệt bản dịch**: dán `$RUN/translation.md` (câu Anh, lời Việt, note). Nếu lời nhắn nói có bản sửa đề xuất từ reviewer,
      dán cả lời nhắn đó (so sánh cũ → mới). Tai sửa → sửa `$RUN/script.vi.json` (giữ dấu `|` chia cụm phụ đề). Tai đồng ý bản đề

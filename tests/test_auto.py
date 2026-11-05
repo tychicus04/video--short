@@ -221,7 +221,7 @@ def flow(tmp_path, monkeypatch):
 def test_stops_for_brief_then_for_translation(flow):
     run, fk = flow
     assert auto.run_auto(run) == WAIT_BRIEF
-    assert auto.get_state(run)["state"] == "wait_brief" and dict(fk.agents) == {"vs-researcher": 1}
+    assert auto.get_state(run)["state"] == "wait_brief" and dict(fk.agents) == {"vs-researcher": 1, "vs-an-du": 1}
     assert run.read("run.json")["notebook_id"] == "nb-123"
     run.mark("approve_brief")
     assert auto.run_auto(run) == WAIT_SCRIPT
@@ -255,6 +255,7 @@ def test_auto_mode_checks_brief_instead_of_stopping(flow):
     run.write("run.json", run.read("run.json") | {"auto": True})
     assert auto.run_auto(run) == WAIT_SCRIPT
     assert fk.agents["vs-researcher"] == 2 and "Soát brief" in fk.prompts["vs-researcher"][1]
+    assert "Bình thường" in fk.prompts["vs-researcher"][1] and fk.agents["vs-an-du"] == 1
 
 
 def test_notebooklm_login_stops_with_auth(flow):
@@ -318,6 +319,7 @@ def test_design_runs_alongside_fetch_and_finishes_before_script_stop(flow):
     assert auto.run_auto(run) == WAIT_SCRIPT
     assert fk.saw_fetch and fk.agents["vs-motion"] == 1 and run.done("motion_design")
     assert "--design" in fk.prompts["vs-motion"][0] and run.file("motion.json").exists()
+    assert "an-du.md" in fk.prompts["vs-motion"][0]
     assert auto.run_auto(run) == WAIT_SCRIPT and fk.agents["vs-motion"] == 1
 
 
@@ -879,3 +881,28 @@ def test_finish_says_why_there_are_no_beats(flow):
     assert auto._shots_note(run) == "Nhịp hình: câu 1, 2, 3"
     run.file("shots/ok.json").write_text("{oops")  # a file nobody should have left: not a traceback in the final message
     assert auto._shots_note(run).startswith("Nhịp hình: không có")
+
+
+def test_an_du_runs_before_the_brief_stop(flow):
+    run, fk = flow
+    assert auto.run_auto(run) == WAIT_BRIEF
+    assert fk.agents["vs-an-du"] == 1 and run.done("an_du")
+    assert f"{run.path}/an-du.md" in fk.prompts["vs-an-du"][0] and "an-du.md" in auto.get_state(run)["message"]
+
+
+def test_an_du_failure_does_not_stop_the_run(flow):
+    run, fk = flow
+    fk.fail_steps = {"an_du"}
+    assert auto.run_auto(run) == WAIT_BRIEF and run.done("an_du")
+
+
+def test_an_du_is_not_asked_twice(flow):
+    run, fk = flow
+    assert auto.run_auto(run) == WAIT_BRIEF
+    assert auto.run_auto(run) == WAIT_BRIEF and fk.agents["vs-an-du"] == 1
+
+
+def test_an_du_is_not_written_after_tai_approved_the_brief(flow):
+    run, fk = flow
+    run.mark("approve_brief")  # a run approved before this step existed: no metaphor Tai never saw
+    assert auto.run_auto(run) == WAIT_SCRIPT and "vs-an-du" not in fk.agents

@@ -16,8 +16,8 @@ from vshort.run import Run
 
 ROOT = Path(__file__).resolve().parent.parent  # agents run here: Sonnet session, advisor off, `model:` of the agent
 CLAUDE = ["claude"]
-TIMEOUT = {"vs-researcher": 1800, "vs-transcriber": 900, "vs-translator": 1200, "vs-motion": 2400, "vs-visuals": 2400,
-           "vs-nhip": 1800, "vs-reviewer": 3600}  # seconds
+TIMEOUT = {"vs-an-du": 600, "vs-researcher": 1800, "vs-transcriber": 900, "vs-translator": 1200, "vs-motion": 2400,
+           "vs-visuals": 2400, "vs-nhip": 1800, "vs-reviewer": 3600}  # seconds
 
 
 GIT_TIMEOUT = 120  # seconds per git call: a hung network must not keep a finished video "running"
@@ -137,12 +137,15 @@ RESEARCH = ("Bước 1 của /video-short.\n\n- Chủ đề: {topic}\n- slug: `{
 BRIEF_CHECK = (
     "RUN={run}. Chế độ tự động: Tai không duyệt brief. Soát brief ({run}/brief.vi.md và {run}/brief.en.md) với {run}/sources.md: "
     "dữ kiện, ngày, điểm tranh cãi. Soát cả mục \"Cơ chế từng bước\" theo luật an toàn: chỉ mức khái niệm, không tên lỗ hổng/"
-    "kỹ thuật/công cụ, không mã hay lệnh. Lệch thì sửa ở cả hai bản. Không tạo notebook mới, không nạp nguồn mới.")
+    "kỹ thuật/công cụ, không mã hay lệnh. Mục đó mở bằng bước 0 \"Bình thường: …\" (bản Anh \"0. Normally: …\") trừ khi "
+    "ghi Không có; thiếu thì thêm vào cả hai bản. Lệch thì sửa ở cả hai bản. Không tạo notebook mới, không nạp nguồn mới.")
+AN_DU = "RUN={run}. Đọc {run}/brief.vi.md, viết {run}/an-du.md."
 TRANSCRIBE = ("RUN={run}. Đọc các ảnh mảnh phụ đề {sheets} ({n} mảnh, chỉ số 0–{last}, theo {run}/fragments.json) "
               "và ghi {run}/fragments_text.json.")
 TRANSLATE = "RUN={run}\n\nĐầu ra nguyên văn của `vshort text`:\n\n```\n{table}\n```"
 MOTION_DESIGN = ("Việc 1 — vẽ khung từ brief. RUN={run}\n\nĐọc {run}/brief.vi.md (mục \"Cơ chế từng bước\" và \"Lưu ý độ "
-                 "chính xác\"), viết {run}/motion.json; hình chưa có trong assets/shapes/ thì vẽ vào {run}/shapes/. "
+                 "chính xác\") và {run}/an-du.md (ẩn dụ đã duyệt, nếu có: dựng cảnh theo đúng ẩn dụ đó), viết "
+                 "{run}/motion.json; hình chưa có trong assets/shapes/ thì vẽ vào {run}/shapes/. "
                  "Chạy `vshort motion {run} --design` tới khi mã 0.")
 MOTION_BIND = ("Việc 2 — gắn nhịp vào lời. RUN={run}\n\nĐọc {run}/motion.json và {run}/script.vi.json, viết "
                "{run}/motion.bind.json. Chạy `vshort motion {run}` tới khi mã 0.")
@@ -268,8 +271,11 @@ def _flow(run: Run) -> int:
     meta = run.read("run.json")
     if meta.get("auto"):
         _agent(run, "brief_check", "vs-researcher", BRIEF_CHECK.format(run=p))
-    elif not run.done("approve_brief"):
-        raise Stop(WAIT_BRIEF, f"Duyệt brief: {p}/brief.vi.md (sửa thì sửa cả brief.en.md), rồi "
+    # a brief Tai approved before this step existed gets no metaphor: it would go into the video unseen
+    if not run.done("an_du") and (meta.get("auto") or not run.done("approve_brief")):
+        _an_du(run)
+    if not meta.get("auto") and not run.done("approve_brief"):
+        raise Stop(WAIT_BRIEF, f"Duyệt brief: {p}/brief.vi.md (sửa thì sửa cả brief.en.md) và ẩn dụ {p}/an-du.md, rồi "
                                f"`vshort approve {p} brief` và `vshort auto {p}`.", "wait_brief")
     if not run.done("source"):
         timing.start(run.path, "source")
@@ -474,6 +480,16 @@ def _no_motion(run: Run) -> None:
             run.file(f"{name}.json").replace(run.file(f"{name}.loi.json"))
     if code := run_vshort(["motion", str(run.path)]):
         raise Stop(code, f"`vshort motion` lỗi cả khi không có hình động (mã {code}); xem auto.log")
+
+
+def _an_du(run: Run) -> None:
+    """The everyday metaphor (RUN/an-du.md) from the brief, before Tai sees the brief. A failed agent does not stop the
+    video: the canvas is then drawn without a metaphor."""
+    try:
+        run_claude(run, "an_du", "vs-an-du", AN_DU.format(run=run.path), TIMEOUT["vs-an-du"])
+    except AgentError as e:
+        print(f"Ẩn dụ: {e}; hình động dựng không có ẩn dụ.", flush=True)
+    run.mark("an_du")
 
 
 def _design(run: Run) -> None:

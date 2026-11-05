@@ -1,0 +1,17 @@
+[
+  {"id": 1, "phrases": "Mạo danh client tin cậy, không cần khóa", "note": "Tiêu đề brief, giữ đúng chữ."},
+  {"id": 2, "phrases": "Vậy CVE-2026-112816 | trong LXD và MicroCloud | cho phép điều đó bằng cách nào?", "note": ""},
+  {"id": 3, "phrases": "Bình thường, xác thực an toàn | đòi hỏi bạn chứng minh | đang giữ một khóa riêng bí mật.", "note": ""},
+  {"id": 4, "phrases": "Thử hình dung một cụm LXD | có API HTTPS mở ra mạng, | và một kỹ sư là client đáng tin.", "note": ""},
+  {"id": 5, "phrases": "Kẻ tấn công lấy được | chứng chỉ công khai của kỹ sư, | thứ không phải bí mật, | nên không cần khóa riêng.", "note": ""},
+  {"id": 6, "phrases": "Hắn gắn chứng chỉ đáng tin đó | vào sau chuỗi chứng chỉ của mình, | rồi gửi yêu cầu tới API.", "note": ""},
+  {"id": 7, "phrases": "Máy chủ đáng lẽ chỉ xét | chứng chỉ mà client | chứng minh có giữ khóa, | nhưng nó lại đối chiếu | mọi chứng chỉ trong chuỗi | với danh sách tin cậy, | rồi chấp nhận hắn.", "note": "Theo review: dấu chấm sau 'giữ khóa' đổi thành dấu phẩy để bỏ lặng 1,04 s; 'Nhưng' viết thường vì đã nối vào cùng câu."},
+  {"id": 8, "phrases": "Hắn ngay lập tức có | mọi quyền của client đó: | vào được các máy ảo, | nếu client đó có quyền cao, | hắn có thể chiếm luôn | máy chủ host.", "note": "Theo review: dấu chấm sau 'máy ảo' đổi thành dấu phẩy để bỏ lặng 1,04 s; 'Nếu' viết thường vì đã nối vào cùng câu. Tiếng Anh nêu chiếm host không kèm điều kiện; brief và Canonical ghi còn tùy quyền của client bị mạo danh, nên viết theo brief."},
+  {"id": 9, "phrases": "Lỗ hổng này có điểm CVSS 4.0", "note": ""},
+  {"id": 10, "phrases": "là 10 điểm.", "note": ""},
+  {"id": 11, "phrases": "Lỗi này do dự án Incus | phát hiện trước, | chỉ đe dọa các máy | có API mở ra mạng.", "note": ""},
+  {"id": 12, "phrases": "Có báo cáo PoC công khai, | nhưng mức độ còn tranh cãi. | Dù vậy, cập nhật | vẫn là cách duy nhất | khắc phục triệt để, | nên kiểm tra | phiên bản snap đang cài.", "note": ""},
+  {"id": 13, "phrases": "Chứng chỉ công khai | không phải là | bằng chứng danh tính.", "note": "Câu chốt brief, giữ đúng chữ."},
+  {"id": 14, "phrases": "Kiểm tra phiên bản | LXD và MicroCloud | trên mọi máy.", "note": "Lời kêu gọi brief, giữ đúng chữ."},
+  {"id": 15, "phrases": "Cập nhật lên bản vá, | kiểm tra xem API HTTPS | có mở cho mạng không, | và chia sẻ cho đồng nghiệp | đang quản trị máy chủ.", "note": "Lời kêu gọi brief, giữ đúng chữ."}
+]

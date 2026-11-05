@@ -2,18 +2,18 @@
  "idea": "gói tin đi từ A tới B, kẻ nghe lén ở giữa chép một bản",
  "actor": "pkt",
  "things": [
-  {"id": "a", "kind": "computer", "box": [60, 420, 260, 640], "label": "A", "beat": 1},
-  {"id": "b", "kind": "computer", "box": [410, 420, 610, 640], "label": "B", "beat": 1, "at": 0.2},
-  {"id": "wire", "kind": "path", "points": [[265, 510], [405, 510]], "arrow": true, "beat": 1, "at": 0.3},
-  {"id": "pkt", "kind": "dot", "xy": [265, 510], "label": "gói tin", "beat": 1, "at": 0.5},
-  {"id": "spy", "kind": "person", "xy": [335, 800], "label": "kẻ nghe lén", "beat": 2, "at": 0.3},
-  {"id": "tap", "kind": "path", "points": [[335, 525], [335, 700]], "arrow": true, "beat": 2, "at": 0.5},
-  {"id": "copy", "kind": "dot", "xy": [335, 525], "color": "blue", "beat": 2, "at": 0.6}
+  {"id": "a", "kind": "computer", "box": [40, 420, 240, 640], "label": "A", "beat": 1},
+  {"id": "b", "kind": "computer", "box": [418, 420, 618, 640], "label": "B", "beat": 1, "at": 0.2},
+  {"id": "wire", "kind": "path", "points": [[245, 510], [413, 510]], "arrow": true, "beat": 1, "at": 0.3},
+  {"id": "pkt", "kind": "dot", "xy": [300, 510], "label": "gói tin", "beat": 1, "at": 0.5},
+  {"id": "spy", "kind": "person", "xy": [329, 800], "label": "kẻ nghe lén", "beat": 2, "at": 0.3},
+  {"id": "tap", "kind": "path", "points": [[329, 525], [329, 700]], "arrow": true, "beat": 2, "at": 0.5},
+  {"id": "copy", "kind": "dot", "xy": [329, 525], "color": "blue", "beat": 2, "at": 0.6}
  ],
  "beats": [
   {"idea": "gói tin đi từ A tới B",
-   "acts": [{"do": "move", "thing": "pkt", "to": [335, 510], "at": 0.7}]},
+   "acts": [{"do": "move", "thing": "pkt", "to": [329, 510], "at": 0.7}]},
   {"idea": "kẻ nghe lén chép gói tin, bản gốc vẫn tới B",
    "acts": [{"do": "move", "thing": "copy", "path": "tap", "vanish": true, "at": 0.7},
-            {"do": "move", "thing": "pkt", "to": [405, 510], "at": 0.75}]}
+            {"do": "move", "thing": "pkt", "to": [358, 510], "at": 0.75}]}
  ]}

@@ -10,6 +10,11 @@ nhất** vẽ tay: các khối tự vẽ ra bằng nét bút chì trên nền gi
 Cái đã vẽ thì **giữ lại**, nên tới câu cuối người xem thấy cả chuỗi A→Z như một sơ đồ. "Kẻ tấn công" (hay gói tin, mã độc) là **một
 chấm đỏ đi suốt đoạn**; cái gì bị chiếm thì chuyển đỏ. Bạn không viết mã: bạn viết **mô tả** bằng JSON, chương trình dựng.
 
+**Kể bằng ẩn dụ đời thường** khi có `RUN/an-du.md` (Tai đã duyệt cùng brief): dựng đúng cảnh và bảng đổi trong file đó (thẻ = chứng
+chỉ, chìa = khóa riêng, bảo vệ/máy quét = máy chủ…), để người không làm IT cũng hiểu. "Kẻ tấn công" khi đó là **một người** (`figure`
+vai `attacker`, đỏ) đi suốt đoạn. Không tự đổi ẩn dụ; không có file thì dựng như cũ. **Chỗ hỏng** ("đáng lẽ làm X, nhưng lại làm Y")
+phải thành một hành động nhìn thấy, không chỉ là chữ.
+
 Lời giao cho bạn nói bạn làm việc nào:
 - **Việc 1 — vẽ khung từ brief** (lúc NotebookLM đang tạo video, chưa có lời Việt): viết `RUN/motion.json`, thêm hình mới vào
   `RUN/shapes/` nếu cần.
@@ -17,7 +22,11 @@ Lời giao cho bạn nói bạn làm việc nào:
   còn qua kiểm.
 - **Sửa theo review**: sửa `motion.json` và/hoặc `motion.bind.json` như lời giao nói.
 
-Đọc trước hai ví dụ, chúng là chuẩn nhìn: `~/video-pipeline/examples/motion/coruna.json` + `coruna.bind.json` (lời:
+Đọc trước ba ví dụ, chúng là chuẩn nhìn. `the-nhan-vien.json` + `.bind.json` (lời: `.script.json`, câu 3–8) là chuẩn của **ẩn dụ**: kỹ
+sư cắm chìa của mình, máy quét ✓; kẻ gian lấy bản sao thẻ (`attach`), kẹp sau thẻ mình, cắm chìa của hắn; máy quét ✓ thẻ đầu nhưng mũi
+tên so cả hai thẻ với danh sách (✗ thẻ hắn, ✓ thẻ kỹ sư); hắn đi tới cạnh tòa nhà, máy ảo rồi máy chủ host chuyển đỏ. Bố cục
+của nó là chuẩn **gọn**: ít thứ, mỗi thứ một chỗ riêng (người ở trên, máy quét và danh sách ở giữa, tòa nhà dưới phải), dấu và mũi
+tên nằm trong khoảng trống giữa hai thứ, không vệt đường đi dài. Hai ví dụ cũ: `~/video-pipeline/examples/motion/coruna.json` + `coruna.bind.json` (lời:
 `coruna.script.json`): trang web hợp pháp mang chấm đỏ "mã độc" → chấm đi theo đường vào Safari trong khung "sandbox", dội vào tường,
 tường nứt, chấm đi xuống "Lõi (kernel)" chuyển đỏ → mật khẩu bay theo mũi tên về "hacker". `goi-tin.json` + `goi-tin.bind.json`:
 gói tin chạy từ A sang B, kẻ nghe lén ở giữa, một bản chép đi theo mũi tên xuống hắn.
@@ -27,11 +36,13 @@ gói tin chạy từ A sang B, kẻ nghe lén ở giữa, một bản chép đi 
 Đọc `RUN/brief.vi.md`: mục **"Cơ chế từng bước"** (chuẩn nội dung) và **"Lưu ý độ chính xác"**. Mục cơ chế ghi "Không có" (video
 không giải thích cơ chế) → ghi đúng `null` vào `RUN/motion.json` và dừng.
 
-Mỗi bước cơ chế là **một nhịp** (1–6 nhịp). Từ các bước, liệt kê các nhân vật và đồ vật cần vẽ. **Đồ vật đặc trưng của chủ đề**
+Đọc thêm `RUN/an-du.md` nếu có. Mỗi bước cơ chế là **một nhịp** (1–6 nhịp); bước 0 "Bình thường: …" là nhịp 1 (cách làm đúng, để
+thấy chỗ hỏng ở sau). Từ các bước, liệt kê các nhân vật và đồ vật cần vẽ. **Đồ vật đặc trưng của chủ đề**
 (bộ nhớ, nhân hệ điều hành, luồng, khóa root, bộ định tuyến…) phải nhìn ra là gì mà không cần đọc nhãn: kit không có thì **vẽ hình
 mới** (mục dưới). Hộp có nhãn (`box`) chỉ dành cho một lớp hay vùng chung chung; một khung toàn hộp có nhãn là không đạt. Bố cục cả khung theo **một hướng
 đọc** (trên → dưới hoặc trái → phải), theo đúng thứ tự các bước: bước sau nằm sau bước trước trên hướng đọc. Luật gọn (code kiểm):
-- Tối đa **7 thứ** có mặt cùng lúc trên khung. Một hình kèm nhãn của nó tính là một; `path`, `crack` và `dot` không nhãn không tính.
+- Tối đa **7 thứ** có mặt cùng lúc trên khung. Một hình kèm nhãn của nó tính là một; `path`, `crack`, `check`, `cross`, `dot` không
+  nhãn và đồ được `attach` (thẻ, chìa người đang cầm) không tính. Thứ đã xong vai thì `hide` (ẩn người thì đồ người đó cầm ẩn theo).
   Thà ít hơn: khung cuối là sơ đồ đọc được ở cỡ điện thoại, không phải bản vẽ dày đặc.
 - Khi một nhịp bắt đầu, mọi thứ của nhịp trước mà nhịp này **không nhắc tới** (không vẽ thêm, không có act trên nó, không là `path` nó
   đi theo) tự **lùi lại** (nhạt về xám); nhịp sau nhắc lại thì nó sáng lại. Chấm đỏ `actor` không bao giờ lùi.
@@ -42,7 +53,7 @@ mới** (mục dưới). Hộp có nhãn (`box`) chỉ dành cho một lớp hay
   x > 618 từ y 535 trở xuống**: trên là thanh của TikTok/Reels/Shorts, góc phải dưới là cột nút like/bình luận, dưới là phụ đề.
   Nửa trên (y 141–535) rộng hết tới x 680; từ y 535 trở xuống chỉ tới x 618.
   **Dùng hết vùng này**: hình to (thứ chính của một nhịp rộng từ 200 px), trải đều theo hướng đọc, không dồn vào một góc.
-- Chỉ `dot` và `icon` được di chuyển. Mọi thứ khác chỉ tự vẽ ra, chuyển đỏ hoặc nứt.
+- `dot`, `icon`, `figure` và `shape` (đạo cụ, đi theo tâm hộp) di chuyển được. Mọi thứ khác chỉ tự vẽ ra, chuyển đỏ, nứt hay mở/đóng.
 - Mỗi hành động đặt đúng chỗ trong nhịp của nó: chấm đỏ không phá tường trước khi nhịp nói tường bảo vệ thế nào.
 
 `RUN/motion.json`:
@@ -61,7 +72,9 @@ mới** (mục dưới). Hộp có nhãn (`box`) chỉ dành cho một lớp hay
  ]}
 ```
 
-- `actor`: id của **một `dot`** vẽ ở nhịp 1 — chấm đỏ đi suốt đoạn. Không `hide`, không `move` có `vanish` trên nó.
+- `actor`: id của **một `dot`** hoặc **một `figure`** (kẻ tấn công), vẽ ra ở nhịp lời bắt đầu nói tới hắn (không sớm hơn), rồi đi suốt
+  phần còn lại của đoạn. Không `hide`, không `move` có `vanish` trên nó. Hắn đi theo các `path` (vẽ đỏ) để cuối đoạn còn **vệt đường đi**
+  nối các bước.
 - **Thing**: `id` (không trùng), `kind`, `beat` (nhịp nó bắt đầu vẽ ra, đếm từ 1), tùy chọn `at` (0–1: vị trí trong nhịp, mặc định 0),
   `label`, `color`.
   - `phone`, `computer`, `server`, `box`, `wall`, `shape`: `box` `[x0, y0, x1, y1]`. Nhãn nằm trên khung, riêng `box` nhãn nằm giữa hộp.
@@ -74,13 +87,45 @@ mới** (mục dưới). Hộp có nhãn (`box`) chỉ dành cho một lớp hay
     theo đang đứng lúc đó (lệch quá 20 px là code báo "nhảy").
   - `color`: `ink` (mặc định), `green` (hợp pháp, an toàn), `blue` (lớp bảo vệ, dữ liệu bình thường), `red` (tấn công). `dot` mặc định
     đỏ, `wall` mặc định xanh lơ.
-  - Cỡ gợi ý: máy tính 340×200; hộp/tầng 520×130; icon khoảng 100×100 cộng nhãn; người khoảng 80×160 cộng nhãn; hình thư viện 200–300.
+  - `figure`: người như bản phác (đầu tròn, thân bo, hai chân), `xy` là tâm thân; cao từ y−112 tới y+92, nhãn ở y+125. `role`:
+    `"guard"` (mũ bảo vệ) hoặc `"attacker"` (mũ trùm, đỏ). Đi bộ khi di chuyển (chân bước, thân nhún). Không mặt, không biểu cảm.
+  - `check` / `cross`: dấu ✓ xanh / ✗ đỏ cỡ ~56 px ở `xy`, không nhãn — kết quả một lần so, một lần chặn.
+  - **Bộ đạo cụ đời thường** trong thư viện (`kind: "shape"`): `the-nhan-vien`, `may-quet`, `bang-ten`, `barie`, `cua`, `toa-nha`,
+    `phong`, `chot-bao-ve`, `ket-sat`, `hom-thu`, `kien-hang`, `xe-giao-hang`, `camera-an-ninh`, `hang-rao`, `cau-thang` (xem
+    `assets/shapes/props-sheet.png`). `barie`, `cua`, `ket-sat` mở/đóng được; tay barie mở thì dựng đứng lên, chừa chỗ phía trên nó.
+  - `means` (tùy chọn, cần `label`): dòng nghĩa kỹ thuật dưới nhãn đời thường ("thẻ" + means "chứng chỉ công khai" → "= chứng chỉ công
+    khai"), hiện trong nhịp đầu của thứ đó rồi mờ đi. Nhãn đặt trên hình, nên với đồ nhỏ người đang cầm, ghép nghĩa bằng một `text`
+    ngắn ("thẻ = chứng chỉ") rồi `hide` nó ở nhịp sau, như ví dụ `the-nhan-vien`.
+  - Cỡ gợi ý: máy tính 340×200; hộp/tầng 520×130; icon khoảng 100×100 cộng nhãn; `figure` 80×200 cộng nhãn; thẻ trên ngực 56×38;
+    hình thư viện 200–300.
 - **Act** (trong `acts` của nhịp; `do`, `thing`, tùy chọn `at` 0–1 trong nhịp, `dur` giây từ 0,3 đến 5):
   - `move`: chấm hoặc icon đi tới `to` `[x, y]` (bay cong nhẹ), hoặc chạy theo `path` (id của một `path`); `"vanish": true` thì nó mờ đi
     khi tới nơi (không dùng cho `actor`). Mặc định 1,2 giây.
   - `bounce`: chấm dội về phía `to` rồi quay lại (bị chặn).
   - `red`: thứ đó chuyển đỏ (bị chiếm); tùy chọn `say`: một dòng chữ đỏ ngắn dưới nhãn (ví dụ "đã bị chiếm"), chỉ với `box` cao từ 100 px.
-  - `pulse`: chấm nhấp nháy từ lúc đó. `hide`: xóa thứ đó.
+  - `pulse`: chấm nhấp nháy từ lúc đó (chỉ `dot`). `hide`: xóa thứ đó.
+  - `attach`: `{"do": "attach", "thing": id, "on": id, "offset": [dx, dy]}` — thứ đó trượt tới `on` (một thứ di chuyển được) và từ đó
+    đi theo nó, ở chỗ `offset` so với tâm (thẻ trên ngực `[0, 5]`, chìa trong tay `[70, 40]`, đồ cầm bên trái `[-62, 12]`). Một `move`
+    sau của chính nó thì nó rời ra. Không tạo vòng.
+  - `open` / `close`: mở/đóng phần chuyển động của `barie`, `cua`, `ket-sat`.
+- Nhịp có thể có `"view": [x0, y0, x1, y1]` (trong vùng an toàn): máy quay khung đúng vùng đó. Thường **không cần**: code tự khung vùng
+  các thứ nhịp đó vẽ, di chuyển hay có hành động. Dùng khi thứ quan trọng nhất của nhịp không có hành động (bảng danh sách đang bị so).
+
+### Máy quay và nhịp (code làm, bạn chỉ cần biết)
+
+- Mỗi nhịp máy quay phóng vào vùng của nhịp (1×–2×), trôi chậm khi giữ, lướt sang nhịp sau, cuối đoạn lùi ra toàn khung: khung cuối ở 1×
+  phải đọc được cả chuỗi. Mỗi nhịp sau nhịp đầu bắt đầu sớm 0,2 s so với chữ của nó (hình đi trước lời một chút).
+- **Không đè nhau** (code kiểm ở mỗi chỗ một thứ dừng lại: sau khi vẽ ra, đi tới, gắn, mở): nhãn không chạm nhãn, nhãn không nằm
+  lên hình khác, hai hình không đè một phần lên nhau. Được: một thứ nằm **gọn trong** thứ khác (ô "máy ảo" trong tòa nhà, ✓ trên bảng),
+  đồ người đang cầm nằm trên người đó, chấm và dấu nằm trên mép một thứ. Cắm chìa vào máy: `attach` chìa vào máy (`on` là cái máy),
+  không `move` chìa đè lên nó. Báo "đè lên" thì dời một trong hai, hoặc bỏ bớt một thứ.
+- **Không có quãng chết**: không quá 1,5 s mà không có gì đang vẽ ra, di chuyển, đổi màu, mở/đóng hay máy quay đang lướt (`pulse` và
+  trôi chậm không tính). Nhịp dài thì chia thành nhiều hành động nhỏ, đổi trạng thái mỗi 1–2 s.
+- **Động từ → chuyển động**: lấy/sao chép → `attach` một bản sao; gửi/chuyển → `path` có `arrow` và thứ đó chạy theo; kiểm tra/so →
+  mũi tên `path` + `check`/`cross`; chặn → `bounce` + `cross`; mở/vượt qua → `open`; chiếm → `red`; lấy cắp → icon bay theo `path` về
+  kẻ tấn công; tập trung một chỗ → `view` của nhịp.
+- **Màu mang nghĩa**: đỏ = tấn công/sai, xanh lá = đúng/an toàn/hợp pháp, xanh lơ chỉ cho lớp bảo vệ, xám = đã qua. Tối đa hai màu nhấn
+  mỗi khung.
   - Không bắt đầu trước khi thứ đó được vẽ (vẽ ra mất 0,8 giây) hay sau khi nó bị xóa.
 
 ### Vẽ hình mới
@@ -115,7 +160,9 @@ tính). NotebookLM có thể gộp, bỏ hay đảo các bước của brief. Vi
  "labels": {"mem": "vùng nhớ"}}
 ```
 
-- `lines`: **một** đoạn câu có lời liền nhau mà lời giải thích cơ chế (các bước của khung). Không lấy câu đầu (tiêu đề), không lấy câu tin
+- `lines`: **một** đoạn câu có lời liền nhau mà lời giải thích cơ chế (các bước của khung), bắt đầu từ câu nói bước 0 ("Bình thường…")
+  nếu lời có câu đó; tối đa 55 % số âm tiết lời đọc. `"means": {"<id>": "<chữ trong lời>" | ""}` đổi hay bỏ dòng nghĩa không có trong
+  lời, như `labels` với nhãn. Không lấy câu đầu (tiêu đề), không lấy câu tin
   tức, ai phát hiện, lời kêu gọi; không dài quá nửa video.
 - `beats`: **đúng một phần tử mỗi nhịp**, theo thứ tự nhịp. Mỗi phần tử là mốc lúc lời bắt đầu nói bước đó: `{"line": id, "phrase": n,
   "at": f}` — câu `line` (thuộc `lines`), cụm phụ đề thứ `n` (đếm từ 1, mặc định 1), vị trí `f` 0–1 trong cụm (mặc định 0). Ví dụ câu
@@ -135,7 +182,10 @@ Chạy `cd ~/video-pipeline && uv run vshort motion RUN` tới khi mã 0 (in `1 
 - Chỉ ở mức khái niệm: tầng, ranh giới, dữ liệu, ai lấy được gì.
 - **Nhãn và `say` chỉ dùng chữ có trong brief (lúc vẽ khung) và trong lời đọc của đoạn (lúc gắn nhịp)**, hoặc danh từ thường trong danh sách cố định (điện thoại, máy tính, máy chủ,
   dữ liệu, hệ thống, hacker, kẻ tấn công, nghe lén, mạng, trình duyệt, người dùng, nạn nhân, gói tin, tệp, mật khẩu, tin nhắn, ví tiền,
-  thư, khóa, đã bị chiếm, lấy cắp, trang web, an toàn, lõi, lớp bảo vệ), một chữ cái/chữ số (máy "A"), hoặc tên `.example`. Code kiểm từng chữ.
+  thư, khóa, đã bị chiếm, lấy cắp, trang web, an toàn, lõi, lớp bảo vệ, và từ đời thường của bộ đạo cụ: thẻ, chìa, cửa, barie, tòa
+  nhà, phòng, két sắt, phong bì, hòm, kiện hàng, xe giao, camera, rào, bảng tên, danh sách, quét, bản sao, kẹp, cho vào, đúng, sai,
+  tầng, cầu thang, nhân viên, kỹ sư, khách), chữ trong `RUN/an-du.md` (không áp cho `means`: vế kỹ thuật chỉ dùng chữ brief/lời), một
+  chữ cái/chữ số (máy "A"), hoặc tên `.example`. Code kiểm từng chữ.
 - Không có trong hình: tên lỗ hổng hay mã CVE, tên exploit hay bộ công cụ, tên hàm/tiến trình, lệnh, mã, địa chỉ web thật, các bước đủ
   chi tiết để làm lại.
 - Hình không nói điều lời không nói, không thêm bước hay tầng mang nội dung mới. Được thêm một tầng trung gian chung chung (như

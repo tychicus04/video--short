@@ -1,0 +1,542 @@
+{
+ "note": "Ẩn dụ đời thường của vụ LXD (bản phác Tai duyệt 03/11/2026): thẻ = chứng chỉ, chìa = khóa riêng.",
+ "idea": "kẻ gian kẹp bản sao thẻ kỹ sư sau thẻ mình; máy quét so cả xấp với danh sách nên cho hắn vào cụm",
+ "actor": "a",
+ "things": [
+  {
+   "id": "e",
+   "kind": "figure",
+   "xy": [
+    160,
+    265
+   ],
+   "label": "kỹ sư",
+   "color": "green",
+   "beat": 1
+  },
+  {
+   "id": "eb",
+   "kind": "shape",
+   "shape": "the-nhan-vien",
+   "box": [
+    132,
+    256,
+    188,
+    294
+   ],
+   "color": "green",
+   "beat": 1,
+   "at": 0
+  },
+  {
+   "id": "ek",
+   "kind": "icon",
+   "icon": "key",
+   "xy": [
+    90,
+    305
+   ],
+   "beat": 1,
+   "at": 0.05
+  },
+  {
+   "id": "t1",
+   "kind": "text",
+   "xy": [
+    380,
+    175
+   ],
+   "label": "thẻ = chứng chỉ",
+   "beat": 1,
+   "at": 0.1
+  },
+  {
+   "id": "t2",
+   "kind": "text",
+   "xy": [
+    380,
+    235
+   ],
+   "label": "chìa = khóa riêng",
+   "beat": 1,
+   "at": 0.2
+  },
+  {
+   "id": "sc",
+   "kind": "shape",
+   "shape": "may-quet",
+   "box": [
+    250,
+    450,
+    330,
+    590
+   ],
+   "label": "máy quét",
+   "beat": 1,
+   "at": 0.15
+  },
+  {
+   "id": "ok1",
+   "kind": "check",
+   "xy": [
+    365,
+    470
+   ],
+   "beat": 1,
+   "at": 0.75
+  },
+  {
+   "id": "tn",
+   "kind": "shape",
+   "shape": "toa-nha-tang",
+   "box": [
+    290,
+    720,
+    618,
+    965
+   ],
+   "label": "cụm LXD",
+   "beat": 2,
+   "at": 0.1
+  },
+  {
+   "id": "bt",
+   "kind": "shape",
+   "shape": "bang-ten",
+   "box": [
+    400,
+    460,
+    560,
+    572
+   ],
+   "label": "danh sách",
+   "beat": 2,
+   "at": 0.25
+  },
+  {
+   "id": "ok2",
+   "kind": "check",
+   "xy": [
+    535,
+    489
+   ],
+   "beat": 2,
+   "at": 0.6
+  },
+  {
+   "id": "a",
+   "kind": "figure",
+   "role": "attacker",
+   "xy": [
+    560,
+    255
+   ],
+   "label": "kẻ tấn công",
+   "beat": 3
+  },
+  {
+   "id": "ab",
+   "kind": "shape",
+   "shape": "the-nhan-vien",
+   "box": [
+    532,
+    246,
+    588,
+    284
+   ],
+   "color": "red",
+   "beat": 3,
+   "at": 0
+  },
+  {
+   "id": "ak",
+   "kind": "icon",
+   "icon": "key",
+   "xy": [
+    490,
+    295
+   ],
+   "beat": 3
+  },
+  {
+   "id": "cp",
+   "kind": "shape",
+   "shape": "the-nhan-vien",
+   "box": [
+    212,
+    261,
+    268,
+    299
+   ],
+   "color": "green",
+   "beat": 3,
+   "at": 0.2
+  },
+  {
+   "id": "t3",
+   "kind": "text",
+   "xy": [
+    360,
+    175
+   ],
+   "label": "bản sao thẻ",
+   "beat": 3,
+   "at": 0.4
+  },
+  {
+   "id": "nokey",
+   "kind": "cross",
+   "xy": [
+    100,
+    305
+   ],
+   "beat": 3,
+   "at": 0.7
+  },
+  {
+   "id": "t5",
+   "kind": "text",
+   "xy": [
+    400,
+    350
+   ],
+   "label": "đáng lẽ chỉ xét thẻ",
+   "beat": 5,
+   "at": 0.05
+  },
+  {
+   "id": "ok3",
+   "kind": "check",
+   "xy": [
+    365,
+    470
+   ],
+   "beat": 5,
+   "at": 0.3
+  },
+  {
+   "id": "p1",
+   "kind": "path",
+   "points": [
+    [
+     334,
+     545
+    ],
+    [
+     398,
+     552
+    ]
+   ],
+   "arrow": true,
+   "color": "red",
+   "beat": 5,
+   "at": 0.5
+  },
+  {
+   "id": "no",
+   "kind": "cross",
+   "xy": [
+    365,
+    612
+   ],
+   "beat": 5,
+   "at": 0.58
+  },
+  {
+   "id": "p2",
+   "kind": "path",
+   "points": [
+    [
+     334,
+     515
+    ],
+    [
+     398,
+     489
+    ]
+   ],
+   "arrow": true,
+   "color": "green",
+   "beat": 5,
+   "at": 0.66
+  },
+  {
+   "id": "vm",
+   "kind": "box",
+   "box": [
+    305,
+    790,
+    615,
+    862
+   ],
+   "label": "máy ảo",
+   "beat": 6,
+   "at": 0.1
+  },
+  {
+   "id": "host",
+   "kind": "box",
+   "box": [
+    305,
+    876,
+    615,
+    952
+   ],
+   "label": "máy chủ host",
+   "beat": 6,
+   "at": 0.25
+  },
+  {
+   "id": "p3",
+   "kind": "path",
+   "points": [
+    [
+     238,
+     800
+    ],
+    [
+     303,
+     826
+    ]
+   ],
+   "arrow": true,
+   "color": "red",
+   "beat": 6,
+   "at": 0.4
+  }
+ ],
+ "beats": [
+  {
+   "idea": "bình thường: kỹ sư cắm chìa của mình, máy quét xác nhận đúng chủ thẻ",
+   "acts": [
+    {
+     "do": "attach",
+     "thing": "eb",
+     "on": "e",
+     "offset": [
+      0,
+      5
+     ],
+     "at": 0,
+     "dur": 0.3
+    },
+    {
+     "do": "attach",
+     "thing": "ek",
+     "on": "e",
+     "offset": [
+      -70,
+      40
+     ],
+     "at": 0.05,
+     "dur": 0.3
+    },
+    {
+     "do": "move",
+     "thing": "e",
+     "to": [
+      200,
+      580
+     ],
+     "at": 0.25,
+     "dur": 1.6
+    },
+    {
+     "do": "attach",
+     "thing": "ek",
+     "on": "sc",
+     "offset": [
+      0,
+      -7
+     ],
+     "at": 0.6,
+     "dur": 0.6
+    },
+    {
+     "do": "attach",
+     "thing": "ek",
+     "on": "e",
+     "offset": [
+      -70,
+      40
+     ],
+     "at": 0.9,
+     "dur": 0.4
+    }
+   ]
+  },
+  {
+   "idea": "cụm LXD mở ra mạng; danh sách tin cậy có kỹ sư",
+   "acts": [
+    {
+     "do": "hide",
+     "thing": "t1",
+     "at": 0
+    },
+    {
+     "do": "hide",
+     "thing": "t2",
+     "at": 0
+    },
+    {
+     "do": "hide",
+     "thing": "ok1",
+     "at": 0
+    },
+    {
+     "do": "move",
+     "thing": "e",
+     "to": [
+      160,
+      265
+     ],
+     "at": 0.5,
+     "dur": 2.2
+    }
+   ]
+  },
+  {
+   "idea": "kẻ tấn công lấy bản sao thẻ công khai của kỹ sư, không cần chìa",
+   "acts": [
+    {
+     "do": "attach",
+     "thing": "ab",
+     "on": "a",
+     "offset": [
+      0,
+      5
+     ],
+     "at": 0,
+     "dur": 0.3
+    },
+    {
+     "do": "attach",
+     "thing": "ak",
+     "on": "a",
+     "offset": [
+      -70,
+      40
+     ],
+     "at": 0,
+     "dur": 0.3
+    },
+    {
+     "do": "attach",
+     "thing": "cp",
+     "on": "a",
+     "offset": [
+      62,
+      12
+     ],
+     "at": 0.35,
+     "dur": 1.2
+    }
+   ]
+  },
+  {
+   "idea": "hắn kẹp bản sao sau thẻ mình rồi đi tới máy quét",
+   "acts": [
+    {
+     "do": "hide",
+     "thing": "t3",
+     "at": 0
+    },
+    {
+     "do": "hide",
+     "thing": "nokey",
+     "at": 0
+    },
+    {
+     "do": "attach",
+     "thing": "cp",
+     "on": "a",
+     "offset": [
+      28,
+      28
+     ],
+     "at": 0.05,
+     "dur": 0.6
+    },
+    {
+     "do": "move",
+     "thing": "a",
+     "to": [
+      200,
+      580
+     ],
+     "at": 0.55,
+     "dur": 1.6
+    },
+    {
+     "do": "hide",
+     "thing": "e",
+     "at": 0.35
+    }
+   ]
+  },
+  {
+   "idea": "máy quét chỉ xác nhận thẻ đầu, nhưng so cả hai thẻ với danh sách và cho hắn qua",
+   "view": [
+    130,
+    330,
+    590,
+    700
+   ],
+   "acts": [
+    {
+     "do": "attach",
+     "thing": "ak",
+     "on": "sc",
+     "offset": [
+      0,
+      -7
+     ],
+     "at": 0.12,
+     "dur": 0.6
+    },
+    {
+     "do": "attach",
+     "thing": "ak",
+     "on": "a",
+     "offset": [
+      -70,
+      40
+     ],
+     "at": 0.35,
+     "dur": 0.5
+    },
+    {
+     "do": "move",
+     "thing": "a",
+     "to": [
+      190,
+      800
+     ],
+     "at": 0.82,
+     "dur": 1.3
+    }
+   ]
+  },
+  {
+   "idea": "vào trong: chiếm máy ảo, quyền cao thì chiếm cả máy chủ host",
+   "acts": [
+    {
+     "do": "hide",
+     "thing": "t5",
+     "at": 0
+    },
+    {
+     "do": "red",
+     "thing": "vm",
+     "at": 0.5
+    },
+    {
+     "do": "red",
+     "thing": "host",
+     "at": 0.8,
+     "dur": 1.0
+    }
+   ]
+  }
+ ]
+}

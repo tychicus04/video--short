@@ -358,7 +358,7 @@ def render_video(segs: list[Segment], ass: Path, narration: Path, total: float, 
     def image(s: Segment, cam, t: float) -> Image.Image:
         if s.scene is not None:
             sc = scenes[s.scene]
-            return kit.draw(sc.things, sc.acts, t)
+            return kit.draw(sc.things, sc.acts, t, sc.view(t))
         if s.plan is None:
             return draw(load(s.file), *cam)
         if s.id not in planned:
