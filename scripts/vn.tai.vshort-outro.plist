@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Thay assets/brand/anm-outro.mp4 trên Mac → tự commit, push, pve2 cập nhật khi rảnh (scripts/push-outro.sh).
+     Cài: cp scripts/vn.tai.vshort-outro.plist ~/Library/LaunchAgents/ &&
+          launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/vn.tai.vshort-outro.plist
+     Log: ~/Library/Logs/vshort-outro.log -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>vn.tai.vshort-outro</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>/Users/Apple/video-pipeline/scripts/push-outro.sh</string>
+  </array>
+  <key>WatchPaths</key>
+  <array>
+    <string>/Users/Apple/video-pipeline/assets/brand</string>
+  </array>
+  <key>StandardOutPath</key>
+  <string>/Users/Apple/Library/Logs/vshort-outro.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/Apple/Library/Logs/vshort-outro.log</string>
+</dict>
+</plist>
