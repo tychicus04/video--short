@@ -123,9 +123,10 @@ def total_cost(run: Run) -> float:
 # --- the flow ------------------------------------------------------------------------------------------------------
 
 FETCH_PROMPT = (
-    "Vertical short. Follow the source '# BRIEF (EN) – {slug}' closely: open with its title line, word for word, "
-    "cover its key points in order, end with its call to action. Walk through its 'How it works, step by step' section "
-    "in order, unless it says None. Explain at concept level only; do not assert claims the brief marks as disputed."
+    "Vertical short. Follow the source '# BRIEF (EN) – {slug}' closely: open with its title line, word for word, then its "
+    "'Opening detail' line; cover its key points in order, naming the source the brief gives for each figure or claim and "
+    "saying aloud what it marks as unconfirmed; end with its call to action. Walk through its 'How it works, step by step' "
+    "section in order, unless it says None. Explain at concept level only; do not assert claims the brief marks as disputed."
 )
 RESEARCH = ("Bước 1 của /video-short.\n\n- Chủ đề: {topic}\n- slug: `{slug}`\n- RUN={run}\n\n"
             "Ghi notebook id (chỉ id, một dòng) vào {run}/notebook.txt.")
@@ -134,7 +135,10 @@ BRIEF_CHECK = (
     "dữ kiện, ngày, điểm tranh cãi. Soát cả mục \"Cơ chế từng bước\" theo luật an toàn: chỉ mức khái niệm, không tên lỗ hổng/"
     "kỹ thuật/công cụ, không mã hay lệnh. Mục đó mở bằng bước 0 \"Bình thường: …\" (bản Anh \"0. Normally: …\") trừ khi "
     "ghi Không có; thiếu thì thêm vào cả hai bản. \"Ý chính\" có một ý về cái giá hay giới hạn (một câu, đúng nguồn) và "
-    "\"Câu chốt\" trả lời lại câu mở đầu theo nghĩa mới; thiếu thì thêm vào cả hai bản. Lệch thì sửa ở cả hai bản. "
+    "\"Câu chốt\" trả lời lại câu mở đầu theo nghĩa mới; thiếu thì thêm vào cả hai bản. Có mục \"Chi tiết mở màn\" (bản Anh "
+    "\"Opening detail\"): một câu chi tiết thật, đúng nguồn. Mỗi con số hay cáo buộc trong \"Ý chính\" mở đầu bằng nguồn của nó, "
+    "và điều chưa xác nhận được nói thành câu. Nếu {run}/sources.md có chi tiết liên quan Việt Nam thì một ý nói điều đó, "
+    "không có thì không thêm. Thiếu thì thêm vào cả hai bản. Lệch thì sửa ở cả hai bản. "
     "Không tạo notebook mới, không nạp nguồn mới.")
 TRANSCRIBE = ("RUN={run}. Đọc các ảnh mảnh phụ đề {sheets} ({n} mảnh, chỉ số 0–{last}, theo {run}/fragments.json) "
               "và ghi {run}/fragments_text.json.")
