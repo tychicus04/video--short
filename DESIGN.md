@@ -43,8 +43,9 @@ Một lệnh trong Claude Code: `/video-short <chủ đề | URL | đường d�
    bằng tư liệu thật vẽ lại (SVG hoặc ảnh nét chì, ghi nguồn).
 5. **Tạo giọng đọc** bằng Gemini TTS, một giọng tiếng Việt trung tính cho cả video.
 6. **Ghép hoàn chỉnh**: giọng nối tiếp, ảnh zoom/trượt chậm nối nhau bằng mờ chồng, phụ đề tiếng
-   Việt cố định một chỗ, xóa watermark, đóng logo Tạp chí An ninh mạng Việt Nam xám mờ ở góc trên phải, bỏ đoạn logo
-   Gemini cuối và thay bằng 2,5 giây logo ANM chạy hình (`render.end_card`), xuất `.mp4`.
+   Việt cố định một chỗ, xóa watermark, đóng logo Tạp chí An ninh mạng Việt Nam màu gốc ở góc trên phải suốt video
+   (07/11), câu tiêu đề được gõ vào thanh tiêu đề của tạp chí (vạch vàng + khung xanh) thay cho phụ đề rồi cuộn đi
+   (`render.title_card`), bỏ đoạn logo Gemini cuối và thay bằng 2,5 giây logo ANM chạy hình (`render.end_card`), xuất `.mp4`.
    Cuối cùng một agent soát lại: chữ phụ đề khớp lời đọc, không lộ phụ đề cũ, chuyển động mượt,
    hình tư liệu khớp nguồn, chỗ vá không lộ viền, và liệt kê chi tiết còn mâu thuẫn với brief
    để Tai tự quyết.

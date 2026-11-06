@@ -339,6 +339,16 @@ def test_render_cmd_plays_the_video_retimed_with_the_patched_still(tmp_path, mak
     assert json.loads((tmp_path / "sfx.json").read_text()) is not None and (tmp_path / "subs.ass").exists()
 
 
+def test_render_cmd_types_the_spoken_title_into_the_bar_instead_of_its_subtitle(tmp_path, make_video):
+    _render_run(tmp_path, make_video)
+    assert main(["render", str(tmp_path)]) == 0
+    subs = (tmp_path / "subs.ass").read_text(encoding="utf-8")
+    assert "Một câu" not in subs and "Hai" in subs  # line 1 is in the bar, not twice on screen
+    assert (tmp_path / "title.mov").exists()
+    box = frame_at(tmp_path / "final.mp4", 1.2)[688, 647].astype(int)
+    assert np.abs(box - (32, 107, 136)).max() < 25  # the bar's teal box while line 1 is said
+
+
 def test_render_cmd_needs_clean_mp4(tmp_path, make_video, capsys):
     _render_run(tmp_path, make_video)
     (tmp_path / "clean.mp4").unlink()

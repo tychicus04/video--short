@@ -1,5 +1,5 @@
 """Final video: NotebookLM's own video retimed to the new voice, fixed low subtitles in NotebookLM's caption style,
-the ANM outro in place of NotebookLM's (the only logo)."""
+the magazine's title bar over the spoken title, its logo top right, the ANM outro in place of NotebookLM's."""
 import math
 import os
 import subprocess
@@ -7,10 +7,10 @@ from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageChops, ImageDraw, ImageFont
 
 from vshort.media import FF, probe
-from vshort.textfit import FONTS, MAX_TEXT_W, UI_BOTTOM, text_width
+from vshort.textfit import FONTS, MAX_TEXT_W, UI_BOTTOM, UI_RIGHT, text_width
 
 W, H = 720, 1280
 FPS = 30
@@ -24,6 +24,14 @@ LOGO = Path(__file__).resolve().parent.parent / "assets" / "brand" / "anm-logo.p
 SHIELD_W = 185  # the logo's shield ends here; its words start at x 188
 OUTRO = LOGO.with_name("anm-outro.mp4")  # appended to every video; `vshort outro` redraws it, or drop in any 720x1280 clip
 OUTRO_S = 2.5  # length of the drawn outro
+LOGO_XY, LOGO_W = (470, 24), 230  # the magazine's logo top right, in its own colours, the whole video (Tai, 07/11)
+# the magazine's reel title bar, as in Tai's "Thanh tiêu đề short video.png" (3375x6000) scaled to 720x1280
+STRIPE, BAR = (59, 680, 79, 843), (94, 680, 662, 843)
+YELLOW, TEAL = (250, 255, 0, 255), (32, 107, 136, 255)
+TITLE_XY = STRIPE[:2]  # the bar's clip is drawn from here
+TEXT_L, TEXT_R = BAR[0] + 22, UI_RIGHT  # the title stays left of the platforms' buttons
+TITLE_FONT = FONTS / "BeVietnamPro-ExtraBold.ttf"
+TITLE_OUT = 0.65  # the box rolls back right to left in 0.45 s, then the stripe shrinks in 0.2 s
 
 
 PAPER = (238, 234, 226)  # the outro's page
@@ -84,6 +92,103 @@ def export_outro(out: Path = OUTRO) -> None:
     except BaseException:
         tmp.unlink(missing_ok=True)
         raise
+
+
+def title_fit(text: str) -> tuple[int, list[str]] | None:
+    """(font size, lines) of the title in capitals: the biggest size that fits 2 lines, else 3 small ones; None when
+    even that does not fit (then there is no bar and the subtitle keeps the line)."""
+    text = " ".join(text.upper().split())
+    for size in range(46, 23, -1):
+        font = ImageFont.truetype(str(TITLE_FONT), size)
+        lines, cur = [], ""
+        for w in text.split():
+            cand = f"{cur} {w}".strip()
+            if cur and font.getlength(cand) > TEXT_R - TEXT_L:
+                lines.append(cur)
+                cur = w
+            else:
+                cur = cand
+        lines.append(cur)
+        if max(font.getlength(ln) for ln in lines) <= TEXT_R - TEXT_L and (len(lines) <= 2 or len(lines) == 3 and size <= 32):
+            return size, lines
+    return None
+
+
+def title_times(start: float, end: float) -> tuple[float, float, float]:
+    """(typing starts, typing ends, the bar starts to leave) for a title said from `start` to `end` s."""
+    t0 = max(0.5, start)  # the box is open by 0.65 s
+    t1 = max(t0 + 0.5, end - 0.1)
+    return t0, t1, max(t1, end) + 0.3
+
+
+def _ease_out(x: float) -> float:
+    x = max(0.0, min(1.0, x))
+    return 1 - (1 - x) ** 3
+
+
+def title_card(t: float, fit: tuple[int, list[str]], t0: float, t1: float, out: float) -> Image.Image:
+    """The bar at t s, drawn from TITLE_XY: the stripe grows from its middle, the box wipes in left to right, the title
+    is typed from t0 to t1 (a cursor only while typing), and from `out` the box rolls back right to left with its text,
+    then the stripe shrinks."""
+    size, lines = fit
+    font = ImageFont.truetype(str(TITLE_FONT), size)
+    x0, y0 = TITLE_XY
+    img = Image.new("RGBA", (BAR[2] - x0 + 1, BAR[3] - y0 + 1), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    stripe = min(_ease_out(t / 0.25), 1 - _ease_out((t - out - 0.45) / 0.2))
+    box = min(_ease_out((t - 0.15) / 0.5), 1 - _ease_out((t - out) / 0.45))
+    if stripe > 0:
+        mid, half = (STRIPE[1] + STRIPE[3]) / 2 - y0, (STRIPE[3] - STRIPE[1]) / 2 * stripe
+        d.rectangle((STRIPE[0] - x0, round(mid - half), STRIPE[2] - x0, round(mid + half)), fill=YELLOW)
+    if box <= 0:
+        return img
+    right = round(BAR[0] + (BAR[2] - BAR[0]) * box) - x0
+    layer = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    ld = ImageDraw.Draw(layer)
+    ld.rectangle((BAR[0] - x0, BAR[1] - y0, right, BAR[3] - y0), fill=TEAL)
+    pitch = round(size * 1.32)
+    y = (BAR[1] + BAR[3]) / 2 - pitch * len(lines) / 2 - y0
+    n = round(sum(map(len, lines)) * max(0.0, min(1.0, (t - t0) / (t1 - t0))))
+    cursor = (TEXT_L - x0, y)
+    for ln in lines:
+        if part := ln[:n]:
+            ld.text((TEXT_L - x0, y), part, font=font, fill="white")
+            cursor = (TEXT_L - x0 + font.getlength(part) + 8, y)
+        n -= len(part)
+        y += pitch
+    if t0 <= t < t1:
+        cx, cy = cursor
+        ld.rectangle((cx, cy + size * 0.18, cx + max(3, size // 9), cy + size * 1.12), fill=YELLOW)
+    mask = Image.new("L", img.size, 0)
+    ImageDraw.Draw(mask).rectangle((BAR[0] - x0, 0, right, img.height), fill=255)  # the rolled-back part takes its text
+    layer.putalpha(ImageChops.multiply(layer.getchannel("A"), mask))
+    img.alpha_composite(layer)
+    return img
+
+
+def export_title(text: str, start: float, end: float, out: Path) -> bool:
+    """The title bar for a title said from `start` to `end` s, as a clip with alpha from 0 s; False (and no clip) when
+    the title does not fit the bar."""
+    if (fit := title_fit(text)) is None:
+        out.unlink(missing_ok=True)
+        return False
+    t0, t1, leave = title_times(start, end)
+    w, h = title_card(0, fit, t0, t1, leave).size
+    tmp = out.resolve().with_name(f"{out.stem}.tmp{out.suffix}")
+    cmd = [FF, "-loglevel", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgba", "-s", f"{w}x{h}", "-r", str(FPS),
+           "-i", "-", "-c:v", "png", str(tmp)]
+    try:
+        with subprocess.Popen(cmd, stdin=subprocess.PIPE) as p:
+            for k in range(math.ceil((leave + TITLE_OUT) * FPS) + 1):
+                p.stdin.write(title_card(k / FPS, fit, t0, t1, leave).tobytes())
+            p.stdin.close()
+        if p.returncode:
+            raise subprocess.CalledProcessError(p.returncode, cmd)
+        os.replace(tmp, out)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+    return True
 
 
 def fs(em: float) -> int:
@@ -163,12 +268,16 @@ COLOR = ("scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,"
 
 
 def render_pieces(ps, clean: Path, stills: list[tuple[Path, float, float]], ass: Path, audio: Path, total: float,
-                  out: Path, outro: Path | None = OUTRO) -> None:
+                  out: Path, outro: Path | None = OUTRO, title: Path | None = None) -> None:
     """final.mp4 from NotebookLM's own video: each retime piece played, sped or held; patched stills `(file, from, to)`
-    (output seconds) over it; the subtitles; then the `outro` clip faded in from the last frame. One ffmpeg run."""
+    (output seconds) over it; the `title` bar clip (export_title) and the logo over those; the subtitles; then the
+    `outro` clip faded in from the last frame. One ffmpeg run."""
     ins = ["-i", str(clean.resolve()), "-i", str(audio.resolve())]
     for f, _, _ in stills:
         ins += ["-loop", "1", "-t", f"{total:.3f}", "-i", str(f.resolve())]
+    ins += ["-loop", "1", "-t", f"{total:.3f}", "-i", str(LOGO)]
+    if title:
+        ins += ["-i", str(title.resolve())]
     one = 1 / FPS
     g = []
     for k, p in enumerate(ps):
@@ -182,11 +291,18 @@ def render_pieces(ps, clean: Path, stills: list[tuple[Path, float, float]], ass:
         g.append(f"[{2 + j}:v]scale={W}:{H},format=rgb24[s{j}];"
                  f"[{last}][s{j}]overlay=0:0:format=rgb:enable='between(t,{a:.4f},{b:.4f})'[v{j + 1}]")
         last = f"v{j + 1}"
+    k = 2 + len(stills)  # the logo's input, then the title's
+    g.append(f"[{k}:v]scale={LOGO_W}:-1,format=rgba,fade=t=in:d=0.3:alpha=1[lg];"
+             f"[{last}][lg]overlay={LOGO_XY[0]}:{LOGO_XY[1]}:format=rgb:eof_action=pass[vl]")
+    last, k = "vl", k + 1
+    if title:
+        g.append(f"[{k}:v]format=rgba[tt];[{last}][tt]overlay={TITLE_XY[0]}:{TITLE_XY[1]}:format=rgb:eof_action=pass[vt]")
+        last, k = "vt", k + 1
     g.append(f"[{last}]ass={ass.name}:fontsdir={FONTS},{COLOR}[m]")
     extra = probe(outro).duration if outro else 0.0
     if outro:
         g.append(f"[m]tpad=stop_mode=clone:stop_duration={XF},fps={FPS},settb=AVTB[mx];"  # xfade wants a set frame rate
-                 f"[{2 + len(stills)}:v]fps={FPS},scale={W}:{H},format=rgb24,{COLOR},settb=AVTB[o];"
+                 f"[{k}:v]fps={FPS},scale={W}:{H},format=rgb24,{COLOR},settb=AVTB[o];"
                  f"[mx][o]xfade=transition=fade:duration={XF}:offset={total:.4f}[v]")
         ins += ["-i", str(outro.resolve())]
     else:

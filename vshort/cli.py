@@ -16,7 +16,7 @@ from vshort.captions import Fragment, detect_fragments, write_sheets
 from vshort.fit import Placement, build_narration, phrase_times, sequence, total
 from vshort.media import frame_at, probe
 from vshort.plates import clean, scene_changes, scene_cuts
-from vshort.render import OUTRO, build_ass, export_outro, render_pieces
+from vshort.render import OUTRO, build_ass, export_outro, export_title, render_pieces
 from vshort.run import Run, config
 from vshort.script import (Sentence, check_brief, check_numbers, check_script, check_style, group_sentences,
                            merge_text, merged)
@@ -324,7 +324,8 @@ def cmd_timeline(a) -> int:
 
 def cmd_render(a) -> int:
     """final.mp4: NotebookLM's own video (clean.mp4) retimed line by line to the Vietnamese voice, patched stills over the
-    lines with a wrong text, subtitles, three accents on the biggest changes of scene, the outro."""
+    lines with a wrong text, the spoken title typed into the magazine's bar, its logo, subtitles, three accents on the biggest
+    changes of scene, the outro."""
     run = Run(a.run)
     clean = run.file("clean.mp4")
     if not clean.exists():
@@ -354,14 +355,21 @@ def cmd_render(a) -> int:
         held = p.dst + (p.src_end - p.src) / p.speed  # the wrong text first shows in a dropped tail: from the hold on
         shown = p.dst if f["from"] <= p.src else min(retime.to_output([p], f["from"]) or held, held)
         stills.append((run.file(f["file"]), shown, p.dst_end))
+    phrases, first = phrase_times(placements, script), placements[0]
+    title = run.file("title.mov")  # the spoken title typed into the magazine's bar, not also as a subtitle
+    said = next(row["phrases"] for row in script if row["id"] == first.id)
+    if export_title(_speech(said), first.start, first.start + first.dur, title):
+        phrases = phrases[1:]
+    else:
+        title = None
     ass = run.file("subs.ass")
-    ass.write_text(build_ass(phrase_times(placements, script)), encoding="utf-8")
+    ass.write_text(build_ass(phrases), encoding="utf-8")
     if not OUTRO.exists():
         export_outro()
     fx = sound.cues(scene_changes(clean), ps)
     run.write("sfx.json", [asdict(c) for c in fx])
     sound.master(run.file("narration.wav"), fx, fitted["total"], run.file("mix.wav"))
-    render_pieces(ps, clean, stills, ass, run.file("mix.wav"), fitted["total"], run.file("final.mp4"))
+    render_pieces(ps, clean, stills, ass, run.file("mix.wav"), fitted["total"], run.file("final.mp4"), title=title)
     run.mark("render")
     print(run.file("final.mp4"))
     return OK

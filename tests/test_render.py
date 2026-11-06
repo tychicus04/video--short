@@ -3,10 +3,12 @@ import subprocess
 import numpy as np
 import pytest
 from conftest import write_silence
-from PIL import Image
+from PIL import Image, ImageFont
 
 from vshort.media import FF, frame_at, probe
-from vshort.render import H, OUTRO_S, W, build_ass, export_outro, render_pieces
+from vshort.textfit import FONTS
+from vshort.render import (BAR, H, OUTRO_S, STRIPE, TEAL, TEXT_L, TEXT_R, TITLE_XY, W, YELLOW, build_ass,
+                           export_outro, export_title, render_pieces, title_card, title_fit, title_times)
 from vshort.retime import Piece
 
 
@@ -19,7 +21,7 @@ def test_build_ass_layout():
     assert "Title" not in a and "Kicker" not in a
 
 
-def test_no_corner_logo_then_the_drawn_outro(make_video, tmp_path):
+def test_corner_logo_then_the_drawn_outro(make_video, tmp_path):
     B = (40, 40, 40)
     clean = make_video(tmp_path, scenes=[(0, 1, "#282828")], captions=[])
     clip = tmp_path / "outro.mp4"
@@ -33,12 +35,88 @@ def test_no_corner_logo_then_the_drawn_outro(make_video, tmp_path):
     render_pieces([Piece(1, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 0.0)], clean, [], ass, tmp_path / "n.wav", 1.0, out, outro=clip)
     assert abs(probe(out).duration - 3.5) < 0.1
     first = frame_at(out, 0.5).astype(int)
-    assert np.abs(first[24:80, 481:704] - B).max() < 25  # no logo top right: it is only on the outro
+    assert np.abs(first[24:82, 470:700] - B).max() > 100  # the magazine's logo top right, in its own colours (07/11)
     assert np.abs(first[1214:1270, 483:706] - B).max() < 25  # nothing in the old bottom-right corner
     end = frame_at(out, 3.3)
     assert np.abs(end[300, 360].astype(int) - B).max() > 100  # the outro has replaced the frame
     assert end[480:640, 260:460].std() > 30 and end[780:900, 60:660].std() > 30  # shield and words drawn
     assert np.abs(end[24:80, 481:704].astype(int) - end[300, 360]).max() < 40  # no corner logo on the outro
+
+
+# ---- the title bar: the spoken title typed into the magazine's bar, then rolled back ----
+
+def _local(box):
+    """A rectangle of the frame in title_card's own coordinates (it is drawn at TITLE_XY)."""
+    x, y = TITLE_XY
+    return box[0] - x, box[1] - y, box[2] - x, box[3] - y
+
+
+def _count(img, rgb, box, tol=40):
+    a = np.array(img).astype(int)
+    x0, y0, x1, y1 = _local(box)
+    part = a[y0:y1, x0:x1]
+    return int(((np.abs(part[..., :3] - rgb[:3]).sum(-1) < tol) & (part[..., 3] > 200)).sum())
+
+
+INSIDE = (BAR[0] + 4, BAR[1] + 4, BAR[2] - 4, BAR[3] - 4)
+
+
+def test_title_fit_two_lines_left_of_the_buttons():
+    size, lines = title_fit("Ảnh độc upload, Rails ghi file tùy ý")
+    assert lines == ["ẢNH ĐỘC UPLOAD,", "RAILS GHI FILE TÙY Ý"] and size >= 40
+    size, lines = title_fit("Siemens IoT2050 lỗi CVE-2026-58115 - một request chiếm máy, không cần mật khẩu")
+    font = ImageFont.truetype(str(FONTS / "BeVietnamPro-ExtraBold.ttf"), size)
+    assert len(lines) <= 3 and max(font.getlength(ln) for ln in lines) <= TEXT_R - TEXT_L
+    assert title_fit("rất dài " * 40) is None  # no bar: the subtitle keeps the line
+
+
+def test_title_times_type_while_it_is_said_and_leave_after():
+    t0, t1, out = title_times(0.2, 2.7)
+    assert (t0, round(t1, 2), round(out, 2)) == (0.5, 2.6, 3.0)  # box open first; gone 0.3 s after the title is said
+    t0, t1, out = title_times(0.0, 0.6)  # a very short title still types for 0.5 s, then leaves
+    assert t1 == t0 + 0.5 and out == t1 + 0.3
+
+
+def test_title_card_opens_types_and_rolls_back():
+    fit = title_fit("Ảnh độc upload, Rails ghi file tùy ý")
+    t0, t1, out = title_times(0.2, 2.7)
+    assert np.array(title_card(0.0, fit, t0, t1, out))[..., 3].max() == 0  # nothing yet
+    full = title_card(t1 + 0.1, fit, t0, t1, out)
+    assert _count(full, TEAL, (BAR[2] - 30, BAR[1] + 4, BAR[2] - 2, BAR[1] + 20)) > 300  # box open to its right end
+    assert _count(full, YELLOW, STRIPE) > 1500  # the stripe
+    lines_y = (BAR[1] + BAR[3]) // 2
+    top, bottom = (BAR[0], BAR[1], BAR[2], lines_y), (BAR[0], lines_y, BAR[2], BAR[3])
+    assert _count(full, (255, 255, 255), top) > 500 and _count(full, (255, 255, 255), bottom) > 500  # both lines typed
+    half = title_card((t0 + t1) / 2, fit, t0, t1, out)
+    assert _count(half, (255, 255, 255), bottom) < _count(full, (255, 255, 255), bottom) / 2  # still typing
+    leaving = title_card(out + 0.3, fit, t0, t1, out)
+    assert _count(leaving, TEAL, (BAR[2] - 60, BAR[1] + 4, BAR[2] - 2, BAR[3] - 4)) == 0  # rolled back from the right…
+    assert _count(leaving, TEAL, (BAR[0], BAR[1] + 4, BAR[0] + 60, BAR[1] + 20)) > 300  # …not yet from the left
+    assert np.array(title_card(out + 0.7, fit, t0, t1, out))[..., 3].max() == 0  # gone
+
+
+def test_title_cursor_only_while_typing():
+    """Tai, 07/11: the cursor left blinking after the last letter read as a glitch next to the "Ý"."""
+    fit = title_fit("Ảnh độc upload, Rails ghi file tùy ý")
+    t0, t1, out = title_times(0.2, 2.7)
+    assert _count(title_card((t0 + t1) / 2, fit, t0, t1, out), YELLOW, INSIDE) > 50
+    for t in (t1 + 0.05, t1 + 0.25, t1 + 0.45, out - 0.05):
+        assert _count(title_card(t, fit, t0, t1, out), YELLOW, INSIDE) == 0
+
+
+def test_render_pieces_lays_the_title_bar_over_the_start(seconds_video, tmp_path):
+    clip = tmp_path / "title.mov"
+    assert export_title("Ảnh độc upload, Rails ghi file tùy ý", 0.2, 1.5, clip)
+    write_silence(tmp_path / "n.wav", 3.0)
+    ass = tmp_path / "s.ass"
+    ass.write_text(build_ass([]), encoding="utf-8")
+    out = tmp_path / "o.mp4"
+    render_pieces([Piece(1, 0.0, 3.0, 0.0, 3.0, 1.0, 0.0, 0.0)], seconds_video, [], ass, tmp_path / "n.wav", 3.0, out,
+                  outro=None, title=clip)
+    probe_at = (BAR[2] - 15, BAR[1] + 8)  # right of the text, inside the box
+    assert np.abs(frame_at(out, 1.5)[probe_at[1], probe_at[0]].astype(int) - TEAL[:3]).max() < 25
+    assert abs(int(frame_at(out, 2.8)[probe_at[1], probe_at[0]].astype(int).mean()) - _level(2)) < 6  # gone again
+    assert frame_at(out, 1.5)[761, 69].min() < 60 and frame_at(out, 1.5)[761, 69][:2].min() > 200  # the yellow stripe
 
 
 # ---- render_pieces: NotebookLM's own video, retimed ----

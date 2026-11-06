@@ -45,7 +45,8 @@ Dùng Python trong `~/video-pipeline`. Chạy `mkdir -p /tmp/vs_review` trước
      - vùng vá nhấp nháy hay đổi màu giữa các khung liền nhau;
      - watermark "Gemini Notebook" ở góc dưới phải.
    - Những lỗi này `agent` là `"none"`. Ghi thời điểm.
-   - Góc trên và dưới phải phải trống. Logo Tạp chí An ninh mạng Việt Nam chỉ có ở 2,5 giây outro sau `total`. Không được có đoạn logo
+   - Góc trên phải có logo Tạp chí An ninh mạng Việt Nam màu gốc (x 470–700, y 24–82) suốt video: đúng thiết kế (Tai, 07/11).
+     Góc dưới phải phải trống. Logo lớn chạy hình chỉ có ở 2,5 giây outro sau `total`. Không được có đoạn logo
      Gemini.
    - Kiểm 1 và 3 chỉ xét khung trước `total`.
 2. **Không giật.** Lấy 6 khung liên tiếp, xếp cạnh nhau, ở 4 chỗ:
@@ -87,7 +88,9 @@ Dùng Python trong `~/video-pipeline`. Chạy `mkdir -p /tmp/vs_review` trước
    - Hộp xám, chữ viết tay, luôn ở cùng một chỗ: đáy hộp y≈1140, nằm trên phần tên kênh và mô tả mà TikTok, Reels, Shorts in đè từ
      y 1151. Chữ không quá x 618, chỗ cột nút bắt đầu.
    - Đọc được, không tràn mép.
-   - Câu đầu là tiêu đề trong brief và hiện trọn.
+   - Câu đầu là tiêu đề trong brief. Nó **không** có phụ đề: nó được gõ vào thanh tiêu đề của tạp chí (vạch vàng và khung xanh,
+     y 680–843) trong lúc đọc, rồi thanh cuộn từ phải sang trái và biến mất. Đó là đúng thiết kế. Lỗi là: thanh thiếu chữ, chữ
+     tràn khung, hoặc thanh còn hiện sau khi đã đọc sang câu thứ hai quá 1 giây.
    - Chữ khớp `script.vi.json` (bỏ dấu `|`).
 8. **Hình và lời.**
    - Hình của mỗi câu nói về đúng thứ lời câu đó đang nói. Mỗi câu phát đoạn video của câu tiếng Anh cùng id, nên lệch nhiều là dấu hiệu
