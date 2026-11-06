@@ -762,7 +762,7 @@ def cmd_render(a) -> int:
     if not OUTRO.exists():
         export_outro()
     segs = segments(placements, frames, run.path, fitted["total"], animated, *plan)
-    fx = sound.cues(segments(placements, frames, run.path, fitted["total"], animated), scenes)  # a planned reference is still one
+    fx = []  # the old render's accents are gone with the canvas; Task 5's render puts them on changes of scene
     run.write("sfx.json", [asdict(c) for c in fx])
     sound.master(run.file("narration.wav"), fx, fitted["total"], run.file("mix.wav"))
     render_video(segs, ass, run.file("mix.wav"), fitted["total"], run.file("final.mp4"), scenes, OUTRO, run_dir=run.path)

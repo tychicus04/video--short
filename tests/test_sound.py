@@ -2,25 +2,25 @@ from pathlib import Path
 
 import numpy as np
 
-from vshort import kit, sound
-from vshort.motion import Scene
-from vshort.render import Segment
+from vshort import sound
+from vshort.retime import Piece
+
+# three lines: 0–4 s plays source 0–4; 4–10 plays source 4–10; 10–14 plays source 10–16 at 1.5x
+PIECES = [Piece(1, 0, 4, 0, 4, 1, 0, 0), Piece(2, 4, 10, 4, 10, 1, 0, 0), Piece(3, 10, 16, 10, 14, 1.5, 0, 0)]
 
 
-def _seg(i, a, b, group, scene=None):
-    return Segment(i, a, b, Path(f"f{i}.png"), group, scene)
+def test_three_strongest_changes_get_effects_in_time_order():
+    changes = [(5.0, 20.0), (6.0, 40.0), (8.0, 15.0), (11.5, 35.0), (13.0, 25.0)]
+    assert sound.cues(changes, PIECES) == [sound.Cue("whoosh", 6.0), sound.Cue("pop", 8.0), sound.Cue("whoosh", 11.0)]
 
 
-def test_three_accents_on_moments_the_picture_makes():
-    segs = [_seg(1, 0, 3, "s0"), _seg(2, 3, 9, "m0", 0), _seg(3, 9, 12, "m0", 0), _seg(4, 12, 15, "v4"),
-            _seg(5, 15, 18, "v5")]
-    canvas = Scene([2, 3], [], [kit.Act("draw", "a", 3, 3.8), kit.Act("red", "srv", 7.5, 8.1),
-                                kit.Act("red", "db", 10, 10.6)])
-    assert sound.cues(segs, [canvas]) == [sound.Cue("whoosh", 3), sound.Cue("glitch", 7.5), sound.Cue("pop", 12)]
-    # a video that opens on the canvas has no cut into it; an effect right after another is dropped
-    segs[0], canvas.acts[1:] = _seg(1, 0, 3, "m0", 0), [kit.Act("red", "srv", 11, 11.6)]
-    assert sound.cues(segs, [canvas]) == [sound.Cue("glitch", 11)]
-    assert sound.cues([_seg(1, 0, 3, "s0"), _seg(2, 3, 5, "s1")], []) == []
+def test_no_effect_in_the_title_line_nor_in_a_dropped_tail():
+    ps = [*PIECES[:2], Piece(3, 10, 13, 10, 12, 1.5, 0, 3)]  # source 13–16 dropped
+    assert sound.cues([(2.0, 50.0), (14.0, 50.0), (7.0, 10.0)], ps) == [sound.Cue("whoosh", 7.0)]
+
+
+def test_changes_closer_than_space_keep_the_stronger():
+    assert sound.cues([(6.0, 20.0), (6.8, 30.0)], PIECES) == [sound.Cue("whoosh", 6.8)]
 
 
 def _wav(tmp_path, a: np.ndarray) -> Path:

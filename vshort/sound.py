@@ -1,4 +1,4 @@
-"""The soundtrack of final.mp4: the voice, a few sound effects on moments the picture already makes, one loudness."""
+"""The soundtrack of final.mp4: the voice, a few sound effects on the picture's biggest changes of scene, one loudness."""
 import json
 import math
 import subprocess
@@ -27,21 +27,19 @@ class Cue:
     at: float  # s: where its loudest moment lands
 
 
-def cues(segs, scenes) -> list[Cue]:
-    """At most three accents: a whoosh on the cut into the drawn canvas, a glitch when the canvas first turns a thing
-    red (the moment the attack lands), a pop on the cut to the first redrawn reference. A video that opens on one of
-    them has no cut there and gets no effect."""
-    def cut(pred) -> float | None:
-        return next((s.start for s in segs if pred(s)), None) or None
+NAMES = ("whoosh", "pop", "whoosh")  # by time order
 
-    want = [("whoosh", cut(lambda s: s.scene is not None)),
-            ("glitch", min((a.t0 for sc in scenes for a in sc.acts if a.do == "red"), default=None)),
-            ("pop", cut(lambda s: s.group.startswith("v")))]
-    out: list[Cue] = []
-    for name, at in sorted(((n, t) for n, t in want if t is not None), key=lambda c: c[1]):
-        if not out or at - out[-1].at >= SPACE:
-            out.append(Cue(name, at))
-    return out
+
+def cues(changes: list[tuple[float, float]], ps) -> list[Cue]:
+    """At most three accents, on the strongest changes of scene (`plates.scene_changes`: source time, strength) that
+    the video shows (`retime` pieces `ps`), none in the title line, none closer than SPACE to a stronger one."""
+    from vshort.retime import to_output
+    shown = [(at, m) for t, m in changes if (at := to_output(ps, t)) is not None and at >= ps[0].dst_end]
+    picked: list[float] = []
+    for at, _ in sorted(shown, key=lambda c: -c[1]):
+        if len(picked) < len(NAMES) and all(abs(at - x) >= SPACE for x in picked):
+            picked.append(at)
+    return [Cue(name, at) for name, at in zip(NAMES, sorted(picked))]
 
 
 def _decode(path: Path) -> np.ndarray:
