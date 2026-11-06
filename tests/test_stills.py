@@ -4,9 +4,6 @@ import shutil
 from PIL import Image
 
 from vshort.cli import main
-from vshort.media import frame_at
-from vshort.plates import Plate
-from vshort.render import clean_video
 from vshort.run import Run
 from vshort.stills import pick_still, scene_of
 
@@ -58,15 +55,6 @@ def test_stills_cmd_one_still_per_spoken_line(make_video, tmp_path):
     assert not (run / "stills" / "2.png").exists()
     assert (run / "stills" / "sheet.png").exists() and (run / "clean.mp4").exists()
     assert Run(run).done("stills")
-
-
-def test_plate_applies_from_its_first_frame(make_video, tmp_path):
-    v = make_video(tmp_path, scenes=[(0, 1, "#000000")], captions=[])
-    Image.new("RGB", (50, 50), "white").save(tmp_path / "p00.png")
-    plates = [Plate("p00", 100, 100, 0.0667, 0.5, "clean", False)]  # as build_plates rounds frame 2 (2/30 s)
-    out = tmp_path / "o.mp4"
-    clean_video(v, plates, tmp_path, end=1.0, out=out)
-    assert frame_at(out, 2 / 30)[125, 125].min() > 200 and frame_at(out, 1 / 30)[125, 125].max() < 60
 
 
 def test_stills_cmd_refuses_to_run_without_clean_video(tmp_path, capsys):

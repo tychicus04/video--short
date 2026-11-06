@@ -113,7 +113,6 @@ def test_state_round_trips(tmp_path):
 import threading  # noqa: E402
 from collections import Counter  # noqa: E402
 
-from vshort import shapes  # noqa: E402
 
 from vshort.cli import AUTH, FAILED, OK, WAIT_BRIEF, WAIT_SCRIPT  # noqa: E402
 
@@ -166,12 +165,6 @@ class Fakes:
         elif agent == "vs-translator":
             run.write("script.vi.json", [{"id": 1, "phrases": "Xin | chào", "note": ""},
                                          {"id": 2, "phrases": "Tạm biệt", "note": "ngắn hơn"}])
-        elif agent == "vs-motion" and step == "motion_design":
-            if self.wait_fetch:
-                self.saw_fetch = self.fetched.wait(5)
-            run.write("motion.json", {"beats": []})
-        elif agent == "vs-motion":
-            run.write("motion.bind.json", {"lines": [1]})
         elif agent == "vs-visuals":
             run.write("visuals.json", [{"kind": "patch", "ids": [2]}])
         return "xong"
@@ -211,17 +204,14 @@ def flow(tmp_path, monkeypatch):
     monkeypatch.setattr(auto, "run_claude", fk.claude)
     monkeypatch.setattr(auto, "run_vshort", fk.vshort)
     monkeypatch.setattr(auto, "notebooklm", fk.notebooklm)
-    fk.git = []
-    monkeypatch.setattr(auto, "git", lambda args: fk.git.append(args) or (0, ""))
     monkeypatch.setattr(auto, "ROOT", tmp_path)
-    monkeypatch.setattr(shapes, "LIBRARY", tmp_path / "assets" / "shapes")
     return run, fk
 
 
 def test_stops_for_brief_then_for_translation(flow):
     run, fk = flow
     assert auto.run_auto(run) == WAIT_BRIEF
-    assert auto.get_state(run)["state"] == "wait_brief" and dict(fk.agents) == {"vs-researcher": 1, "vs-an-du": 1}
+    assert auto.get_state(run)["state"] == "wait_brief" and dict(fk.agents) == {"vs-researcher": 1}
     assert run.read("run.json")["notebook_id"] == "nb-123"
     run.mark("approve_brief")
     assert auto.run_auto(run) == WAIT_SCRIPT
@@ -255,7 +245,7 @@ def test_auto_mode_checks_brief_instead_of_stopping(flow):
     run.write("run.json", run.read("run.json") | {"auto": True})
     assert auto.run_auto(run) == WAIT_SCRIPT
     assert fk.agents["vs-researcher"] == 2 and "Soát brief" in fk.prompts["vs-researcher"][1]
-    assert "Bình thường" in fk.prompts["vs-researcher"][1] and fk.agents["vs-an-du"] == 1
+    assert "Bình thường" in fk.prompts["vs-researcher"][1] and "vs-an-du" not in fk.agents
 
 
 def test_notebooklm_login_stops_with_auth(flow):
@@ -283,10 +273,8 @@ def test_translation_that_fails_check_stops(flow):
 
 
 def _approved(run):
-    for s in ("approve_brief", "research", "source", "motion_design", "fetch", "detect", "transcribe", "text",
-              "translate", "approve_script"):
+    for s in ("approve_brief", "research", "source", "fetch", "detect", "transcribe", "text", "translate", "approve_script"):
         run.mark(s)
-    run.write("motion.json", {"beats": []})
     run.write("run.json", run.read("run.json") | {"notebook_id": "nb"})
     run.write("sentences.en.json", SENTS)
 
@@ -296,50 +284,10 @@ def test_build_runs_steps_in_order_with_tts_alongside(flow):
     _approved(run)
     auto.run_auto(run)
     c = fk.cmds
-    assert {"tts", "plates", "motion", "stills", "visuals", "timeline", "render"} <= set(c)
-    assert c.index("plates") < c.index("motion") < c.index("stills") < c.index("visuals") < c.index("timeline")
-    assert c.index("tts") < c.index("timeline") < c.index("render")
-    assert fk.agents["vs-motion"] == 1 and fk.agents["vs-visuals"] == 1
-
-
-def test_motion_failure_falls_back_to_no_motion(flow):
-    run, fk = flow
-    _approved(run)
-    fk.codes["motion"] = [0, 2]  # the canvas passes, its binding does not
-    auto.run_auto(run)
-    assert run.file("motion.loi.json").exists() and not run.file("motion.json").exists()
-    assert run.file("motion.bind.loi.json").exists() and not run.file("motion.bind.json").exists()
-    assert fk.cmds.count("motion") == 3 and "render" in fk.cmds
-
-
-def test_design_runs_alongside_fetch_and_finishes_before_script_stop(flow):
-    run, fk = flow
-    run.mark("approve_brief")
-    fk.wait_fetch = True
-    assert auto.run_auto(run) == WAIT_SCRIPT
-    assert fk.saw_fetch and fk.agents["vs-motion"] == 1 and run.done("motion_design")
-    assert "--design" in fk.prompts["vs-motion"][0] and run.file("motion.json").exists()
-    assert "an-du.md" in fk.prompts["vs-motion"][0]
-    assert auto.run_auto(run) == WAIT_SCRIPT and fk.agents["vs-motion"] == 1
-
-
-def test_build_binds_motion_with_bind_prompt(flow):
-    run, fk = flow
-    _approved(run)
-    assert auto.run_auto(run) == OK
-    assert fk.agents["vs-motion"] == 1 and "motion.bind.json" in fk.prompts["vs-motion"][0]
-    assert run.done("motion_bind") and fk.cmds.count("motion") == 2
-
-
-def test_failed_design_falls_back_to_no_motion_at_build(flow):
-    run, fk = flow
-    run.mark("approve_brief")
-    fk.fail_steps = {"motion_design"}
-    assert auto.run_auto(run) == WAIT_SCRIPT
-    run.mark("approve_script")
-    assert auto.run_auto(run) == OK
-    assert fk.agents["vs-motion"] == 1  # no binding of a canvas that was never drawn
-    assert "Hình động: không có" in auto.get_state(run)["message"]
+    assert {"tts", "clean", "stills", "visuals", "timeline", "render"} <= set(c)
+    assert c.index("clean") < c.index("stills") < c.index("visuals") < c.index("timeline") < c.index("render")
+    assert c.index("tts") < c.index("timeline")
+    assert dict(fk.agents) == {"vs-visuals": 1, "vs-reviewer": 1, "vs-researcher": 1}  # the cover is the researcher's
 
 
 def test_visuals_failure_follows_the_skill_fallbacks(flow):
@@ -399,24 +347,13 @@ def _needs(agent, what="lỗi"):
 def test_pass_review_finishes_with_cost_summary(flow):
     run, fk = flow
     _approved(run)
-    run.write("cost.json", [{"step": "x", "agent": "vs-motion", "seconds": 1, "cost_usd": 1.25, "models": [], "ok": True}])
+    run.write("cost.json", [{"step": "x", "agent": "vs-visuals", "seconds": 1, "cost_usd": 1.25, "models": [], "ok": True}])
     assert auto.run_auto(run) == OK
     st = auto.get_state(run)
     assert st["state"] == "done"
-    for want in ("final.mp4", "Ảnh", "câu 1", "$1.25", "Đạt"):
+    for want in ("final.mp4", "Ảnh", "Co giãn", "$1.25", "Đạt"):
         assert want in st["message"], want
     assert "Vượt ngân sách" not in st["message"]
-
-
-def test_motion_finding_runs_one_fix_round_with_fresh_reviewer(flow):
-    run, fk = flow
-    _approved(run)
-    fk.reviews = [_needs("motion", "chấm đỏ đi sớm")]
-    assert auto.run_auto(run) == OK
-    assert fk.agents["vs-motion"] == 2 and "review.json" in fk.prompts["vs-motion"][1]
-    assert fk.agents["vs-reviewer"] == 2 and fk.prompts["vs-reviewer"][1].startswith("Soát lại")
-    assert "chấm đỏ đi sớm" in fk.prompts["vs-reviewer"][1]
-    assert fk.cmds.count("render") == 2 and auto.get_state(run)["round"] == 1
 
 
 def test_fix_rounds_stop_after_two(flow):
@@ -477,12 +414,12 @@ def test_unexpected_exception_ends_in_error_not_running(flow):
 def test_crash_inside_a_fix_round_redoes_the_fix_on_resume(flow):
     run, fk = flow
     _approved(run)
-    fk.reviews = [_needs("motion", "chấm đỏ đi sớm")]
-    fk.die_in = "fix1_motion"
+    fk.reviews = [_needs("visuals", "chữ 8.0.5 sai")]
+    fk.die_in = "fix1_visuals"
     with pytest.raises(KeyboardInterrupt):
         auto.run_auto(run)
     assert auto.run_auto(run) == OK
-    assert fk.agents["vs-motion"] == 2  # the first pass, then the fix — redone after the crash
+    assert fk.agents["vs-visuals"] == 2  # the first pass, then the fix — redone after the crash
     assert fk.cmds.count("render") == 2 and fk.agents["vs-reviewer"] == 2
     assert fk.prompts["vs-reviewer"][1].startswith("Soát lại")
 
@@ -503,23 +440,13 @@ def test_review_findings_need_what_and_ids(flow):
     assert "review.json" in auto.get_state(run)["message"]
 
 
-def test_render_error_reruns_the_motion_check_before_dropping_motion(flow):
-    run, fk = flow
-    _approved(run)
-    fk.codes["render"] = [2]  # e.g. motion/lines.json older than the script: `vshort motion` makes it current
-    assert auto.run_auto(run) == OK
-    assert run.file("motion.json").exists() and not run.file("motion.loi.json").exists()
-    assert fk.cmds.count("render") == 2
-
-
 def test_translator_fix_redoes_stills_and_visuals_checks(flow):
     run, fk = flow
     _approved(run)
     run.write("script.vi.json", [{"id": 1, "phrases": "Xin | chào", "note": ""}, {"id": 2, "phrases": "Tạm biệt", "note": ""}])
     fk.reviews = [_needs("translator", "câu 1 nói quá")]
     assert auto.run_auto(run) == WAIT_SCRIPT
-    assert not run.done("stills") and not run.done("visuals") and run.done("visuals_agent")
-    assert not run.done("shots") and run.done("shots_agent")  # the plan is checked again against the new words, not redrawn
+    assert not run.done("stills") and not run.done("visuals") and run.done("visuals_agent") and not run.done("render")
 
 
 def test_agents_do_not_inherit_the_claude_session(tmp_path, claude, monkeypatch):
@@ -542,388 +469,37 @@ def test_cost_rows_from_two_threads_are_all_kept(tmp_path):
     assert len(run.read("cost.json")) == 200
 
 
-def _shape(path, strokes=((0, 0), (100, 100))):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"name": path.stem, "strokes": [list(map(list, strokes))]}))
-
-
-def test_publish_shapes_commits_only_shape_files(tmp_path, monkeypatch):
-    run = _run(tmp_path)
-    monkeypatch.setattr(auto, "ROOT", tmp_path / "repo")
-    monkeypatch.setattr(shapes, "LIBRARY", tmp_path / "repo" / "assets" / "shapes")
-    _shape(tmp_path / "repo" / "assets" / "shapes" / "old.json")
-    _shape(run.file("shapes/old.json"))  # copied from the library: not new
-    _shape(run.file("shapes/nhan.json"))
-    _shape(run.file("shapes/bad.json"), [(0, 0)])  # one point: fails its check, never published
-    run.write("motion.json", {"things": [{"id": s, "kind": "shape", "shape": s} for s in ("old", "nhan", "bad")]})
-    calls = []
-    monkeypatch.setattr(auto, "git", lambda args: calls.append(args) or (0, ""))
-    assert auto.publish_shapes(run) == "Hình mới lên repo: nhan"
-    assert (tmp_path / "repo" / "assets" / "shapes" / "nhan.json").exists()
-    assert not (tmp_path / "repo" / "assets" / "shapes" / "bad.json").exists()
-    assert [c[0] for c in calls] == ["add", "commit", "pull", "push"]
-    assert calls[0][-2:] == ["--", "assets/shapes"] and calls[1][-2:] == ["--", "assets/shapes"]
-    assert "nhan" in calls[1][calls[1].index("-m") + 1]
-
-
-def test_no_new_shapes_means_no_git(tmp_path, monkeypatch):
-    run = _run(tmp_path)
-    monkeypatch.setattr(shapes, "LIBRARY", tmp_path / "lib")
-    monkeypatch.setattr(auto, "git", lambda args: pytest.fail("git called"))
-    assert auto.publish_shapes(run) == "Hình mới: không có"
-
-
-def test_shape_publish_failure_is_reported_not_fatal(flow, monkeypatch):
+def test_old_run_gets_clean_and_ignores_motion_marks(flow):
     run, fk = flow
     _approved(run)
-    _shape(run.file("shapes/nhan.json"))
-    run.write("motion.json", {"things": [{"id": "m", "kind": "shape", "shape": "nhan"}]})
-    monkeypatch.setattr(auto, "git", lambda args: (1, "fatal: unable to access 'https://github.com/x'") if args[0] == "push"
-                        else (0, ""))
+    for s in ("plates", "motion_design", "motion", "motion_bind", "stills", "visuals_agent", "visuals", "shots_agent", "shots"):
+        run.mark(s)  # a run past the old pictures when the server updated: no `clean` yet
+    run.write("motion.json", {"beats": []})
     assert auto.run_auto(run) == OK
-    st = auto.get_state(run)
-    assert st["state"] == "done" and "chưa lên repo" in st["message"] and "unable to access" in st["message"]
+    c = fk.cmds
+    assert c.index("clean") < c.index("stills") < c.index("visuals") < c.index("render")  # stills of the new clean video
+    assert "motion" not in c and "shots" not in c and "plates" not in c
+    assert set(fk.agents) <= {"vs-reviewer", "vs-researcher"}  # the old visuals plan is checked again, not redrawn
 
 
-def test_git_never_prompts_and_gives_up(monkeypatch, tmp_path):
-    seen = {}
-
-    def fake_run(cmd, **kw):
-        seen.update(kw)
-        raise auto.subprocess.TimeoutExpired(cmd, kw["timeout"])
-    monkeypatch.setattr(auto.subprocess, "run", fake_run)
-    code, msg = auto.git(["push"])
-    assert code and seen["env"]["GIT_TERMINAL_PROMPT"] == "0" and seen["timeout"] <= 300
-
-
-def test_a_null_canvas_is_not_bound(flow):
+def test_fix_round_routes_only_visuals_and_translator(flow):
     run, fk = flow
     _approved(run)
-    run.write("motion.json", None)  # the brief has no mechanism: the design agent wrote null
+    fk.reviews = [_needs("visuals", "chữ 8.0.5 sai")]
     assert auto.run_auto(run) == OK
-    assert fk.agents["vs-motion"] == 0 and "Hình động: không có\n" in auto.get_state(run)["message"]
-    assert not run.file("motion.loi.json").exists()
+    assert fk.agents["vs-visuals"] == 2 and "chữ 8.0.5 sai" in fk.prompts["vs-visuals"][1]
+    assert fk.cmds.count("render") == 2 and fk.prompts["vs-reviewer"][1].startswith("Soát lại")
+    run.write("review.json", {"verdict": "Cần sửa", "findings": [{"agent": "motion", "ids": [1], "what": "x"}]})
+    with pytest.raises(auto.AgentError):  # the canvas is gone: a reviewer naming it wrote a bad file
+        auto.read_review(run)
 
 
-def test_only_shapes_of_the_surviving_canvas_are_published(tmp_path, monkeypatch):
-    run = _run(tmp_path)
-    monkeypatch.setattr(auto, "ROOT", tmp_path / "repo")
-    monkeypatch.setattr(shapes, "LIBRARY", tmp_path / "repo" / "assets" / "shapes")
-    monkeypatch.setattr(auto, "git", lambda args: (0, ""))
-    _shape(run.file("shapes/bo-nho.json"))  # rejected by the reviewer, replaced by bo-nho-2
-    _shape(run.file("shapes/bo-nho-2.json"))
-    run.write("motion.json", {"things": [{"id": "m", "kind": "shape", "shape": "bo-nho-2"}]})
-    assert auto.publish_shapes(run) == "Hình mới lên repo: bo-nho-2"
-    run.write("motion.json", None)
-    _shape(run.file("shapes/nhan.json"))
-    assert auto.publish_shapes(run) == "Hình mới: không có"
-
-
-def test_a_failed_pull_is_rebased_back(tmp_path, monkeypatch):
-    run = _run(tmp_path)
-    monkeypatch.setattr(auto, "ROOT", tmp_path / "repo")
-    monkeypatch.setattr(shapes, "LIBRARY", tmp_path / "repo" / "assets" / "shapes")
-    _shape(run.file("shapes/nhan.json"))
-    run.write("motion.json", {"things": [{"id": "m", "kind": "shape", "shape": "nhan"}]})
-    calls = []
-    monkeypatch.setattr(auto, "git", lambda args: calls.append(args) or ((1, "CONFLICT") if args[0] == "pull" else (0, "")))
-    assert "chưa lên repo" in auto.publish_shapes(run)
-    assert ["rebase", "--abort"] in calls and calls[-1][0] != "push"
-
-
-def test_a_bound_canvas_is_not_gated_on_brief_words_again(flow):
+def test_finish_reports_long_holds_from_pieces_json(flow):
     run, fk = flow
     _approved(run)
-    run.write("motion.bind.json", {"lines": [1]})  # bound once: a fix may use spoken words the brief lacks
-    run.mark("motion_bind")
-    assert auto.run_auto(run) == OK
-    assert fk.cmds.count("motion") == 1 and run.file("motion.json").exists()  # the full check only, no `--design`
-
-
-def test_a_null_canvas_with_a_leftover_bind_is_no_animation(flow):
-    run, fk = flow
-    _approved(run)
-    run.write("motion.json", None)
-    run.write("motion.bind.json", {"lines": [1]})
-    assert auto.run_auto(run) == OK
-    assert "Hình động: không có" in auto.get_state(run)["message"]
-
-
-# --- nhịp hình: the beat plan after the timeline ---------------------------------------------------------------------
-
-def test_build_runs_shots_after_timeline_and_before_render(flow):
-    run, fk = flow
-    _approved(run)
-    assert auto.run_auto(run) == OK
-    assert [x for x in fk.order if x in ("timeline", "shots", "vs-nhip", "render")] == \
-        ["timeline", "shots", "vs-nhip", "shots", "render"]  # prep, the agent, then the check
-    assert [a[2:] for a in fk.args["shots"]] == [["--prep"], []] and fk.args["shots"][0][1] == str(run.path)
-    [prompt] = fk.prompts["vs-nhip"]
-    assert prompt.startswith(f"RUN={run.path}") and f"vshort shots {run.path} --prep" in prompt and "mã 0" in prompt
-    assert run.done("shots_agent") and run.done("shots")
-    assert auto.TIMEOUT["vs-nhip"] == 1800
-
-
-def test_shots_are_not_planned_twice(flow):
-    run, fk = flow
-    _approved(run)
-    assert auto.run_auto(run) == OK
-    fk.order.clear()
-    run.unmark("render", "review0")
-    assert auto.run_auto(run) == OK
-    assert "vs-nhip" not in fk.order and "shots" not in fk.order
-
-
-def test_a_video_rendered_before_nhip_hinh_is_not_planned_afterwards(flow):
-    run, fk = flow
-    _approved(run)
-    for s in ("plates", "motion", "motion_bind", "stills", "visuals", "visuals_agent", "tts", "timeline", "render"):
-        run.mark(s)
-    assert auto.run_auto(run) == OK
-    assert fk.agents["vs-nhip"] == 0 and "shots" not in fk.cmds
-    assert "Nhịp hình: không có" in auto.get_state(run)["message"]
-
-
-def test_shots_agent_failure_does_not_stop_the_video(flow, capsys):
-    run, fk = flow
-    _approved(run)
-    fk.fail_steps = {"shots_agent"}
-    assert auto.run_auto(run) == OK
-    assert fk.cmds.count("render") == 1 and "vs-nhip lỗi ở bước shots_agent" in capsys.readouterr().out
-    assert run.done("shots_agent") and run.done("shots") and fk.agents["vs-nhip"] == 1  # one try, not one per rerun
-    msg = auto.get_state(run)["message"]
-    assert "Nhịp hình: không có" in msg and "thiếu shots.json" in msg
-
-
-def test_a_plan_that_does_not_pass_does_not_stop_the_video(flow):
-    run, fk = flow
-    _approved(run)
-    fk.codes["shots"] = [0, 2]  # the prep works, the agent's plan fails its check
-    assert auto.run_auto(run) == OK and "render" in fk.cmds and run.done("shots")
-
-
-def test_a_crash_in_vshort_shots_does_not_stop_the_video(flow, capsys):
-    run, fk = flow
-    _approved(run)
-    run.file("shots").mkdir()
-    run.write("shots/ok.json", {"stamp": {}, "lines": {"1": [{"phrase": 1, "focus": None}]}})  # left by a check that crashed on the sheet
-    fk.boom = {"shots"}  # --prep and the check both raise
-    assert auto.run_auto(run) == OK
-    assert fk.cmds.count("render") == 1 and fk.agents["vs-nhip"] == 0 and run.done("shots") and run.done("shots_agent")
-    assert not run.file("shots/ok.json").exists()  # no verdicts from a crashed check for render to go on with
-    err = capsys.readouterr()
-    assert "Traceback" in err.err and "shots hỏng" in err.err and "Nhịp hình" in err.out
-    assert "Nhịp hình: không có" in auto.get_state(run)["message"]
-    assert auto.run_auto(run) == OK and fk.cmds.count("shots") == 2  # a resume does not run it again
-
-
-def test_a_crash_in_the_check_after_the_agent_still_renders(flow, monkeypatch):
-    run, fk = flow
-    _approved(run)
-    inner = fk.vshort
-
-    def vshort(args):
-        if args[0] == "shots" and "--prep" not in args:
-            raise RuntimeError("không vẽ được thẻ")  # the sheet of an agent-made card
-        return inner(args)
-    monkeypatch.setattr(auto, "run_vshort", vshort)
-    assert auto.run_auto(run) == OK and fk.agents["vs-nhip"] == 1 and fk.cmds.count("render") == 1
-    assert "Nhịp hình: không có" in auto.get_state(run)["message"]
-
-
-def test_a_crash_in_a_planned_render_renders_again_on_the_old_camera(flow, monkeypatch, capsys):
-    run, fk = flow
-    _approved(run)
-    inner = fk.vshort
-
-    def vshort(args):
-        if args[0] == "shots" and "--prep" not in args:  # the check passes some lines
-            run.file("shots").mkdir(exist_ok=True)
-            run.write("shots/ok.json", {"stamp": {}, "lines": {"1": [{"phrase": 1, "focus": None}]}})
-        if args[0] == "render" and run.file("shots/ok.json").exists():
-            fk.cmds.append("render")
-            raise RuntimeError("thẻ không vẽ được")  # code only the planned lines run
-        return inner(args)
-    monkeypatch.setattr(auto, "run_vshort", vshort)
-    assert auto.run_auto(run) == OK
-    assert fk.cmds.count("render") == 2 and not run.file("shots/ok.json").exists() and run.done("render")
-    err = capsys.readouterr()
-    assert "Traceback" in err.err and "thẻ không vẽ được" in err.err and "camera cũ" in err.out
-    assert auto.run_auto(run) == OK and fk.cmds.count("render") == 2  # a resume does not render (or crash) again
-
-
-def test_a_crash_in_the_render_after_a_stale_plan_is_checked_again_renders_on_the_old_camera(flow, monkeypatch):
-    run, fk = flow
-    _approved(run)
-    fk.codes["render"] = [2]  # the plan is stale: `vshort shots` checks it again and writes a new ok.json
-    inner, renders = fk.vshort, []
-
-    def vshort(args):
-        if args[0] == "shots" and "--prep" not in args:
-            run.file("shots").mkdir(exist_ok=True)
-            run.write("shots/ok.json", {"stamp": {}, "lines": {"1": [{"phrase": 1, "focus": None}]}})
-        if args[0] == "render":
-            renders.append(run.file("shots/ok.json").exists())
-            if len(renders) == 2:  # the render after that check, with the plan in place
-                fk.cmds.append("render")
-                raise RuntimeError("thẻ không vẽ được")
-        return inner(args)
-    monkeypatch.setattr(auto, "run_vshort", vshort)
-    assert auto.run_auto(run) == OK
-    assert renders == [True, True, False] and not run.file("shots/ok.json").exists() and run.done("render")
-
-
-def test_a_crash_in_render_without_a_plan_is_not_hidden(flow, monkeypatch):
-    run, fk = flow
-    _approved(run)
-    fk.boom = {"render"}
-    assert not run.file("shots/ok.json").exists()
-    assert auto.run_auto(run) == FAILED and fk.cmds.count("render") == 1  # as before: no plan to blame, no second try
-    assert "render hỏng" in auto.get_state(run)["message"]
-    with pytest.raises(RuntimeError):
-        auto._render(run)
-
-
-def test_the_shots_timer_is_closed_before_the_agent_runs(flow, monkeypatch):
-    from vshort import timing
-    run, fk = flow
-    _approved(run)
-    seen = []
-
-    def vshort(args):  # like the real run_vshort: the step's start goes to times.json; `vshort shots` marks nothing itself
-        timing.start(run.path, args[0])
-        return 0 if args[0] == "shots" else fk.vshort(args)
-
-    def claude(r, step, agent, prompt, timeout):
-        if agent == "vs-nhip":
-            seen.append(timing.read(run.path).get("shots", {}))
-        return fk.claude(r, step, agent, prompt, timeout)
-    monkeypatch.setattr(auto, "run_vshort", vshort)
-    monkeypatch.setattr(auto, "run_claude", claude)
-    assert auto.run_auto(run) == OK
-    assert len(seen) == 1 and "start" in seen[0] and "end" in seen[0]  # "Nhịp hình" does not run while the agent does
-
-
-def test_no_data_to_plan_from_means_no_agent(flow, capsys):
-    run, fk = flow
-    _approved(run)
-    fk.codes["shots"] = [2]  # `vshort shots --prep` cannot make its files: nothing for an agent to look at
-    assert auto.run_auto(run) == OK
-    assert fk.agents["vs-nhip"] == 0 and fk.cmds.count("render") == 1 and run.done("shots")
-    assert "--prep" in capsys.readouterr().out and "Nhịp hình: không có" in auto.get_state(run)["message"]
-
-
-def test_a_stale_plan_is_checked_again_when_render_says_2(flow):
-    run, fk = flow
-    _approved(run)
-    fk.codes["render"] = [2]  # shots/ok.json older than the script, the pictures or the voice
-    assert auto.run_auto(run) == OK
-    tail = fk.order[fk.order.index("render"):]
-    assert tail[:4] == ["render", "motion", "shots", "render"]  # the motion check as before, then `vshort shots` once
-    assert fk.args["shots"][-1][2:] == [] and fk.agents["vs-nhip"] == 1  # a check, not a new plan
-
-
-def test_the_plan_is_checked_after_a_canvas_is_dropped(flow):
-    run, fk = flow
-    _approved(run)
-    fk.codes["render"] = [2]
-    fk.codes["motion"] = [0, 0, 2]  # --design, the binding, then the check after render's 2 fails: no animation any more
-    assert auto.run_auto(run) == OK
-    assert run.file("motion.loi.json").exists()
-    last = lambda name: len(fk.order) - 1 - fk.order[::-1].index(name)  # noqa: E731
-    # ok.json's stamp holds which lines are animated: written before the canvas goes, render would say 2 again and stop
-    assert last("motion") < last("shots") < last("render")
-
-
-def test_review_finding_for_shots_goes_to_vs_nhip(flow):
-    run, fk = flow
-    _approved(run)
-    fk.reviews = [_needs("shots", "dấu khoanh lệch khỏi chữ DSM")]
-    assert auto.run_auto(run) == OK
-    assert fk.agents["vs-nhip"] == 2 and fk.agents["vs-motion"] == 1 and fk.agents["vs-visuals"] == 1
-    fix = fk.prompts["vs-nhip"][1]
-    assert "agent=shots" in fix and "dấu khoanh lệch khỏi chữ DSM" in fix and "vshort shots" in fix and "mã 0" in fix
-    assert run.done("fix1_shots") and fk.cmds.count("render") == 2
-    mid = fk.order[len(fk.order) - 1 - fk.order[::-1].index("vs-nhip"):]  # from the fix on
-    assert mid[:3] == ["vs-nhip", "shots", "render"] and fk.prompts["vs-reviewer"][1].startswith("Soát lại")
-
-
-def test_review_json_accepts_the_shots_agent(flow):
-    run, fk = flow
-    run.write("review.json", _needs("shots"))
-    assert auto.read_review(run)["findings"][0]["agent"] == "shots"
-
-
-def test_shots_fix_that_fails_still_renders(flow):
-    run, fk = flow
-    _approved(run)
-    fk.reviews = [_needs("shots")]
-    fk.fail_steps = {"fix1_shots"}
-    assert auto.run_auto(run) == OK and fk.cmds.count("render") == 2 and run.done("fixed1")
-
-
-def test_translator_fix_unmarks_the_shots_check(flow):
-    run, fk = flow
-    _approved(run)
-    run.write("script.vi.json", [{"id": 1, "phrases": "Xin | chào", "note": ""}, {"id": 2, "phrases": "Tạm biệt", "note": ""}])
-    fk.reviews = [_needs("translator", "câu 1 nói quá")]
-    assert auto.run_auto(run) == WAIT_SCRIPT
-    assert not run.done("shots") and not run.done("render")
-
-
-PHRASES = "câu 1 (0.00–3.00s, ảnh frames/1.png, ảnh NotebookLM)\n  cụm 1 @0.00s: Xin\ncâu 2 (3.00–6.00s, ảnh frames/2.png, thẻ tư liệu)\n" \
-          "câu 3 (6.00–9.00s, ảnh frames/3.png, ảnh NotebookLM)\nDải phụ đề cũ trên ảnh NotebookLM bắt đầu ở y 900.\n"
-
-
-def _plan(run, planned, shots_json=True):
-    run.file("shots").mkdir(exist_ok=True)
-    run.file("shots/phrases.txt").write_text(PHRASES, encoding="utf-8")
-    run.write("shots/ok.json", {"stamp": {}, "lines": {str(i): [{"phrase": 1, "focus": None}] for i in planned}})
-    if shots_json:
-        run.write("shots.json", {})
-
-
-def test_finish_lists_planned_and_fallback_lines(flow):
-    run, fk = flow
-    _approved(run)
-    _plan(run, [3, 1])
-    assert auto.run_auto(run) == OK
-    lines = auto.get_state(run)["message"].splitlines()
-    k = next(i for i, x in enumerate(lines) if x.startswith("Hình động:"))
-    assert lines[k + 1] == "Nhịp hình: câu 1, 3 (kiểu cũ: câu 2)"
-
-
-def test_finish_says_why_there_are_no_beats(flow):
-    run, fk = flow
-    assert auto._shots_note(run) == "Nhịp hình: không có (thiếu shots.json: agent lỗi hoặc chưa ghi kế hoạch)"
-    _plan(run, [])
-    assert auto._shots_note(run) == "Nhịp hình: không có (không câu nào qua `vshort shots`; chạy lại để xem lỗi)"
-    _plan(run, [1, 2, 3])
-    assert auto._shots_note(run) == "Nhịp hình: câu 1, 2, 3"
-    run.file("shots/ok.json").write_text("{oops")  # a file nobody should have left: not a traceback in the final message
-    assert auto._shots_note(run).startswith("Nhịp hình: không có")
-
-
-def test_an_du_runs_before_the_brief_stop(flow):
-    run, fk = flow
-    assert auto.run_auto(run) == WAIT_BRIEF
-    assert fk.agents["vs-an-du"] == 1 and run.done("an_du")
-    assert f"{run.path}/an-du.md" in fk.prompts["vs-an-du"][0] and "an-du.md" in auto.get_state(run)["message"]
-
-
-def test_an_du_failure_does_not_stop_the_run(flow):
-    run, fk = flow
-    fk.fail_steps = {"an_du"}
-    assert auto.run_auto(run) == WAIT_BRIEF and run.done("an_du")
-
-
-def test_an_du_is_not_asked_twice(flow):
-    run, fk = flow
-    assert auto.run_auto(run) == WAIT_BRIEF
-    assert auto.run_auto(run) == WAIT_BRIEF and fk.agents["vs-an-du"] == 1
-
-
-def test_an_du_is_not_written_after_tai_approved_the_brief(flow):
-    run, fk = flow
-    run.mark("approve_brief")  # a run approved before this step existed: no metaphor Tai never saw
-    assert auto.run_auto(run) == WAIT_SCRIPT and "vs-an-du" not in fk.agents
+    piece = {"src": 0, "src_end": 1, "dst": 0, "dst_end": 1, "speed": 1}
+    run.write("pieces.json", [piece | {"id": 1, "hold": 0.4, "dropped": 0.0}, piece | {"id": 2, "hold": 2.3, "dropped": 0.0},
+                              piece | {"id": 3, "hold": 0.0, "dropped": 1.2}])
+    assert auto._retime_note(run) == "Co giãn: câu 2 giữ 2,3 s; câu 3 bỏ đuôi 1,2 s"
+    run.write("pieces.json", [piece | {"id": 1, "hold": 0.4, "dropped": 0.0}])
+    assert auto._retime_note(run) == "Co giãn: không câu nào phải giữ hay bỏ đuôi"

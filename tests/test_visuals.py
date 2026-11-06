@@ -3,8 +3,7 @@ import pytest
 from PIL import Image, ImageDraw, ImageFont
 
 from vshort.textfit import FONTS
-from vshort.visuals import (PAPER, REF_RIGHT, REF_RIGHT_FROM, SUBTITLE, patch_text, pencil, svg_frame, ui_problems,
-                            validate)
+from vshort.visuals import patch_text, validate
 
 PAGE = (243, 239, 230)
 
@@ -109,66 +108,6 @@ def test_patch_text_ink_matches_the_old_ink_on_a_dark_button():
                              font=ImageFont.truetype(str(FONTS / "BeVietnamPro-Bold.ttf"), 30))
     out = np.asarray(patch_text(img, (96, 96, 404, 144), "iOS 26.3.1")).astype(int)
     assert (out[96:144, 96:404].sum(2) > 600).any()  # light text on the dark fill
-
-
-def test_pencil_fits_any_photo_clear_of_the_platforms():
-    for size, wide in [((1600, 900), True), ((200, 300), False)]:
-        f = np.asarray(pencil(Image.new("RGB", size, "gray"), "Nguồn: Google")).astype(int)
-        bare = np.asarray(pencil(Image.new("RGB", size, "gray"), "")).astype(int)  # flat gray turns to paper: the frame
-        assert f.shape == (1280, 720, 3)
-        ink = np.abs(bare - PAPER).max(2) > 40
-        rows, cols = np.nonzero(ink.any(1))[0], np.nonzero(ink.any(0))[0]
-        assert (cols[-1] - cols[0] > 600) == wide  # a wide photo keeps the full width, above the button column
-        bottom = rows[-1]
-        assert np.abs(f[bottom + 6:bottom + 60] - bare[bottom + 6:bottom + 60]).max() > 40  # credit just under it
-        assert np.array_equal(f[bottom + 60:], bare[bottom + 60:])  # and nowhere else
-        assert ui_problems(Image.fromarray(f.astype(np.uint8))) == []  # pushed in, nothing under the platforms
-        assert np.abs(f[SUBTITLE[1]:] - PAPER).max() <= 6
-
-
-def test_reference_ink_where_the_platforms_draw_is_flagged():
-    img = Image.new("RGB", (720, 1280), PAPER)
-    d = ImageDraw.Draw(img)
-    d.rectangle((60, 300, 680, 520), outline=(74, 74, 74), width=2)  # full width, above the button column: fine
-    assert ui_problems(img) == []
-    d.rectangle((60, 560, 610, 900), outline=(74, 74, 74), width=2)  # beside the buttons but 12 px too far right
-    assert [p.split(" (")[0] for p in ui_problems(img)] == [f"có nét vẽ ở x > {REF_RIGHT} từ y {REF_RIGHT_FROM} trở xuống"]
-
-
-def test_pencil_keeps_the_edges_of_a_photo():
-    photo = Image.new("RGB", (400, 400), "white")
-    ImageDraw.Draw(photo).rectangle((100, 100, 300, 300), fill=(20, 20, 20))
-    f = np.asarray(pencil(photo, "")).astype(int)  # no credit: its ink is dark too
-    ys, xs = np.nonzero(f.min(2) < 90)  # dark strokes survive: the square's outline
-    cy, cx = (ys.min() + ys.max()) // 2, (xs.min() + xs.max()) // 2
-    assert ys.max() - ys.min() > 200 and xs.max() - xs.min() > 200
-    assert np.abs(f[cy - 60:cy + 60, cx - 60:cx + 60] - PAPER).max() <= 6  # the flat interior dodges to paper
-
-
-def test_pencil_shrinks_a_long_credit_to_the_frame():
-    img = pencil(Image.new("RGB", (400, 400), "gray"), "Nguồn: " + "rất dài " * 12)
-    f, bare = (np.asarray(i).astype(int) for i in (img, pencil(Image.new("RGB", (400, 400), "gray"), "")))
-    cols = (np.abs(f - bare).max(2) > 40).any(0).nonzero()[0]
-    assert len(cols) and cols.max() - cols.min() > 400 and ui_problems(img) == []  # wide, still left of the buttons
-
-
-def _svg(tmp_path, family):
-    p = tmp_path / f"{family.replace(' ', '')}.svg"
-    p.write_text(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 1280"><text x="20" y="400" '
-                 f'font-size="64" font-family="{family}">Cập nhật phần mềm</text></svg>', encoding="utf-8")
-    return p
-
-
-def test_svg_frame_resolves_patrick_hand(tmp_path):
-    widths = []
-    for family in ("Patrick Hand", "DejaVu Sans"):
-        img = svg_frame(_svg(tmp_path, family))
-        f = np.asarray(img).astype(int)
-        assert img.size == (720, 1280) and tuple(f[0, 0]) == PAPER
-        cols = (np.abs(f - PAPER).max(2) > 40).any(0).nonzero()[0]
-        assert len(cols)
-        widths.append(cols.max() - cols.min())
-    assert abs(widths[0] - widths[1]) > 20  # the same fallback font twice would give equal widths
 
 
 def _item(**kw):

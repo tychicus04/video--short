@@ -23,6 +23,7 @@ main() {
   git pull -q --ff-only && uv sync -q || exit 1
   mkdir -p "$HOME/.claude/agents"  # the vs-* agents `vshort auto` calls by name: a deploy links every one, new ones too
   for f in "$PWD/claude/agents/"*.md; do ln -sf "$f" "$HOME/.claude/agents/$(basename "$f")"; done
+  find "$HOME/.claude/agents" -maxdepth 1 -name 'vs-*.md' -xtype l -delete  # agents gone from the repo: no dangling links
   git diff --quiet "$old" HEAD -- web || (cd web && npm ci --silent && npm run build --silent) || exit 1
   systemctl --user restart vshort-web
   echo "đã cập nhật ${old:0:7} → $(git rev-parse --short HEAD)"

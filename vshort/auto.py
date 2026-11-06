@@ -2,8 +2,6 @@
 judgement steps are vs-* agents called with `claude -p`. Every call's cost goes to RUN/cost.json."""
 import json
 import os
-import re
-import shutil
 import subprocess
 import threading
 import time
@@ -16,12 +14,9 @@ from vshort.run import Run
 
 ROOT = Path(__file__).resolve().parent.parent  # agents run here: Sonnet session, advisor off, `model:` of the agent
 CLAUDE = ["claude"]
-TIMEOUT = {"vs-an-du": 600, "vs-researcher": 1800, "vs-transcriber": 900, "vs-translator": 1200, "vs-motion": 2400,
-           "vs-visuals": 2400, "vs-nhip": 1800, "vs-reviewer": 3600}  # seconds
-
-
-GIT_TIMEOUT = 120  # seconds per git call: a hung network must not keep a finished video "running"
-_COST = threading.Lock()  # the canvas agent logs its cost while the others do
+TIMEOUT = {"vs-researcher": 1800, "vs-transcriber": 900, "vs-translator": 1200, "vs-visuals": 2400,
+           "vs-reviewer": 3600}  # seconds
+_COST = threading.Lock()  # agents may log their cost from two threads
 
 
 class AgentError(Exception):
@@ -141,20 +136,11 @@ BRIEF_CHECK = (
     "ghi Không có; thiếu thì thêm vào cả hai bản. \"Ý chính\" có một ý về cái giá hay giới hạn (một câu, đúng nguồn) và "
     "\"Câu chốt\" trả lời lại câu mở đầu theo nghĩa mới; thiếu thì thêm vào cả hai bản. Lệch thì sửa ở cả hai bản. "
     "Không tạo notebook mới, không nạp nguồn mới.")
-AN_DU = "RUN={run}. Đọc {run}/brief.vi.md, viết {run}/an-du.md."
 TRANSCRIBE = ("RUN={run}. Đọc các ảnh mảnh phụ đề {sheets} ({n} mảnh, chỉ số 0–{last}, theo {run}/fragments.json) "
               "và ghi {run}/fragments_text.json.")
 TRANSLATE = "RUN={run}\n\nĐầu ra nguyên văn của `vshort text`:\n\n```\n{table}\n```"
-MOTION_DESIGN = ("Việc 1 — vẽ khung từ brief. RUN={run}\n\nĐọc {run}/brief.vi.md (mục \"Cơ chế từng bước\" và \"Lưu ý độ "
-                 "chính xác\") và {run}/an-du.md (ẩn dụ đã duyệt, nếu có: dựng cảnh theo đúng ẩn dụ đó), viết "
-                 "{run}/motion.json; hình chưa có trong assets/shapes/ thì vẽ vào {run}/shapes/. "
-                 "Chạy `vshort motion {run} --design` tới khi mã 0.")
-MOTION_BIND = ("Việc 2 — gắn nhịp vào lời. RUN={run}\n\nĐọc {run}/motion.json và {run}/script.vi.json, viết "
-               "{run}/motion.bind.json. Chạy `vshort motion {run}` tới khi mã 0.")
 VISUALS = ("RUN={run}\n\nĐọc {run}/brief.vi.md (mục \"Lưu ý độ chính xác\") và {run}/script.vi.json; chỉ vá chữ sai dữ kiện, "
            "không có gì sai thì ghi [].")
-NHIP = ("RUN={run}\n\nChạy `vshort shots {run} --prep`, đọc {run}/shots/phrases.txt, rồi làm nhịp hình như hướng dẫn; "
-        "tự chạy `vshort shots {run}` tới khi mã 0.")
 COVER = ("Việc riêng: chọn ảnh đại diện, viết tiêu đề đăng và prompt ảnh bìa cho video, không làm gì khác (không tạo notebook, không nạp "
          "nguồn, không sửa brief). RUN={run}. Chạy `vshort cover {run} --candidates`: nó tải ảnh đầu bài (og:image) của các "
          "nguồn trong {run}/sources.md, ghép thành {run}/cover/sheet.jpg có đánh số. Xem ảnh đó, {run}/brief.vi.md và "
@@ -192,10 +178,7 @@ RECHECK = ("Soát lại: chỉ các phần đã sửa.\n\nRUN={run}. review.md c
            "{fixed}\nGhi kết quả vào cuối review.md và ghi lại review.json cho lần soát này.")
 FIX = ("RUN={run}\n\nSửa theo {run}/review.json, các lỗi agent={agent}:\n{items}\n{how}")
 FIX_HOW = {
-    "motion": ("Sửa motion.json và/hoặc motion.bind.json; được thêm hình mới vào RUN/shapes/, không sửa hình đã có trong "
-               "thư viện; tự chạy `vshort motion` tới khi mã 0."),
     "visuals": "Sửa visuals.json rồi tự chạy `vshort visuals` tới khi mã 0.",
-    "shots": "Sửa shots.json rồi tự chạy `vshort shots` tới khi mã 0.",
     "translator": ("Ghi bản sửa vào {run}/script.proposed.json (cùng dạng script.vi.json, sửa cả `note`); "
                    "KHÔNG sửa script.vi.json — Tai duyệt bản đề xuất trước."),
 }
@@ -273,11 +256,8 @@ def _flow(run: Run) -> int:
     meta = run.read("run.json")
     if meta.get("auto"):
         _agent(run, "brief_check", "vs-researcher", BRIEF_CHECK.format(run=p))
-    # a brief Tai approved before this step existed gets no metaphor: it would go into the video unseen
-    if not run.done("an_du") and (meta.get("auto") or not run.done("approve_brief")):
-        _an_du(run)
     if not meta.get("auto") and not run.done("approve_brief"):
-        raise Stop(WAIT_BRIEF, f"Duyệt brief: {p}/brief.vi.md (sửa thì sửa cả brief.en.md) và ẩn dụ {p}/an-du.md, rồi "
+        raise Stop(WAIT_BRIEF, f"Duyệt brief: {p}/brief.vi.md (sửa thì sửa cả brief.en.md), rồi "
                                f"`vshort approve {p} brief` và `vshort auto {p}`.", "wait_brief")
     if not run.done("source"):
         timing.start(run.path, "source")
@@ -286,24 +266,20 @@ def _flow(run: Run) -> int:
             from vshort.cli import AUTH, RELOGIN
             raise Stop(code, RELOGIN if code == AUTH else "NotebookLM không nạp được brief tiếng Anh; xem auto.log")
         run.mark("source")
-    with ThreadPoolExecutor(1) as ex:  # the canvas is drawn from the brief while NotebookLM works; waited for on any exit
-        design = None if run.done("motion_design") else ex.submit(_design, run)
-        _vs(run, "fetch", "--prompt", FETCH_PROMPT.format(slug=meta["slug"]))
-        _vs(run, "detect")
-        if not run.done("transcribe"):
-            sheets = sorted(run.file("sheets").glob("sheet*.png"))
-            n = len(run.read("fragments.json"))
-            _agent(run, "transcribe", "vs-transcriber",
-                   TRANSCRIBE.format(run=p, sheets=", ".join(map(str, sheets)), n=n, last=n - 1))
-        _vs(run, "text")
-        if not run.done("translate"):
-            run_claude(run, "translate", "vs-translator", TRANSLATE.format(run=p, table=_table(run)),
-                       TIMEOUT["vs-translator"])
-            if code := run_vshort(["check", str(p)]):
-                raise Stop(FAILED, f"bản dịch chưa qua `vshort check` (mã {code}); xem auto.log")
-            run.mark("translate")
-        if design:
-            design.result()
+    _vs(run, "fetch", "--prompt", FETCH_PROMPT.format(slug=meta["slug"]))
+    _vs(run, "detect")
+    if not run.done("transcribe"):
+        sheets = sorted(run.file("sheets").glob("sheet*.png"))
+        n = len(run.read("fragments.json"))
+        _agent(run, "transcribe", "vs-transcriber",
+               TRANSCRIBE.format(run=p, sheets=", ".join(map(str, sheets)), n=n, last=n - 1))
+    _vs(run, "text")
+    if not run.done("translate"):
+        run_claude(run, "translate", "vs-translator", TRANSLATE.format(run=p, table=_table(run)),
+                   TIMEOUT["vs-translator"])
+        if code := run_vshort(["check", str(p)]):
+            raise Stop(FAILED, f"bản dịch chưa qua `vshort check` (mã {code}); xem auto.log")
+        run.mark("translate")
     if not run.done("approve_script"):
         run.file("translation.md").write_text(_translation_md(run), encoding="utf-8")
         raise Stop(WAIT_SCRIPT, f"Duyệt bản dịch: {p}/translation.md (sửa thì sửa {p}/script.vi.json), rồi "
@@ -319,7 +295,7 @@ def read_review(run: Run) -> dict:
         rev = run.read("review.json")
         assert rev["verdict"] in ("Đạt", "Cần sửa") and isinstance(rev["findings"], list)
         for f in rev["findings"]:
-            assert f["agent"] in ("motion", "visuals", "translator", "shots", "none")
+            assert f["agent"] in ("visuals", "translator", "none")
             assert isinstance(f["what"], str) and isinstance(f.get("ids", []), list)
     except (OSError, ValueError, KeyError, TypeError, AssertionError):
         raise AgentError(f"review.json không đọc được (thiếu hoặc sai dạng) — xem {run.path}/review.md") from None
@@ -335,11 +311,11 @@ def _fix(run: Run, r: int, todo: list[dict]) -> None:
     """Round r's fixes; each agent step is marked, so a run that died midway redoes only what is left."""
     from vshort.cli import WAIT_SCRIPT
     p = run.path
-    by = {a: [f for f in todo if f["agent"] == a] for a in ("motion", "visuals", "shots", "translator")}
-    for agent, redo in (("motion", _motion), ("visuals", _visuals), ("shots", _shots)):  # the beats last: they stand on the rest
-        if by[agent]:
-            redo(run, FIX.format(run=p, agent=agent, items=_items(by[agent]), how=FIX_HOW[agent]), step=f"fix{r}_{agent}")
-            run.unmark("render")
+    by = {a: [f for f in todo if f["agent"] == a] for a in ("visuals", "translator")}
+    if by["visuals"]:
+        _visuals(run, FIX.format(run=p, agent="visuals", items=_items(by["visuals"]), how=FIX_HOW["visuals"]),
+                 step=f"fix{r}_visuals")
+        run.unmark("render")
     if by["translator"]:
         if not run.done(f"fix{r}_translator"):
             run_claude(run, f"fix{r}_translator", "vs-translator",
@@ -348,8 +324,8 @@ def _fix(run: Run, r: int, todo: list[dict]) -> None:
             if not run.file("script.proposed.json").exists():
                 raise AgentError("vs-translator không ghi script.proposed.json khi sửa theo review")
             run.mark(f"fix{r}_translator")
-        # the voice, stills (a line may no longer be empty), visuals and the motion check all follow the words
-        run.unmark("approve_script", "tts", "timeline", "shots", "render", "motion", "motion_bind", "stills", "visuals")
+        # the voice, stills (a line may no longer be empty) and visuals all follow the words
+        run.unmark("approve_script", "tts", "timeline", "render", "stills", "visuals")
         run.mark(f"fixed{r}")  # what is left (read the voice again, render) happens once Tai approves
         raise Stop(WAIT_SCRIPT, _proposal(run), "wait_script")
     _render(run)
@@ -429,16 +405,9 @@ def _finish(run: Run, rev: dict, rounds: int) -> None:
     out = [f"Video: {p}/final.mp4",
            _cover(run),
            f"Giọng: {_voice(run)}"]
-    bind = run.read("motion.bind.json") if _canvas(run) and run.file("motion.bind.json").exists() else None
-    if isinstance(bind, dict) and bind.get("lines"):
-        out.append("Hình động: câu " + ", ".join(map(str, bind["lines"])))
-    else:
-        out.append("Hình động: không có" + (" (motion.json không qua kiểm, xem motion.loi.json)"
-                                             if run.file("motion.loi.json").exists() else ""))
-    out.append(_shots_note(run))
+    out.append(_retime_note(run))
     fx = run.read("sfx.json") if run.file("sfx.json").exists() else []
     out.append("Hiệu ứng âm thanh: " + (", ".join(f"{c['name']} {c['at']:.1f} s" for c in fx) or "không có"))
-    out.append(publish_shapes(run))
     for v in run.read("visuals.json") if run.file("visuals.json").exists() else []:
         out.append(f"- {v.get('kind')} câu {v.get('ids') or v.get('id')}: "
                    + (f"{v.get('old', '')} → {v.get('new', '')}" if v.get("kind") == "patch" else v.get("source", "")))
@@ -457,112 +426,15 @@ def _finish(run: Run, rev: dict, rounds: int) -> None:
     set_state(run, "done", "\n".join(out))
 
 
-def _shots_note(run: Run) -> str:
-    """The final message's line on the beat plan: the lines that follow it, and those allowed beats that fell back to the
-    old camera (`vshort shots --prep` listed the allowed ones in shots/phrases.txt); else why there are none."""
+def _retime_note(run: Run) -> str:
+    """The final message's line on the retiming: lines whose picture stands still over 2 s, or lose a tail over 0.5 s."""
     try:
-        planned = sorted(int(i) for i in run.read("shots/ok.json")["lines"])
-    except (OSError, ValueError, KeyError, TypeError, AttributeError):  # no verdicts, or not what `vshort shots` writes
-        planned = []
-    if not planned:
-        return "Nhịp hình: không có (" + ("không câu nào qua `vshort shots`; chạy lại để xem lỗi" if run.file("shots.json").exists()
-                                           else "thiếu shots.json: agent lỗi hoặc chưa ghi kế hoạch") + ")"
-    try:
-        allowed = [int(m[1]) for m in re.finditer(r"^câu (\d+) \(", run.file("shots/phrases.txt").read_text(encoding="utf-8"), re.M)]
-    except OSError:
-        allowed = []
-    old = [i for i in allowed if i not in planned]
-    return f"Nhịp hình: câu {', '.join(map(str, planned))}" + (f" (kiểu cũ: câu {', '.join(map(str, old))})" if old else "")
-
-
-def _no_motion(run: Run) -> None:
-    """motion.json failed its check: keep it (and its binding) as *.loi.json and go on with stills only."""
-    for name in ("motion", "motion.bind"):
-        if run.file(f"{name}.json").exists():
-            run.file(f"{name}.json").replace(run.file(f"{name}.loi.json"))
-    if code := run_vshort(["motion", str(run.path)]):
-        raise Stop(code, f"`vshort motion` lỗi cả khi không có hình động (mã {code}); xem auto.log")
-
-
-def _an_du(run: Run) -> None:
-    """The everyday metaphor (RUN/an-du.md) from the brief, before Tai sees the brief. A failed agent does not stop the
-    video: the canvas is then drawn without a metaphor."""
-    try:
-        run_claude(run, "an_du", "vs-an-du", AN_DU.format(run=run.path), TIMEOUT["vs-an-du"])
-    except AgentError as e:
-        print(f"Ẩn dụ: {e}; hình động dựng không có ẩn dụ.", flush=True)
-    run.mark("an_du")
-
-
-def _design(run: Run) -> None:
-    """The canvas from the brief (alongside fetch…translate). A failed agent does not stop the video: one try, then
-    the build finds no good canvas and goes on with stills."""
-    try:
-        run_claude(run, "motion_design", "vs-motion", MOTION_DESIGN.format(run=run.path), TIMEOUT["vs-motion"])
-    except AgentError as e:
-        print(f"Hình động: {e}; video dùng ảnh tĩnh cho đoạn cơ chế.", flush=True)
-    run.mark("motion_design")
-
-
-def _canvas(run: Run):
-    """motion.json: None when there is none or it says null; True when it is not even JSON (the checks say why)."""
-    from vshort import motion
-    try:
-        return motion.load(run.file("motion.json"))
-    except ValueError:
-        return True
-
-
-def _motion(run: Run, prompt: str, step: str = "motion_bind") -> None:
-    """The canvas bound to the lines by the agent; no canvas, or one that fails its check: stills only."""
-    p = str(run.path)
-    if _canvas(run) is None:  # none drawn (the brief has no mechanism, or the design agent failed): stills
-        if code := run_vshort(["motion", p]):
-            raise Stop(code, f"`vshort motion` lỗi cả khi không có hình động (mã {code}); xem auto.log")
-        return
-    # only an unbound canvas is checked against the brief: a fix may since use spoken words the brief lacks
-    if not run.file("motion.bind.json").exists() and run_vshort(["motion", p, "--design"]):
-        _no_motion(run)  # nothing worth binding: don't spend an agent on it
-        return
-    if not run.done(step):
-        run_claude(run, step, "vs-motion", prompt, TIMEOUT["vs-motion"])
-        run.mark(step)
-    if run_vshort(["motion", p]):  # don't take the agent's word for it
-        _no_motion(run)
-
-
-def git(args: list[str]) -> tuple[int, str]:
-    """git in the repo, never asking for a password and never hanging: (exit code, its message)."""
-    try:
-        cp = subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True, timeout=GIT_TIMEOUT,
-                            env=os.environ | {"GIT_TERMINAL_PROMPT": "0"})
-    except (OSError, subprocess.TimeoutExpired) as e:
-        return 1, str(e)
-    return cp.returncode, (cp.stderr or cp.stdout).strip()
-
-
-def publish_shapes(run: Run) -> str:
-    """The run's new shapes into the library, committed alone and pushed, so every machine draws them; one line for
-    the final message. A git failure never fails the video."""
-    from vshort import shapes
-    doc = _canvas(run)
-    used = {th.get("shape") for th in doc.get("things", []) if isinstance(th, dict)} if isinstance(doc, dict) else set()
-    new = [f for f in sorted(run.file("shapes").glob("*.json"))  # only what the finished video draws: the library keeps all
-           if f.stem in used and not (shapes.LIBRARY / f.name).exists() and not shapes.problems(shapes._read(f), f.stem)]
-    if not new:
-        return "Hình mới: không có"
-    shapes.LIBRARY.mkdir(parents=True, exist_ok=True)
-    for f in new:
-        shutil.copy(f, shapes.LIBRARY / f.name)
-    names, lib = ", ".join(f.stem for f in new), str(shapes.LIBRARY.relative_to(ROOT))
-    for args in (["add", "--", lib], ["commit", "-m", f"shapes: {run.path.name}: {names}", "--", lib],
-                 ["pull", "--rebase", "--autostash"], ["push"]):
-        code, msg = git(args)
-        if code:
-            if args[0] == "pull":
-                git(["rebase", "--abort"])  # never leave the checkout mid-rebase: every later pull would fail
-            return f"Hình mới chưa lên repo ({names}): git {args[0]} lỗi: {(msg.splitlines() or [''])[-1][:200]}"
-    return f"Hình mới lên repo: {names}"
+        ps = run.read("pieces.json")
+    except (OSError, ValueError):
+        return "Co giãn: chưa có pieces.json"
+    bits = [f"câu {p['id']} giữ {p['hold']:.1f} s".replace(".", ",") for p in ps if p["hold"] > 2]
+    bits += [f"câu {p['id']} bỏ đuôi {p['dropped']:.1f} s".replace(".", ",") for p in ps if p["dropped"] > 0.5]
+    return "Co giãn: " + ("; ".join(bits) if bits else "không câu nào phải giữ hay bỏ đuôi")
 
 
 def _visuals(run: Run, prompt: str, step: str = "visuals_agent") -> None:
@@ -588,43 +460,6 @@ def _visuals(run: Run, prompt: str, step: str = "visuals_agent") -> None:
         raise Stop(code, f"`vshort visuals` lỗi cả khi không có tư liệu (mã {code}); xem auto.log")
 
 
-def _vshort_shots(run: Run, *extra: str) -> int | None:
-    """`vshort shots`: its exit code, or None when it crashed (a card an agent wrote that will not draw…). A crash goes to
-    auto.log with its traceback and leaves no shots/ok.json: the video goes on with the old camera, and a rerun would
-    only hit the same crash."""
-    try:
-        return run_vshort(["shots", str(run.path), *extra])
-    except Exception:
-        traceback.print_exc()
-        print("Nhịp hình: `vshort shots` hỏng (traceback ở trên); video dùng camera cũ.", flush=True)
-        run.file("shots/ok.json").unlink(missing_ok=True)
-        return None
-
-
-def _check_shots(run: Run) -> None:
-    """`vshort shots` over the agent's plan: it writes shots/ok.json with the lines that pass, whatever the exit code says;
-    the lines that don't render on the old camera, so no code stops the video."""
-    _vshort_shots(run)
-    run.mark("shots")  # ends the step's time (run_vshort started it); the check itself is what is done
-
-
-def _shots(run: Run, prompt: str, step: str = "shots_agent") -> None:
-    """The beat plan by the agent. A failed agent or a plan that does not pass never stops the video: the lines that
-    pass follow their beats, the rest (all of them, with no plan) keep the old camera."""
-    if not run.done(step):
-        code = _vshort_shots(run, "--prep")
-        timing.end(run.path, "shots")  # the step is the check below: "Nhịp hình" does not run while the agent does
-        if code != 0:  # nothing to plan from (no frames, a broken card): don't pay an agent
-            print("Nhịp hình: chưa chuẩn bị được dữ liệu (`vshort shots --prep` lỗi); video dùng camera cũ.", flush=True)
-        else:
-            try:
-                run_claude(run, step, "vs-nhip", prompt, TIMEOUT["vs-nhip"])
-            except AgentError as e:
-                print(f"Nhịp hình: {e}; video dùng camera cũ cho các câu chưa có nhịp.", flush=True)
-        run.mark(step)
-    _check_shots(run)
-
-
 def _tts_result(run: Run, code: int) -> None:
     from vshort.cli import QUOTA
     if code == QUOTA:
@@ -633,43 +468,18 @@ def _tts_result(run: Run, code: int) -> None:
         raise Stop(code, f"`vshort tts` lỗi (mã {code}); xem auto.log")
 
 
-def _vshort_render(run: Run) -> int:
-    """`vshort render`: its exit code. It runs in this process, so a bug in what only a planned line runs (a card, the
-    pencil) raises through here instead of coming back as a code. With a plan (shots/ok.json) that is not allowed to stop
-    the video, nor to come back on every resume: the plan goes to auto.log with the traceback and the video is rendered
-    once more on the old camera. Without one, the crash is raised as it always was."""
-    ok = run.file("shots/ok.json")
-    try:
-        return run_vshort(["render", str(run.path)])
-    except Exception:
-        if not ok.exists():
-            raise
-        traceback.print_exc()
-        print("Nhịp hình: dựng video bằng nhịp hình hỏng (traceback ở trên); bỏ nhịp hình và dựng lại bằng camera cũ.", flush=True)
-        ok.unlink()
-        return run_vshort(["render", str(run.path)])
-
-
 def _render(run: Run) -> None:
-    if not run.done("render"):
-        if _vshort_render(run) == 2:
-            # as the skill did: check motion again (it may only be stale), drop it only if it no longer passes
-            if run_vshort(["motion", str(run.path)]):
-                _no_motion(run)
-            # the plan may only be stale too (script, pictures, voice); after the motion check, which can drop the canvas
-            # and so change the lines that are animated, which the plan's stamp includes
-            _check_shots(run)
-            if code := _vshort_render(run):  # the check may have written a plan again: a crash in it is no more fatal than the first
-                raise Stop(code, f"`vshort render {run.path}` lỗi (mã {code}); xem auto.log")
+    if not run.done("render") and (code := run_vshort(["render", str(run.path)])):
+        raise Stop(code, f"`vshort render {run.path}` lỗi (mã {code}); xem auto.log")
 
 
 def _build(run: Run) -> None:
     p = str(run.path)
     with ThreadPoolExecutor(1) as ex:  # the voice is read while the pictures are made
         tts = None if run.done("tts") else ex.submit(run_vshort, ["tts", p])
-        _vs(run, "plates")
-        if not run.done("motion"):
-            _motion(run, MOTION_BIND.format(run=p))
+        if not run.done("clean"):
+            run.unmark("stills", "visuals", "render")  # a run from before 06/11/2026: its stills came from the old plates
+            _vs(run, "clean")
         _vs(run, "stills")
         if not run.done("visuals"):
             _visuals(run, VISUALS.format(run=p))
@@ -680,8 +490,6 @@ def _build(run: Run) -> None:
             run.unmark("tts")
             _tts_result(run, run_vshort(["tts", p]))
             _vs(run, "timeline")
-    if not run.done("shots") and not run.done("render"):  # a video rendered before this step existed: no plan to pay for
-        _shots(run, NHIP.format(run=p))
     _render(run)
 
 
