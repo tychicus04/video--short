@@ -12,6 +12,7 @@ from PIL import Image, ImageDraw
 
 from vshort import cli
 from vshort.cli import main
+from vshort.media import frame_at
 from vshort.run import Run
 from vshort.tts import QuotaExceeded, clip_paths
 
@@ -306,52 +307,66 @@ def test_visuals_cmd_render_failure_keeps_the_previous_frames(tmp_path, monkeypa
     assert (tmp_path / "frames.json").read_text() == rows
 
 
-def _render_run(tmp_path, frame_ids):
-    (tmp_path / "frames").mkdir()
-    for i, c in zip((1, 3), ((200, 30, 30), (30, 30, 200))):
-        Image.new("RGB", (720, 1280), c).save(tmp_path / "frames" / f"{i}.png")
+def _render_run(tmp_path, make_video, frames=()):
+    """Two lines over 10 s of NotebookLM video (grey level 10 + 20 per second): English 0–3 s and 3–6.5 s, Vietnamese
+    0.2–1.7 s and 2.0–4.5 s of a 5 s voice."""
+    v = make_video(tmp_path, scenes=[(k, k + 1, "#" + f"{10 + 20 * k:02x}" * 3) for k in range(10)], captions=[])
+    shutil.copy(v, tmp_path / "source.mp4")
+    shutil.copy(v, tmp_path / "clean.mp4")
+    (tmp_path / "sentences.en.json").write_text(json.dumps(
+        [{"id": 1, "start": 0.1, "end": 3.0, "en": "One."}, {"id": 2, "start": 3.0, "end": 6.5, "en": "Two."}]))
+    (tmp_path / "script.vi.json").write_text(json.dumps(
+        [{"id": 1, "phrases": "Một câu", "note": ""}, {"id": 2, "phrases": "Hai | câu", "note": ""}]))
     (tmp_path / "timeline.json").write_text(json.dumps(
-        {"total": 3.0, "placements": [{"id": 1, "start": 0.2, "dur": 1.0}, {"id": 3, "start": 1.5, "dur": 1.0}]}))
-    (tmp_path / "frames.json").write_text(json.dumps(
-        [{"id": i, "file": f"frames/{i}.png", "group": f"s{i}"} for i in frame_ids]))
-    (tmp_path / "script.vi.json").write_text(json.dumps([{"id": 1, "phrases": "a"}, {"id": 3, "phrases": "b"}]))
-    write_silence(tmp_path / "narration.wav", 3.0)
+        {"total": 5.0, "placements": [{"id": 1, "start": 0.2, "dur": 1.5}, {"id": 2, "start": 2.0, "dur": 2.5}]}))
+    (tmp_path / "frames").mkdir()
+    Image.new("RGB", (720, 1280), (220, 30, 30)).save(tmp_path / "frames" / "2.png")
+    (tmp_path / "frames.json").write_text(json.dumps(list(frames)))
+    write_silence(tmp_path / "narration.wav", 5.0)
 
 
-def test_render_cmd_uses_the_frames_of_the_placed_lines(tmp_path, capsys):
-    _render_run(tmp_path, (1, 2, 3))  # a frame without a voice is just not shown
+def test_render_cmd_plays_the_video_retimed_with_the_patched_still(tmp_path, make_video, capsys):
+    _render_run(tmp_path, make_video, [{"id": 2, "file": "frames/2.png", "from": 4.0}])
     assert main(["render", str(tmp_path)]) == 0
-    assert (tmp_path / "final.mp4").exists() and Run(tmp_path).done("render")
-    assert str(tmp_path / "final.mp4") in capsys.readouterr().out
+    out = tmp_path / "final.mp4"
+    assert Run(tmp_path).done("render") and str(out) in capsys.readouterr().out
+    ps = json.loads((tmp_path / "pieces.json").read_text())
+    assert [(p["id"], p["src"], p["dst"], p["dst_end"]) for p in ps] == [(1, 0.0, 0.0, 2.0), (2, 3.0, 2.0, 5.0)]
+    assert ps[1]["speed"] == pytest.approx(3.5 / 3.0)  # 3.0–6.5 s of English into 3 s
+    assert abs(int(frame_at(out, 1.0)[300, 360].mean()) - 30) < 6  # line 1: source 1.0 s at 1.5x → second 1
+    assert np.abs(frame_at(out, 2.3)[300, 360].astype(int) - (220, 30, 30)).max() > 60  # the video, before the wrong text
+    # from source 4.0 s (output 2.0 + 1.0 / 1.1667 = 2.86 s) the patched still stands until the line ends
+    assert np.abs(frame_at(out, 3.5)[300, 360].astype(int) - (220, 30, 30)).max() < 20
+    assert json.loads((tmp_path / "sfx.json").read_text()) is not None and (tmp_path / "subs.ass").exists()
 
 
-def test_render_cmd_names_the_lines_without_a_frame(tmp_path, capsys):
-    _render_run(tmp_path, (1,))
-    (tmp_path / "stills.json").write_text(json.dumps([{"id": i, "t": 1.0, "scene": 0} for i in (1, 3)]))
-    assert main(["render", str(tmp_path)]) == 2  # the still exists, only the frame is missing
-    assert capsys.readouterr().err == "frames.json thiếu các câu: 3 (chạy lại `vshort visuals`)\n"
-    assert not (tmp_path / "final.mp4").exists()
+def test_render_cmd_needs_clean_mp4(tmp_path, make_video, capsys):
+    _render_run(tmp_path, make_video)
+    (tmp_path / "clean.mp4").unlink()
+    assert main(["render", str(tmp_path)]) == 2
+    assert capsys.readouterr().err == "thiếu clean.mp4 (chạy `vshort clean`)\n"
 
 
-def test_render_cmd_sends_lines_without_a_still_back_to_stills(tmp_path, capsys):
-    _render_run(tmp_path, (1,))
-    for stills in ([{"id": 1, "t": 1.0, "scene": 0}], None):  # 3 is not in stills.json, or there is no stills.json
-        (tmp_path / "stills.json").unlink(missing_ok=True)
-        if stills:
-            (tmp_path / "stills.json").write_text(json.dumps(stills))
-        assert main(["render", str(tmp_path)]) == 2
-        assert capsys.readouterr().err == ("frames.json thiếu các câu: 3 "
-                                           "(chạy lại `vshort stills`, rồi vs-visuals và `vshort visuals`)\n")
+def test_render_cmd_refuses_frames_json_of_the_still_pictures(tmp_path, make_video, capsys):
+    _render_run(tmp_path, make_video, [{"id": 1, "file": "frames/2.png", "group": "s0"}])  # no "from": written before 06/11
+    assert main(["render", str(tmp_path)]) == 2
+    assert capsys.readouterr().err == "frames.json kiểu cũ (chạy lại `vshort visuals`)\n"
 
 
-def test_render_cmd_names_missing_frame_files_and_keeps_the_old_video(tmp_path, capsys):
-    _render_run(tmp_path, (1, 3))
-    (tmp_path / "frames" / "3.png").unlink()
+def test_render_cmd_names_missing_frame_files_and_keeps_the_old_video(tmp_path, make_video, capsys):
+    _render_run(tmp_path, make_video, [{"id": 2, "file": "frames/9.png", "from": 4.0}])
     (tmp_path / "final.mp4").write_bytes(b"good")
     assert main(["render", str(tmp_path)]) == 2
-    assert capsys.readouterr().err == "thiếu file khung hình: frames/3.png (chạy lại `vshort visuals`)\n"
+    assert capsys.readouterr().err == "thiếu file khung hình: frames/9.png (chạy lại `vshort visuals`)\n"
     assert (tmp_path / "final.mp4").read_bytes() == b"good" and not Run(tmp_path).done("render")
 
+
+def test_render_cmd_rejects_a_timeline_of_another_script(tmp_path, make_video, capsys):
+    _render_run(tmp_path, make_video)
+    (tmp_path / "script.vi.json").write_text(json.dumps(
+        [{"id": 1, "phrases": "Một câu", "note": ""}, {"id": 2, "phrases": "", "note": ""}]))  # line 2 now silent
+    assert main(["render", str(tmp_path)]) == 2
+    assert "timeline.json" in capsys.readouterr().err
 
 def test_status_lists_every_step_in_order(tmp_path, capsys):
     Run(tmp_path).mark("tts")
@@ -423,13 +438,6 @@ def test_old_motion_file_is_rejected_plainly(tmp_path, capsys, bind):
     assert "dạng cũ" in capsys.readouterr().err
 
 
-def test_render_says_an_old_motion_file_is_old(tmp_path, capsys):
-    _render_run(tmp_path, (1, 3))
-    (tmp_path / "motion.json").write_text(json.dumps({"lines": [3], "note": "n", "scenes": []}))
-    assert main(["render", str(tmp_path)]) == 2
-    assert "dạng cũ" in capsys.readouterr().err
-
-
 def test_motion_cmd_copies_library_shapes_into_the_run(tmp_path, monkeypatch, capsys):
     from vshort import shapes
     lib = tmp_path / "lib"
@@ -458,14 +466,6 @@ def test_motion_cmd_rejects_a_run_shape_that_changes_the_library(tmp_path, monke
     (run / "shapes" / "bo-nho.json").write_text(json.dumps({"name": "bộ nhớ", "strokes": [[[0, 60], [100, 0]]]}))
     assert main(["motion", str(run), "--design"]) == 2
     assert "đặt tên mới" in capsys.readouterr().err
-
-
-def test_render_cmd_rejects_a_stale_motion_file(tmp_path, capsys):
-    _render_run(tmp_path, (1, 3))
-    (tmp_path / "final.mp4").write_bytes(b"good")
-    (tmp_path / "motion.json").write_text(json.dumps({"lines": [3, 5], "note": "n", "scenes": []}))
-    assert main(["render", str(tmp_path)]) == 2
-    assert "vshort motion" in capsys.readouterr().err and (tmp_path / "final.mp4").read_bytes() == b"good"
 
 
 @pytest.mark.parametrize("edit", [
@@ -512,27 +512,6 @@ def _goi_tin_run(tmp_path):
     (tmp_path / "timeline.json").write_text(json.dumps(
         {"total": 10.5, "placements": [{"id": i, "start": 0.2 + 2 * k, "dur": 1.7} for k, i in enumerate(ids)]}))
     write_silence(tmp_path / "narration.wav", 10.5)
-
-
-def test_render_cmd_rejects_a_script_changed_after_motion(tmp_path, capsys):
-    _goi_tin_run(tmp_path)
-    assert main(["motion", str(tmp_path)]) == 0
-    script = json.loads((tmp_path / "script.vi.json").read_text())
-    script[1]["phrases"] = "Bạn ngồi quán cà phê, | mở điện thoại | và kết nối gói tin."  # same phrase count
-    (tmp_path / "script.vi.json").write_text(json.dumps(script, ensure_ascii=False))
-    (tmp_path / "final.mp4").write_bytes(b"good")
-    assert main(["render", str(tmp_path)]) == 2
-    assert "vshort motion" in capsys.readouterr().err and (tmp_path / "final.mp4").read_bytes() == b"good"
-
-
-def test_render_cmd_names_animated_lines_missing_from_the_timeline(tmp_path, capsys):
-    _goi_tin_run(tmp_path)
-    assert main(["motion", str(tmp_path)]) == 0
-    tl = json.loads((tmp_path / "timeline.json").read_text())
-    tl["placements"] = [p for p in tl["placements"] if p["id"] != 3]
-    (tmp_path / "timeline.json").write_text(json.dumps(tl))
-    assert main(["render", str(tmp_path)]) == 2
-    assert "vshort timeline" in capsys.readouterr().err
 
 
 def test_approve_brief_refuses_stale_english(tmp_path, capsys):
@@ -966,45 +945,6 @@ def _planned_run(tmp_path, capsys):
     assert _shots(tmp_path, _good_plan(tmp_path), capsys)[0] == 0
     capsys.readouterr()
     return tmp_path
-
-
-@pytest.mark.parametrize("what", STALE)
-def test_stale_shots_stop_the_render(tmp_path, capsys, what):
-    _planned_run(tmp_path, capsys)
-    STALE[what](tmp_path)
-    (tmp_path / "final.mp4").write_bytes(b"good")
-    assert main(["render", str(tmp_path)]) == 2
-    err = capsys.readouterr().err
-    assert "vshort shots" in err and "đã đổi sau lần kiểm nhịp hình cuối" in err and "Traceback" not in err
-    assert (tmp_path / "final.mp4").read_bytes() == b"good" and not Run(tmp_path).done("render")
-    assert not (tmp_path / "subs.ass").exists() and not (tmp_path / "sfx.json").exists()  # nothing was started
-
-
-def test_a_line_without_beats_may_change_after_shots(tmp_path, capsys, monkeypatch):
-    _planned_run(tmp_path, capsys)
-    Image.new("RGB", (720, 1280), (1, 2, 3)).save(tmp_path / "frames" / "4.png")  # line 4 has no beats to go stale
-    monkeypatch.setattr(cli, "render_video", lambda *a, **k: None)
-    assert main(["render", str(tmp_path)]) == 0
-
-
-def test_render_gives_the_planned_lines_their_beats_and_cards(tmp_path, capsys, monkeypatch):
-    from vshort import cards, render
-    seen = []
-    monkeypatch.setattr(cli, "render_video", lambda segs, *a, **k: seen.append((segs, k)))
-    _shots_run(tmp_path)
-    write_silence(tmp_path / "narration.wav", 15.6)
-    assert main(["render", str(tmp_path)]) == 0  # no shots/ok.json: as before
-    plain, _ = seen.pop()
-    assert [(s.group, s.plan, s.card) for s in plain] == [("s0", None, None), ("s0", None, None), ("v3", None, None), ("v4", None, None)]
-    plan = _good_plan(tmp_path)
-    assert _shots(tmp_path, plan, capsys)[0] == 0
-    assert main(["render", str(tmp_path)]) == 0
-    segs, kw = seen.pop()
-    assert [s.group for s in segs] == ["n1", "n2", "n3", "v4"] and [s.id for s in segs] == [1, 2, 3, 4]
-    assert segs[0].plan == tuple(shots_beats(plan["1"], 1)) and len(segs[1].plan) == 3 and segs[3].plan is None
-    assert [s.card for s in segs] == [None, None, tmp_path / "visuals" / "3.svg", None]  # a photo and a still draw their frame
-    assert segs[2].cap == cards.cap(cards.Card(segs[2].card, *SHOT_SEG[3], render.XF)) and segs[0].cap == 1.5 == segs[3].cap
-    assert (segs[2].start, segs[2].end) == pytest.approx(SHOT_SEG[3]) and kw["run_dir"] == tmp_path
 
 
 def shots_beats(rows, i):

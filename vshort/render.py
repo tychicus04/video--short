@@ -411,3 +411,49 @@ def render_video(segs: list[Segment], ass: Path, narration: Path, total: float, 
     except BaseException:
         tmp.unlink(missing_ok=True)
         raise
+
+
+COLOR = ("scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,"
+         "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv")
+
+
+def render_pieces(ps, clean: Path, stills: list[tuple[Path, float, float]], ass: Path, audio: Path, total: float,
+                  out: Path, outro: Path | None = OUTRO) -> None:
+    """final.mp4 from NotebookLM's own video: each retime piece played, sped or held; patched stills `(file, from, to)`
+    (output seconds) over it; the subtitles; then the `outro` clip faded in from the last frame. One ffmpeg run."""
+    ins = ["-i", str(clean.resolve()), "-i", str(audio.resolve())]
+    for f, _, _ in stills:
+        ins += ["-loop", "1", "-t", f"{total:.3f}", "-i", str(f.resolve())]
+    one = 1 / FPS
+    g = []
+    for k, p in enumerate(ps):
+        end = max(p.src_end, p.src + one)  # at least one frame to play, so there is one to hold
+        g.append(f"[0:v]trim=start={p.src:.4f}:end={end:.4f},setpts=(PTS-STARTPTS)/{p.speed:.6f},fps={FPS},"
+                 f"tpad=stop_mode=clone:stop_duration={p.hold + 2 * one:.4f},"
+                 f"trim=duration={p.dst_end - p.dst:.4f},setpts=PTS-STARTPTS,fps={FPS}[p{k}]")  # trim forgets the rate
+    g.append("".join(f"[p{k}]" for k in range(len(ps))) + f"concat=n={len(ps)}:v=1:a=0,fps={FPS},format=rgb24[v0]")
+    last = "v0"
+    for j, (_, a, b) in enumerate(stills):
+        g.append(f"[{2 + j}:v]scale={W}:{H},format=rgb24[s{j}];"
+                 f"[{last}][s{j}]overlay=0:0:format=rgb:enable='between(t,{a:.4f},{b:.4f})'[v{j + 1}]")
+        last = f"v{j + 1}"
+    g.append(f"[{last}]ass={ass.name}:fontsdir={FONTS},{COLOR}[m]")
+    extra = probe(outro).duration if outro else 0.0
+    if outro:
+        g.append(f"[m]tpad=stop_mode=clone:stop_duration={XF},fps={FPS},settb=AVTB[mx];"  # xfade wants a set frame rate
+                 f"[{2 + len(stills)}:v]fps={FPS},scale={W}:{H},format=rgb24,{COLOR},settb=AVTB[o];"
+                 f"[mx][o]xfade=transition=fade:duration={XF}:offset={total:.4f}[v]")
+        ins += ["-i", str(outro.resolve())]
+    else:
+        g.append("[m]null[v]")
+    g.append("[1:a]apad[a]")
+    tmp = out.resolve().with_name(f"{out.stem}.tmp{out.suffix}")  # a failed render must not replace a good `out`
+    cmd = [FF, "-loglevel", "error", "-y", *ins, "-filter_complex", ";".join(g), "-map", "[v]", "-map", "[a]",
+           "-t", f"{total + extra:.4f}", "-c:v", "libx264", "-crf", "18", "-preset", "medium", "-pix_fmt", "yuv420p",
+           "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(tmp)]
+    try:
+        subprocess.run(cmd, check=True, cwd=ass.parent)
+        os.replace(tmp, out)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise

@@ -14,12 +14,12 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
-from vshort import auto, cards, cms, cover, motion, publish, render, shapes, shots, sound
+from vshort import auto, cards, cms, cover, motion, publish, render, retime, shapes, shots, sound
 from vshort.captions import Fragment, detect_fragments, write_sheets
 from vshort.fit import Placement, build_narration, phrase_fracs, phrase_times, sequence, total
 from vshort.media import frame_at, probe
-from vshort.plates import Plate, build_plates, clean, scene_cuts
-from vshort.render import OUTRO, build_ass, clean_video, export_outro, render_video, segments
+from vshort.plates import Plate, build_plates, clean, scene_changes, scene_cuts
+from vshort.render import OUTRO, build_ass, clean_video, export_outro, render_pieces, render_video, segments
 from vshort.run import Run, config
 from vshort.script import (Sentence, check_brief, check_numbers, check_script, check_style, group_sentences,
                            merge_text, merged)
@@ -700,65 +700,48 @@ def _beat_plan(run: Run, placements: list[Placement], script: list[dict], frames
 
 
 def cmd_render(a) -> int:
+    """final.mp4: NotebookLM's own video (clean.mp4) retimed line by line to the Vietnamese voice, patched stills over the
+    lines with a wrong text, subtitles, three accents on the biggest changes of scene, the outro."""
     run = Run(a.run)
+    clean = run.file("clean.mp4")
+    if not clean.exists():
+        _err("thiếu clean.mp4 (chạy `vshort clean`)")
+        return BAD_INPUT
     fitted = run.read("timeline.json")
     placements = [Placement(**p) for p in fitted["placements"]]
-    frames = run.read("frames.json")
-    ids = {p.id for p in placements}
-    if missing := sorted(ids - {f["id"] for f in frames}):
-        stills = {s["id"] for s in run.read("stills.json")} if run.file("stills.json").exists() else set()
-        redo = "`vshort visuals`"
-        if not stills.issuperset(missing):  # the line has no still yet, or the script changed after `vshort stills`
-            redo = "`vshort stills`, rồi vs-visuals và " + redo
-        _err("frames.json thiếu các câu: " + ", ".join(map(str, missing)) + f" (chạy lại {redo})")
+    script = run.read("script.vi.json")
+    lines = {s.id: s for s in merged(_sentences(run), script)}
+    if missing := [p.id for p in placements if p.id not in lines]:
+        _err("timeline.json có câu không còn lời: " + ", ".join(map(str, missing)) + " (chạy lại `vshort tts` rồi `vshort timeline`)")
         return BAD_INPUT
-    if gone := [f["file"] for f in frames if f["id"] in ids and not run.file(f["file"]).exists()]:
+    frames = run.read("frames.json") if run.file("frames.json").exists() else []
+    if any("from" not in f for f in frames):
+        _err("frames.json kiểu cũ (chạy lại `vshort visuals`)")
+        return BAD_INPUT
+    if gone := [f["file"] for f in frames if not run.file(f["file"]).exists()]:
         _err("thiếu file khung hình: " + ", ".join(gone) + " (chạy lại `vshort visuals`)")
         return BAD_INPUT
-    script = run.read("script.vi.json")
-    doc = _motion(run)
-    if doc is BAD_JSON:
-        return BAD_INPUT
-    scenes = []
-    if doc is not None:
-        if isinstance(doc, dict) and "scenes" in doc:
-            _err(f"{motion.OLD} (rồi chạy lại `vshort motion`)")
-            return BAD_INPUT
-        if (bind := _bind(run)) is BAD_JSON:
-            return BAD_INPUT
-        if bind is None:
-            _err("thiếu motion.bind.json (chạy lại `vshort motion`)")
-            return BAD_INPUT
-        if probs := shapes.check_run(run.path) + motion.bind_problems(doc, bind, script, run.path, style=False):
-            for p in probs:
-                _err(p)
-            _err("motion.json không còn khớp kịch bản (chạy lại `vshort motion`)")
-            return BAD_INPUT
-        checked = run.file("motion/lines.json")
-        if not checked.exists() or run.read("motion/lines.json") != _said(bind, script):
-            _err("kịch bản đã đổi sau lần kiểm hình động cuối (chạy lại `vshort motion`)")
-            return BAD_INPUT
-        if missing := sorted(set(bind["lines"]) - ids):
-            _err("timeline.json thiếu các câu có hình động: " + ", ".join(map(str, missing))
-                 + " (chạy lại `vshort tts` rồi `vshort timeline`)")
-            return BAD_INPUT
-        scenes = [motion.bind_timed(doc, bind, placements, script, run.path)]
-    animated = {i: k for k, sc in enumerate(scenes) for i in sc.lines}
-    if (plan := _beat_plan(run, placements, script, frames)) is None:
-        return BAD_INPUT
+    stop = probe(run.file("source.mp4")).duration - NLM_OUTRO
+    ps = retime.pieces([lines[p.id] for p in placements], placements, fitted["total"], stop, retime.blank_at(clean))
+    run.write("pieces.json", [asdict(p) for p in ps])
+    by_id, stills = {p.id: p for p in ps}, []
+    for f in frames:
+        if (p := by_id.get(f["id"])) is None:  # a patched line that is no longer said
+            continue
+        held = p.dst + (p.src_end - p.src) / p.speed  # the wrong text first shows in a dropped tail: from the hold on
+        shown = p.dst if f["from"] <= p.src else min(retime.to_output([p], f["from"]) or held, held)
+        stills.append((run.file(f["file"]), shown, p.dst_end))
     ass = run.file("subs.ass")
     ass.write_text(build_ass(phrase_times(placements, script)), encoding="utf-8")
     if not OUTRO.exists():
         export_outro()
-    segs = segments(placements, frames, run.path, fitted["total"], animated, *plan)
-    fx = []  # the old render's accents are gone with the canvas; Task 5's render puts them on changes of scene
+    fx = sound.cues(scene_changes(clean), ps)
     run.write("sfx.json", [asdict(c) for c in fx])
     sound.master(run.file("narration.wav"), fx, fitted["total"], run.file("mix.wav"))
-    render_video(segs, ass, run.file("mix.wav"), fitted["total"], run.file("final.mp4"), scenes, OUTRO, run_dir=run.path)
+    render_pieces(ps, clean, stills, ass, run.file("mix.wav"), fitted["total"], run.file("final.mp4"))
     run.mark("render")
     print(run.file("final.mp4"))
     return OK
-
 
 def cmd_outro(a) -> int:
     export_outro(Path(a.out))
