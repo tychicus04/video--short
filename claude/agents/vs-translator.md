@@ -25,10 +25,13 @@ Quy tắc:
    - "chiếc máy chủ dễ tổn thương đó" → "cái máy chủ chưa vá lúc nãy" ("vulnerable" của máy là "có lỗ hổng", "chưa vá")
    Không dùng sáo ngữ: "minh chứng cho", "đột phá", "toàn diện", "trong bối cảnh … hiện nay", "cuộc cách mạng".
    `vshort check` bắt một phần các mẫu trên; mẫu nào phải giữ (brief viết đúng chữ đó) thì ghi `note` nhắc nó.
-2. **Brief thắng** khi câu tiếng Anh: sai dữ kiện so với nguồn, khẳng định điều brief ghi là tranh cãi/không được khẳng định,
-   hoặc đổi câu móc/câu chốt/lời kêu gọi đã duyệt. Khi đó viết theo brief và ghi `note` ngắn: tiếng Anh nói gì, vì sao đổi.
-   Không lệch thì `note` để `""`.
-3. **Không canh độ dài**: câu Việt dài hay ngắn hơn câu Anh đều được, giọng đọc giữ tốc độ tự nhiên và hình co giãn theo.
+2. **Brief thắng** khi câu tiếng Anh sai dữ kiện so với nguồn, hoặc khẳng định điều brief ghi là tranh cãi/không được khẳng
+   định. Khi đó viết theo brief và ghi `note` ngắn: tiếng Anh nói gì, vì sao đổi. Không lệch thì `note` để `""`.
+   **Câu móc, câu chốt, lời kêu gọi:** chỉ thêm câu chốt hay lời kêu gọi của brief khi video tiếng Anh không nói ý đó ở bất kỳ
+   câu nào. Đã nói ở câu khác (dù ngắn hơn brief) thì dịch sát câu tiếng Anh, không nối thêm vào câu cuối: hình của mỗi câu là
+   đoạn video tiếng Anh của chính nó, lời dài thêm bao nhiêu thì hình đứng yên bấy nhiêu. `vshort check` báo câu nào lời Việt
+   dài hơn đoạn tiếng Anh quá 4 giây.
+3. **Không canh độ dài**: câu Việt dài hay ngắn hơn câu Anh đều được (dài hơn không quá ~4 giây, xem luật 2), giọng đọc giữ tốc độ tự nhiên và hình co giãn theo.
    Đừng rút gọn hay kéo dài để "vừa khung"; dịch đủ nghĩa là đủ.
 4. **Câu đầu** (id nhỏ nhất) là đúng chữ của mục "Tiêu đề (câu mở đầu)" trong brief: luận điểm cả video chứng minh, hiện trọn
    câu, KHÔNG có `|`. Các câu tiếng Anh liền sau chỉ lặp ý mà tiêu đề đã nói thì để `"phrases": ""` (ghi `note`): khung giây

@@ -123,3 +123,31 @@ def test_numbers_said_in_english_are_said_in_vietnamese():
     assert check_numbers(sents, script) == []
     script[1]["phrases"] = "Ngày 29 tháng 10, rút 7,2 triệu đô | từ hơn 700 ví."
     assert check_numbers(sents, script)[0].startswith("Câu 2: câu tiếng Anh có số 27 ")  # a changed figure
+
+
+RAILS_16_VI = ("Một ảnh độc | là đủ để ghi file lạ; | một lần cập nhật | là đủ để chặn. | Nếu app Rails của bạn | "
+               "xử lý ảnh bằng ImageMagick: | nâng lên 8.1.4.1 | hoặc 8.0.5.2 ngay, | đổi bí mật nếu dùng Disk, | "
+               "và chia sẻ cho | người làm backend. | Bản 8.0 không còn | được vá bảo mật | sau 07/11/2026.")
+
+
+def _two(vi: str, start: float = 75.63, end: float = 81.07) -> list[str]:
+    sents = [Sentence(1, 0.1, 2.67, "Rails writes any file."),
+             Sentence(16, start, end, "One bad image was enough to write files; one update is enough to stop it.")]
+    return check_script(sents, [{"id": 1, "phrases": "Ảnh độc upload, Rails ghi file tùy ý", "note": ""},
+                                {"id": 16, "phrases": vi, "note": ""}])
+
+
+def test_rails_closing_line_with_repeated_call_to_action_fails():
+    probs = [p for p in _two(RAILS_16_VI) if p.startswith("Câu 16: lời Việt")]
+    assert len(probs) == 1 and "đừng nối ý mà video tiếng Anh đã nói ở câu khác" in probs[0]
+
+
+def test_ordinary_line_passes():
+    assert not [p for p in _two("Một ảnh độc | là đủ để ghi file lạ; | một lần cập nhật | là đủ để chặn.")
+                if "lời Việt" in p]
+
+
+def test_title_line_is_exempt():
+    sents = [Sentence(1, 0.1, 0.9, "Rails.")]
+    assert not [p for p in check_script(sents, [{"id": 1, "phrases": RAILS_16_VI.replace(" |", ","), "note": ""}])
+                if "lời Việt" in p]

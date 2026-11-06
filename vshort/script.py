@@ -102,6 +102,12 @@ def merged(sentences: list[Sentence], script: list[dict]) -> list[Sentence]:
     return out
 
 
+PACE = 4.3  # syllables a second: the voice Tai settled on (02/11/2026)
+# a line said this much longer than its English stretch (s) holds the picture that long: past runs padded 8–13 s only
+# where the translator re-appended the brief's call to action (Rails 16, linux-tcp 12); every other line ≤ 2.1 s
+LONGER = 4.0
+
+
 def check_script(sentences: list[Sentence], script: list[dict]) -> list[str]:
     probs = []
     by_id = {row["id"]: row for row in script}
@@ -111,7 +117,8 @@ def check_script(sentences: list[Sentence], script: list[dict]) -> list[str]:
     first = by_id.get(sentences[0].id) if sentences else None
     if first and not first["phrases"].strip():
         probs.append(f"Câu đầu (câu {sentences[0].id}) là tiêu đề, không được để trống")
-    for n, s in enumerate(merged(sentences, script)):
+    lines = merged(sentences, script)
+    for n, s in enumerate(lines):
         row = by_id.get(s.id)
         if not row:
             continue
@@ -122,6 +129,12 @@ def check_script(sentences: list[Sentence], script: list[dict]) -> list[str]:
             for ph in (p.strip() for p in text.split("|")):
                 if text_width(ph) > MAX_TEXT_W:
                     probs.append(f"Câu {s.id}: cụm '{ph}' rộng {text_width(ph):.0f}px, vượt {MAX_TEXT_W}px")
+            span = (lines[n + 1].start if n + 1 < len(lines) else s.end) - s.start  # the English stretch it is shown over
+            said = syllables(text) / PACE
+            if said - span > LONGER:
+                probs.append(f"Câu {s.id}: lời Việt ~{said:.0f} giây ({syllables(text)} âm tiết), dài hơn đoạn tiếng Anh "
+                             f"({span:.1f} giây) {said - span:.0f} giây — hình sẽ đứng yên chừng ấy: đừng nối ý mà video "
+                             "tiếng Anh đã nói ở câu khác (lời kêu gọi, câu chốt)")
     return probs
 
 
