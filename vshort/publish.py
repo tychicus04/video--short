@@ -74,8 +74,6 @@ def _check_meta(doc) -> str | None:
     sapo, kws = doc.get("sapo"), doc.get("keywords")
     if not (isinstance(sapo, str) and 40 <= len(sapo.strip()) <= 300):
         return "sapo phải dài 40–300 ký tự"
-    if len(re.findall(r"[.!?…](?:\s|$)", sapo.strip())) > 2:
-        return "sapo nhiều hơn 2 câu"
     if not (isinstance(kws, list) and 1 <= len(kws) <= 6 and all(isinstance(k, str) and 0 < len(k.strip()) <= 60
                                                                   for k in kws)):
         return "từ khóa phải là 1–6 cụm, mỗi cụm ≤ 60 ký tự"
@@ -94,6 +92,9 @@ def ensure_meta(run: Run) -> dict:
         doc = json.loads(f.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         doc = None
+    if isinstance(doc, dict) and isinstance(doc.get("sapo"), str):  # the agent sometimes adds a third sentence: keep 2
+        ends = list(re.finditer(r"[.!?…](?=\s|$)", sapo := doc["sapo"].strip()))
+        doc["sapo"] = sapo[:ends[1].end()] if len(ends) > 2 else sapo
     if (why := "agent không ghi file" if doc is None else _check_meta(doc)) is not None:
         f.unlink(missing_ok=True)
         raise CmsError(f"sapo/từ khóa agent viết chưa đúng: {why}")

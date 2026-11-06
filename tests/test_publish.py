@@ -93,6 +93,14 @@ def test_ensure_meta_checks_what_the_agent_wrote(tmp_path, monkeypatch):
         with pytest.raises(cms.CmsError):
             publish.ensure_meta(run)
 
+    # 06/11, ClawHub: the agent wrote three sentences; the send stopped. The first two are kept instead.
+    (run.path / publish.META).unlink(missing_ok=True)
+    three = "Kho ClawHub bị lợi dụng để phát tán mã độc. Trợ lý AI làm theo lệnh ẩn; ví crypto có thể bị lấy. Hãy kiểm tra trước khi cài."
+    monkeypatch.setattr(auto, "run_claude", agent_writes(META | {"sapo": three}))
+    assert publish.ensure_meta(run)["sapo"] == ("Kho ClawHub bị lợi dụng để phát tán mã độc. "
+                                                "Trợ lý AI làm theo lệnh ẩn; ví crypto có thể bị lấy.")
+    (run.path / publish.META).unlink()
+
     def agent_fails(*a):
         raise auto.AgentError("vs-researcher lỗi ở bước cms_meta")
 
