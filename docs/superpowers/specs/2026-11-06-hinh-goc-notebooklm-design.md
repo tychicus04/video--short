@@ -52,6 +52,10 @@ Không còn ảnh tĩnh có máy quay, và không còn hình nào mình tự v�
 - **Lời Việt ngắn hơn:** tua nhanh tối đa 1,5 lần. Nhanh hơn nữa thì bỏ phần đuôi của đoạn nguồn.
 - **Lời Việt dài hơn:** phát tốc độ thường rồi giữ khung cuối. Không làm chậm cả đoạn, vì NotebookLM dựng hình ở đầu câu rồi đứng yên,
   nên phát chậm chỉ làm hình lề mề và giật.
+  - Ngoại lệ: nếu phải giữ khung quá 1,5 s, cho phát chậm tới 1,25 lần trước, rồi mới giữ phần còn lại. Lúc đó hình thường đã vẽ
+    xong, chỉ còn đèn chiếu hay khung hình trôi, nên phát chậm khó thấy hơn một cú dừng hẳn. *(Claude quyết)*
+  - Đo trên 5 video cũ thì 3/5 video có câu thường phải giữ 2,2–2,5 s, và câu chốt của linux-tcp phải giữ 8,9 s. Vì vậy cần quy
+    tắc này.
 - **Không giữ khung gần trắng.** Nếu đoạn nguồn mở bằng giấy trắng hay hình đang hiện dần (logic `BLANK` trong `stills.py`), không
   được kéo dài khúc đó. Nếu phải giữ khung, giữ khung đã vẽ xong.
 
@@ -79,8 +83,12 @@ Watermark góc dưới phải vẫn xóa bằng `render.WATERMARK` như cũ.
 
 `vs-visuals` chỉ còn một việc: vá chữ mâu thuẫn với lời Việt hay brief (`kind: "patch"`). Hai loại `svg` và `photo` bị bỏ.
 
-Câu nào có chỗ vá thì cả đoạn của câu đó dùng **ảnh tĩnh đã vá**, đứng yên, không máy quay, không khoanh. Không vá trên video đang
-chạy, vì miếng vá đứng yên sẽ lộ y như mục 2.
+Câu nào có chỗ vá thì phát video gốc tới khung mà chữ sai bắt đầu hiện, từ đó dùng **ảnh tĩnh đã vá**, đứng yên, không máy quay,
+không khoanh. Nhờ vậy câu vá không thành một khung đứng yên suốt cả câu, và không thành video → đứng → video ở giữa một cảnh.
+Không vá trên video đang chạy, vì miếng vá đứng yên sẽ lộ y như mục 2. *(Claude quyết)*
+
+Câu có vá được miễn luật "giữ khung quá 2 s" ở mục 7, vì sửa chữ sai quan trọng hơn. Hồi trước có video vá 4 câu liền (polymarket,
+~24 s), nên `vs-visuals` phải được dặn chỉ vá chữ **sai về dữ kiện**, không vá chữ chỉ hơi lệch cách nói.
 
 Chữ tiếng Anh không sai (như "Untrusted User", "Update Rails") thì giữ nguyên. Tai đã thấy chuyện này trong bản thử.
 
@@ -124,7 +132,9 @@ Danh sách kiểm mới:
 - **Không giật, không gần trắng:**
   - không khung gần trắng (giữ kiểm 3 cũ);
   - ở chỗ nối hai câu và ở câu tua nhanh nhất thì không giật;
-  - không giữ khung đứng yên quá 2 s.
+  - không giữ khung đứng yên quá 2 s. Luật này chỉ tính phần giữ do mình thêm vào (số liệu lấy từ bước dựng), không tính lúc
+    NotebookLM tự đứng yên, và không tính câu có vá (mục 3). Khi gặp lỗi này: nếu lời Việt bị độn (như lời kêu gọi lặp ở mục 5) thì
+    giao `translator`; còn lại ghi là lưu ý (`agent: "none"`), không mở vòng sửa. *(Claude quyết)*
 - **Khớp lời:** hình của mỗi câu nói về đúng thứ lời đang nói. Chữ Anh trong hình mà trái với lời Việt thì giao `visuals` vá.
 - **Âm thanh và phụ đề:** giữ các kiểm cũ về lặng dài, phụ đề khớp lời, âm lượng.
 
@@ -181,7 +191,14 @@ Không tự dựng lại. Khi quy trình mới chạy ổn, Tai chọn video nà
 ## Kiểm cuối
 
 Dựng lại Rails, BOSSAI và ClawHub trên pve2 từ dữ liệu đã có, không gọi NotebookLM lại. Ghi ra file riêng, **không** đè `final.mp4`
-hay `xuat/`. Đặt cạnh `source.mp4` để Tai xem. Báo thêm:
+hay `xuat/`. Đặt cạnh `source.mp4` để Tai xem.
+
+Cách dựng lại *(Claude quyết)*:
+- Dùng lại `script.vi.json` và giọng đã đọc, không dịch lại, không tốn lượt TTS.
+- Bỏ các mục `svg`/`photo` cũ trong `visuals.json`, giữ chỗ vá.
+- Câu chốt có lời kêu gọi lặp (mục 5) thì cắt giọng ở cuối câu chốt, như bản thử Rails, và ghi rõ trong báo cáo.
+
+Báo thêm:
 - kết luận của `vs-reviewer`;
 - thời gian dựng;
 - chi phí Claude ước cho một video mới (hiện ~$10, riêng hình động, ẩn dụ và nhịp hình đã ~$5,3).
