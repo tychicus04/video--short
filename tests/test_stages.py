@@ -8,9 +8,8 @@ TYP = dict(D)
 TOTAL = sum(D.values())
 AFTER_APPROVE = D["build"] + D["render"] + D["review"] + D["cover"]
 # every step that is always marked, research … review0, for an automatic run
-THROUGH_REVIEW0 = {"research", "brief_check", "source", "fetch", "motion_design", "detect", "transcribe", "text",
-                   "translate", "approve_script", "plates", "motion", "motion_bind", "stills", "tts", "visuals",
-                   "visuals_agent", "timeline", "shots_agent", "shots", "render", "review0"}
+THROUGH_REVIEW0 = {"research", "brief_check", "source", "fetch", "detect", "transcribe", "text", "translate",
+                   "approve_script", "clean", "stills", "tts", "visuals", "visuals_agent", "timeline", "render", "review0"}
 
 
 def by_key(v):
@@ -18,8 +17,9 @@ def by_key(v):
 
 
 def test_stage_of():
-    assert stages.stage_of("motion_design") == "notebooklm"
-    assert stages.stage_of("fix1_motion") == "review"
+    assert stages.stage_of("fetch") == "notebooklm" and stages.stage_of("clean") == "build"
+    assert stages.stage_of("fix1_visuals") == "review"
+    assert stages.stage_of("motion_design") is None and stages.stage_of("shots") is None  # gone with the drawn pictures
     assert stages.stage_of("fixed2") == "review"
     assert stages.stage_of("check") is None
 
@@ -44,7 +44,7 @@ def test_running_notebooklm_two_numbers():
     assert st["brief"]["status"] == "done"
     assert st["notebooklm"]["status"] == "running" and st["notebooklm"]["seconds"] == 670
     assert st["notebooklm"]["overdue"] is False
-    assert [s["step"] for s in st["notebooklm"]["steps"]] == ["source", "fetch", "motion_design"]
+    assert [s["step"] for s in st["notebooklm"]["steps"]] == ["source", "fetch"]
     assert st["subtitles"]["status"] == "next"
     assert v["current"] == 2
     assert v["eta"] == {"stop": "Duyệt bản dịch", "until_stop": (900 - 670) + 180 + 240, "after_stop": AFTER_APPROVE}
@@ -60,7 +60,7 @@ def test_overdue_stage_floors_and_flags():
 
 
 def test_waiting_for_translation_is_you():
-    done = {"research", "brief_check", "source", "fetch", "motion_design", "detect", "transcribe", "text", "translate"}
+    done = {"research", "brief_check", "source", "fetch", "detect", "transcribe", "text", "translate"}
     v = stages.view("wait_script", True, done, {}, TYP, now=0)
     assert by_key(v)["approve"]["status"] == "you"
     assert v["current"] == 5
@@ -77,16 +77,16 @@ def test_brief_stop_when_not_auto():
 
 def test_fix_round_shows_review_not_render():
     now = 1000
-    v = stages.view("running", True, THROUGH_REVIEW0 - {"render"}, {"fix1_motion": {"start": now - 30}}, TYP, now)
+    v = stages.view("running", True, THROUGH_REVIEW0 - {"render"}, {"fix1_visuals": {"start": now - 30}}, TYP, now)
     st = by_key(v)
     assert st["review"]["status"] == "running"
     assert st["render"]["status"] == "done"
 
 
 def test_fix_round_rerun_stays_on_review():
-    # fix1_motion is marked, then `vshort motion` and render run again: still "Soát và sửa", never back to stage 7 or 8
-    times = {"review0": {"start": 0, "end": 100}, "fix1_motion": {"start": 110, "end": 200}, "motion": {"start": 210}}
-    v = stages.view("running", True, (THROUGH_REVIEW0 - {"render"}) | {"fix1_motion"}, times, TYP, now=300)
+    # fix1_visuals is marked, then `vshort visuals` and render run again: still "Soát và sửa", never back to stage 7 or 8
+    times = {"review0": {"start": 0, "end": 100}, "fix1_visuals": {"start": 110, "end": 200}, "visuals": {"start": 210}}
+    v = stages.view("running", True, (THROUGH_REVIEW0 - {"render"}) | {"fix1_visuals"}, times, TYP, now=300)
     st = by_key(v)
     assert st["review"]["status"] == "running"
     assert st["render"]["status"] == "done" and st["build"]["status"] == "done"
@@ -95,7 +95,7 @@ def test_fix_round_rerun_stays_on_review():
 
 def test_translator_resume_shows_build():
     # Tai took the translator's proposal: the voice and pictures are made again before a fresh review
-    again = {"tts", "timeline", "shots", "render", "motion", "motion_bind", "stills", "visuals"}
+    again = {"tts", "timeline", "render", "stills", "visuals"}
     done = (THROUGH_REVIEW0 - again) | {"fix1_translator", "fixed1"}
     times = {"fix1_translator": {"start": 100, "end": 200}, "tts": {"start": 500}}
     st = by_key(stages.view("running", True, done, times, TYP, now=600))
@@ -103,25 +103,10 @@ def test_translator_resume_shows_build():
     assert st["review"]["status"] == "next"
 
 
-def test_canvas_agent_alone_keeps_translate():
-    # NotebookLM, subtitles and the translation are done; only the canvas agent (started with NotebookLM) is left
-    done = {"research", "brief_check", "source", "fetch", "detect", "transcribe", "text", "translate"}
-    times = {"motion_design": {"start": 5}, "source": {"start": 0, "end": 5}, "fetch": {"start": 10, "end": 900},
-             "translate": {"start": 1200, "end": 1400}}
-    before = stages.view("running", True, done - {"translate"}, times | {"translate": {"start": 1200}}, TYP, now=1399)
-    v = stages.view("running", True, done, times, TYP, now=2000)
-    assert by_key(v)["translate"]["status"] == "running"
-    assert by_key(v)["notebooklm"]["seconds"] == 5 + 890  # motion_design is not NotebookLM's time
-    assert v["percent"] >= before["percent"]
-    # no number frozen at "còn 1 phút" while only the canvas agent works: unknown, and the step shows why
-    assert v["eta"]["until_stop"] is None and v["eta"]["stop"] == "Duyệt bản dịch"
-    assert {"step": "motion_design", "label": "Vẽ hình động từ brief", "status": "running"} in by_key(v)["translate"]["steps"]
-
-
 def test_rerun_of_an_earlier_step_does_not_walk_back():
-    # render answered 2: the motion check runs again while render is still open; the page stays at "Dựng video"
-    done = THROUGH_REVIEW0 - {"render", "review0", "motion"}
-    times = {"timeline": {"start": 0, "end": 10}, "render": {"start": 20}, "motion": {"start": 200}}
+    # timeline answered 2: the voice is read again while render is still open; the page stays at "Dựng video"
+    done = THROUGH_REVIEW0 - {"render", "review0", "tts"}
+    times = {"timeline": {"start": 0, "end": 10}, "render": {"start": 20}, "tts": {"start": 200}}
     v = stages.view("running", True, done, times, TYP, now=210)
     assert by_key(v)["render"]["status"] == "running" and by_key(v)["build"]["status"] == "done"
 
@@ -165,7 +150,7 @@ def test_history_reads_recent_done_runs(tmp_path):
 
 
 def test_fix_round_without_a_fix_step_is_review():
-    # a motion fix with no canvas never starts fix1_motion: auto.json's round says the video is in round 1
+    # a round whose fix has not started has no fix1_* step yet: auto.json's round says the video is in round 1
     done = THROUGH_REVIEW0 - {"render"}
     times = {"render": {"start": 50}}
     assert by_key(stages.view("running", True, done, times, TYP, now=60, fix_round=1))["review"]["status"] == "running"
@@ -174,15 +159,7 @@ def test_fix_round_without_a_fix_step_is_review():
     assert st["render"]["status"] == "running" and st["review"]["status"] == "next"
 
 
-def test_shots_steps_belong_to_the_render_stage():
-    assert [stages.stage_of(s) for s in ("timeline", "shots_agent", "shots", "render")] == ["render"] * 4
-    assert stages.DEFAULT_SECONDS["render"] == 600
-    assert "Nhịp hình" in next(what for k, _, what in stages.STAGES if k == "render")
-    assert stages._label("shots_agent") == "Lên nhịp hình" and stages._label("shots") == "Nhịp hình"
-    assert stages._label("fix1_shots") == "Sửa vòng 1: nhịp hình" and stages.stage_of("fix1_shots") == "review"
-    # the panel lists them in the order auto does them, with the agent running
-    # `vshort shots --prep` opens and closes the "shots" timer before the agent starts: only the agent is running
-    times = {"timeline": {"start": 0, "end": 10}, "shots": {"start": 11, "end": 12}, "shots_agent": {"start": 20}}
-    v = stages.view("running", True, THROUGH_REVIEW0 - {"shots_agent", "shots", "render", "review0"}, times, TYP, now=60)
-    assert [(s["label"], s["status"]) for s in by_key(v)["render"]["steps"]] == [
-        ("Dòng thời gian", "done"), ("Lên nhịp hình", "running"), ("Nhịp hình", "next"), ("Dựng video", "next")]
+def test_the_render_stage_says_what_it_does_now():
+    assert [stages.stage_of(s) for s in ("timeline", "render")] == ["render"] * 2
+    assert "Co giãn" in next(what for k, _, what in stages.STAGES if k == "render")
+    assert "xóa phụ đề Anh" in next(what for k, _, what in stages.STAGES if k == "build")

@@ -28,7 +28,7 @@ export function ProgressHeader({ view, row }: { view: StageView; row: Row }) {
   const ran = elapsed(view)
   const stopped = row.state === 'error' || row.state === 'dead'
   // null: only the canvas agent is still at work, past its usual time (vshort/stages.py)
-  const left = until_stop == null ? 'chưa ước được, chờ hình động vẽ xong' : `còn ${fmtLeft(until_stop)}`
+  const left = until_stop == null ? 'chưa ước được' : `còn ${fmtLeft(until_stop)}`
   return (
     <section aria-label="Tiến độ chung" className="flex flex-wrap items-center gap-6 rounded-lg bg-card p-6">
       <div

@@ -109,3 +109,14 @@ def test_render_pieces_failure_keeps_the_previous_video(seconds_video, tmp_path)
         render_pieces([Piece(1, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 0.0)], seconds_video, [], ass, tmp_path / "nope.wav", 1.0, out,
                       outro=None)
     assert out.read_bytes() == b"previous good video" and not (tmp_path / "o.tmp.mp4").exists()
+
+
+def test_the_reviewer_quotes_the_subtitle_place_the_render_uses():
+    from pathlib import Path
+
+    from vshort import render, textfit
+    md = (Path(__file__).resolve().parent.parent / "claude" / "agents" / "vs-reviewer.md").read_text(encoding="utf-8")
+    assert f"đáy hộp y≈{render.SUB_BOTTOM}" in md and f"y {textfit.UI_BOTTOM}" in md and f"x {textfit.UI_RIGHT}" in md
+    for agent in ('"visuals"', '"translator"', '"none"'):  # the agents auto.read_review accepts, and no other
+        assert agent in md
+    assert '"motion"' not in md and '"shots"' not in md

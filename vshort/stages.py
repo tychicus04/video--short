@@ -15,8 +15,8 @@ STAGES = [
     ("subtitles", "Lấy phụ đề", "Tách và chép đúng từng chữ phụ đề tiếng Anh"),
     ("translate", "Dịch", "Dịch sát sang tiếng Việt, chia cụm phụ đề, tự kiểm"),
     ("approve", "Duyệt bản dịch", "Máy dừng ở đây chờ bạn đọc và duyệt"),
-    ("build", "Giọng đọc và hình", "Gemini đọc, hình động, ảnh tĩnh, tư liệu thật"),
-    ("render", "Dựng video", "Nhịp hình, ghép giọng, hình, phụ đề, outro"),
+    ("build", "Giọng đọc và hình", "Gemini đọc, xóa phụ đề Anh từng khung, vá chữ sai"),
+    ("render", "Dựng video", "Co giãn video gốc theo lời, ghép giọng, phụ đề, outro"),
     ("review", "Soát và sửa", "Xem từng khung, sửa tối đa 2 vòng"),
     ("cover", "Ảnh bìa và xuất", "Tiêu đề đăng, ảnh bìa, prompt Gemini, kéo về Mac"),
 ]
@@ -24,29 +24,24 @@ KEYS = [k for k, _, _ in STAGES]
 STEPS_OF = {
     "research": ("research",),
     "brief": ("approve_brief", "brief_check"),
-    "notebooklm": ("source", "fetch", "motion_design"),
+    "notebooklm": ("source", "fetch"),
     "subtitles": ("detect", "transcribe", "text"),
     "translate": ("translate",),
     "approve": ("approve_script",),
-    "build": ("plates", "motion", "motion_bind", "stills", "visuals", "visuals_agent", "tts"),
-    "render": ("timeline", "shots_agent", "shots", "render"),
-    "review": (),  # review0, fix1_motion, fixed1, review1… (_REVIEW)
+    "build": ("clean", "stills", "visuals", "visuals_agent", "tts"),
+    "render": ("timeline", "render"),
+    "review": (),  # review0, fix1_visuals, fixed1, review1… (_REVIEW)
     "cover": ("cover",),
 }
 # seconds; guessed from cost.json of earlier runs and by hand, until five finished runs have times.json
 DEFAULT_SECONDS = {"research": 480, "brief": 300, "notebooklm": 900, "subtitles": 180, "translate": 240, "approve": 0,
-                   "build": 540, "render": 600, "review": 720, "cover": 60}
+                   "build": 540, "render": 120, "review": 720, "cover": 60}  # render: one ffmpeg run since 06/11
 FLOOR = 60  # the least time left a running stage shows: never "0 phút" nor less than nothing
 HISTORY = 5  # finished runs the typical time is the median of
-# the canvas agent starts with NotebookLM and often outlives the translation: shown under NotebookLM, but neither
-# counted in its time nor taken as the stage the video is at
-SIDE = {"motion_design"}
 _REVIEW = re.compile(r"(review|fix|fixed)\d.*")
 _ROUND = re.compile(r"fix(\d+)_")
-WHAT_FIX = {"motion": "hình động", "visuals": "tư liệu", "shots": "nhịp hình", "translator": "bản dịch"}
-LABELS = {"brief_check": "Agent soát brief", "motion_design": "Vẽ hình động từ brief",
-          "motion_bind": "Gắn hình động vào lời", "visuals_agent": "Chọn tư liệu thật", "shots_agent": "Lên nhịp hình",
-          "cover": "Ảnh bìa, tiêu đề, xuất"}
+WHAT_FIX = {"visuals": "chữ sai", "translator": "bản dịch"}
+LABELS = {"brief_check": "Agent soát brief", "visuals_agent": "Soát chữ sai trong hình", "cover": "Ảnh bìa, tiêu đề, xuất"}
 
 
 def stage_of(step: str) -> str | None:
@@ -78,7 +73,7 @@ def _spans(times: dict, key: str, now: float | None = None) -> list[tuple[float,
     """The stage's timed steps as intervals; an open one ends at `now`, or is left out when now is None."""
     out = []
     for step, t in times.items():
-        if step in SIDE or stage_of(step) != key or "start" not in t:
+        if stage_of(step) != key or "start" not in t:
             continue
         if "end" in t:
             out.append((t["start"], t["end"]))
@@ -115,7 +110,7 @@ def history(runs_dir: Path) -> list[dict]:
 
 
 def _needed(auto: bool) -> list[str]:
-    """The steps a run always marks, in order (motion_bind, visuals_agent… only sometimes)."""
+    """The steps a run always marks, in order (visuals_agent, brief_check… only sometimes)."""
     from vshort.queue import STEPS
     steps = [s for s, _ in STEPS] + ["cover"]
     return ["brief_check" if auto and s == "approve_brief" else s for s in steps]
@@ -128,17 +123,17 @@ def _current(state: str, auto: bool, done: set[str], times: dict, fix_round: int
         return KEYS.index("approve")
     if state not in ("running", "error", "dead"):
         return None
-    # auto.json's round too: a motion fix with no canvas never starts a fix<r>_* step
+    # auto.json's round too: a round whose fix has not started yet has no fix<r>_* step
     rounds = {m[1] for s in (*done, *times) if (m := _ROUND.match(s))} | ({str(fix_round)} if fix_round > 0 else set())
     if any(f"fixed{r}" not in done for r in rounds):
-        # a fix round reruns motion, visuals and render: the video is still at "Soát và sửa", not back at stage 7
+        # a fix round reruns visuals and render: the video is still at "Soát và sửa", not back at stage 7
         return KEYS.index("review")
-    staged = {s: t for s, t in times.items() if "start" in t and s not in SIDE and stage_of(s)}
+    staged = {s: t for s, t in times.items() if "start" in t and stage_of(s)}
     if open_ := [KEYS.index(stage_of(s)) for s, t in staged.items() if "end" not in t]:
-        # the furthest stage with a step open: a short rerun of an earlier step (the motion check after render
-        # answered 2, the voice after timeline did) does not walk the page back
+        # the furthest stage with a step open: a short rerun of an earlier step (the voice after timeline answered 2)
+        # does not walk the page back
         return max(open_)
-    if staged:  # between two steps, or only the canvas agent still at work: the stage of the last step started
+    if staged:  # between two steps: the stage of the last step started
         return KEYS.index(stage_of(max((t["start"], s) for s, t in staged.items())[1]))
     # no times (a run from before times.json): the first step not done
     return KEYS.index(next((stage_of(s) for s in _needed(auto) if s not in done), "cover"))
@@ -176,12 +171,6 @@ def view(state: str, auto: bool, done: set[str], times: dict, typ: dict[str, flo
         else:
             seconds.append(None)
 
-    open_side = [s for s in SIDE if "start" in times.get(s, {}) and "end" not in times[s]]
-    # only the canvas agent is still at work (it outlived NotebookLM, subtitles and the translation, so it is already
-    # past its usual time): no number, rather than "còn 1 phút" frozen for as long as it takes
-    waiting_side = cur is not None and status[cur] == "running" and bool(open_side) and not any(
-        "end" not in t for s, t in times.items() if "start" in t and s not in SIDE and stage_of(s) == KEYS[cur])
-
     def left(i: int) -> float:
         k, st, sec = KEYS[i], status[i], seconds[i]
         if st in ("done", "you"):
@@ -195,10 +184,10 @@ def view(state: str, auto: bool, done: set[str], times: dict, typ: dict[str, flo
     if state == "done":
         eta = {"stop": None, "until_stop": None, "after_stop": None}
     elif stop is None:
-        eta = {"stop": None, "until_stop": None if waiting_side else round(sum(left(i) for i in range(n))),
+        eta = {"stop": None, "until_stop": round(sum(left(i) for i in range(n))),
                "after_stop": None}
     else:
-        eta = {"stop": STAGES[stop][1], "until_stop": None if waiting_side else round(sum(left(i) for i in range(stop))),
+        eta = {"stop": STAGES[stop][1], "until_stop": round(sum(left(i) for i in range(stop))),
                "after_stop": round(sum(typ[k] for k in KEYS[stop + 1:]))}
 
     total = sum(typ[k] for k in KEYS)
@@ -213,7 +202,5 @@ def view(state: str, auto: bool, done: set[str], times: dict, typ: dict[str, flo
         out.append({"key": k, "label": label, "what": what, "status": status[i],
                     "seconds": None if sec is None else round(sec), "typical": round(typ[k]),
                     "overdue": status[i] == "running" and sec is not None and sec > typ[k],
-                    "steps": _steps(k, auto, done, times) + (
-                        [{"step": s, "label": _label(s), "status": "running"} for s in open_side if stage_of(s) != k]
-                        if waiting_side else []) if status[i] == "running" else []})
+                    "steps": _steps(k, auto, done, times) if status[i] == "running" else []})
     return {"stages": out, "current": cur, "percent": percent, "eta": eta}

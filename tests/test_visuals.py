@@ -183,3 +183,11 @@ def test_appear_time_when_text_is_there_from_the_start(make_video, tmp_path):
     from vshort.visuals import appear_time
     v = make_video(tmp_path, scenes=[(0, 2, "drawn")], captions=[])
     assert appear_time(v, 1.2, 1.8, (200, 300, 520, 700), frame_at(v, 1.5, gray=True)) == 1.2
+
+
+def test_vs_visuals_quotes_the_subtitle_band_the_code_checks():
+    from pathlib import Path
+
+    from vshort.visuals import SUBTITLE
+    md = (Path(__file__).resolve().parent.parent / "claude" / "agents" / "vs-visuals.md").read_text(encoding="utf-8")
+    assert f"vùng phụ đề y {SUBTITLE[1]}–{SUBTITLE[3]}" in md and '"kind": "patch"' in md and "svg" not in md

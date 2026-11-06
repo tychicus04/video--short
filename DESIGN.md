@@ -1,7 +1,8 @@
 # Video Short – quy trình lồng tiếng khớp nhịp (thiết kế)
 
-> Bổ sung: `docs/superpowers/specs/2026-10-31-hinh-theo-loi-design.md` (hình theo lời, tư liệu thật, vá chữ sai) và
-> `docs/superpowers/specs/2026-11-01-hinh-dong-co-che-design.md` (hình động vẽ tay cho đoạn giải thích cơ chế).
+> Bổ sung: `docs/superpowers/specs/2026-10-31-hinh-theo-loi-design.md` (hình theo lời, vá chữ sai) và
+> `docs/superpowers/specs/2026-11-06-hinh-goc-notebooklm-design.md` (từ 06/11/2026: hình là chính video NotebookLM co giãn theo
+> lời Việt; hình động vẽ tay, ẩn dụ, nhịp hình, thẻ tư liệu và máy quay trên ảnh tĩnh đã bỏ).
 > Chỗ nào khác tài liệu này thì theo tài liệu đó: bước 4 "Khớp giây" thành "Hình theo lời", không còn ép câu Việt vừa
 > khung giây tiếng Anh, giọng giữ tốc độ gốc, hình minh họa có thể được vá chữ hoặc thay bằng tư liệu thật.
 
