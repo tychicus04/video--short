@@ -1098,3 +1098,12 @@ def test_shots_judges_the_camera_that_pulls_back_before_the_cut(tmp_path, capsys
     code, out = _shots(tmp_path, plan, capsys)
     assert code == 2 and "câu 1 nhịp 3" in out.err and "thanh trên" in out.err  # covered only once the camera is back
     assert list(_ok_lines(tmp_path)) == []
+
+
+def test_clean_cmd_writes_clean_mp4_and_its_summary(make_video, tmp_path):
+    make_video(tmp_path, scenes=[(0, 1, "#F3EFE6")], captions=[]).rename(tmp_path / "source.mp4")
+    (tmp_path / "captions.json").write_text("[]")
+    assert main(["clean", str(tmp_path)]) == 0
+    assert (tmp_path / "clean.mp4").exists() and Run(tmp_path).done("clean")
+    assert json.loads((tmp_path / "clean.json").read_text())["boxes"] == []
+

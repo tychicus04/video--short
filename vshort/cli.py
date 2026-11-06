@@ -17,7 +17,7 @@ from vshort import auto, cards, cms, cover, motion, publish, render, shapes, sho
 from vshort.captions import Fragment, detect_fragments, write_sheets
 from vshort.fit import Placement, build_narration, phrase_fracs, phrase_times, sequence, total
 from vshort.media import frame_at, probe
-from vshort.plates import Plate, build_plates, scene_cuts
+from vshort.plates import Plate, build_plates, clean, scene_cuts
 from vshort.render import OUTRO, build_ass, clean_video, export_outro, render_video, segments
 from vshort.run import Run, config
 from vshort.script import (Sentence, check_brief, check_numbers, check_script, check_style, group_sentences,
@@ -164,15 +164,24 @@ def cmd_plates(a) -> int:
     return OK
 
 
+def cmd_clean(a) -> int:
+    run = Run(a.run)
+    captions = [Fragment(**f) for f in run.read("captions.json")]
+    info = clean(run.file("source.mp4"), captions, run.file("clean.mp4"), ROOT / "models" / "big-lama.pt")
+    run.write("clean.json", info)
+    print(f"clean.mp4: {len(info['boxes'])} dải phụ đề, "
+          f"{sum(len(b['plates']) for b in info['boxes'])} lần vá, {info['seconds']:.0f} s")
+    run.mark("clean")
+    return OK
+
+
 def cmd_stills(a) -> int:
     run = Run(a.run)
-    if not run.file("plates/plates.json").exists():  # an empty list is fine: no captions to remove
-        _err("thiếu plates/plates.json — chạy `vshort plates` trước")
-        return BAD_INPUT
-    plates = [Plate(**p) for p in run.read("plates/plates.json")]
-    lines = merged(_sentences(run), run.read("script.vi.json"))
     clean = run.file("clean.mp4")
-    clean_video(run.file("source.mp4"), plates, run.file("plates"), lines[-1].end, clean)
+    if not clean.exists():
+        _err("thiếu clean.mp4 (chạy `vshort clean`)")
+        return BAD_INPUT
+    lines = merged(_sentences(run), run.read("script.vi.json"))
     cuts = scene_cuts(clean)
     stop = probe(run.file("source.mp4")).duration - NLM_OUTRO
     out = run.file("stills")
@@ -943,6 +952,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--prompt", help="video description passed to NotebookLM")
     p.set_defaults(fn=cmd_fetch)
     for name, fn in [("detect", cmd_detect), ("text", cmd_text), ("check", cmd_check), ("plates", cmd_plates),
+                     ("clean", cmd_clean),
                      ("tts", cmd_tts), ("stills", cmd_stills), ("motion", cmd_motion), ("visuals", cmd_visuals), ("shots", cmd_shots),
                      ("timeline", cmd_timeline),
                      ("render", cmd_render), ("status", cmd_status), ("cover", cmd_cover)]:

@@ -39,10 +39,11 @@ def test_scene_of():
 
 def test_stills_cmd_one_still_per_spoken_line(make_video, tmp_path):
     run = tmp_path / "run"
-    (run / "plates").mkdir(parents=True)
+    run.mkdir()
     outro = [(3, 6.2, "#202020")]  # NotebookLM's logo after the last line
     shutil.copy(make_video(tmp_path, scenes=[(0, 3, "drawn"), *outro], captions=[]), run / "source.mp4")
-    (run / "plates" / "plates.json").write_text("[]")
+    (run / "captions.json").write_text("[]")
+    assert main(["clean", str(run)]) == 0
     (run / "sentences.en.json").write_text(json.dumps(
         [{"id": i, "start": i - 1, "end": i, "en": "x."} for i in (1, 2, 3)]))
     (run / "script.vi.json").write_text(json.dumps(
@@ -68,8 +69,7 @@ def test_plate_applies_from_its_first_frame(make_video, tmp_path):
     assert frame_at(out, 2 / 30)[125, 125].min() > 200 and frame_at(out, 1 / 30)[125, 125].max() < 60
 
 
-def test_stills_cmd_refuses_to_run_without_plates(tmp_path, capsys):
+def test_stills_cmd_refuses_to_run_without_clean_video(tmp_path, capsys):
     assert main(["stills", str(tmp_path)]) == 2  # the old English captions would be baked into every still
-    err = capsys.readouterr().err
-    assert "thiếu plates/plates.json" in err and "chạy `vshort plates` trước" in err
-    assert not (tmp_path / "clean.mp4").exists() and not Run(tmp_path).done("stills")
+    assert capsys.readouterr().err == "thiếu clean.mp4 (chạy `vshort clean`)\n"
+    assert not Run(tmp_path).done("stills")

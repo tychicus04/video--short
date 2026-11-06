@@ -27,6 +27,14 @@ def write_silence(path: Path, seconds: float) -> None:
 
 
 def _frame(kind: str, t: float, t0: float, t1: float) -> np.ndarray:
+    if kind.startswith("fade:"):  # "fade:A:B": scene A dissolving into scene B over the whole span
+        a, b = kind.split(":")[1:]
+        w = (t - t0) / (t1 - t0)
+        return ((1 - w) * _frame(a, t, t0, t1) + w * _frame(b, t, t0, t1)).round().astype(np.uint8)
+    if kind == "mark":  # cream background, a dark mark where NotebookLM's watermark sits
+        f = np.full((H, W, 3), (243, 239, 230), np.uint8)
+        f[1238:1258, 560:680] = 30
+        return f
     if kind == "jitter":  # cream background, an art line flickering across the ink threshold (compression noise)
         f = np.full((H, W, 3), (243, 239, 230), np.uint8)
         f[860:1000, 640:644] = 80 if round(t * 30) % 2 else 100

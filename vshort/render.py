@@ -15,7 +15,7 @@ from vshort.cards import Card, cap as card_cap
 from vshort.fit import Placement
 from vshort.media import FF, iter_frames, probe
 from vshort.motion import Scene
-from vshort.plates import Plate
+from vshort.plates import WATERMARK, Plate
 from vshort.textfit import FONTS, MAX_TEXT_W, UI_BOTTOM, text_width
 
 W, H = 720, 1280
@@ -29,7 +29,6 @@ LINE_H, CAP_EM, PAD_X, PAD_Y = 62, 50, 22, 12
 SUB_BOTTOM = UI_BOTTOM - 11  # every caption box stands on this line, clear of the platforms' description (was centred
 # at 1150, half under it); a two-line title grows upwards
 INK, BOX = "3A3434", "D6DEE2"  # ASS BGR, sampled from NotebookLM's captions: dark grey ink on a light grey box
-WATERMARK = "delogo=x=524:y=1232:w=180:h=32"
 LOGO = Path(__file__).resolve().parent.parent / "assets" / "brand" / "anm-logo.png"
 SHIELD_W = 185  # the logo's shield ends here; its words start at x 188
 OUTRO = LOGO.with_name("anm-outro.mp4")  # appended to every video; `vshort outro` redraws it, or drop in any 720x1280 clip
