@@ -242,23 +242,39 @@ def _reference_problems(it: dict, ids: set[int], run_dir: Path) -> list[str]:
 
 def validate(items: list[dict], ids: set[int], run_dir: Path) -> list[str]:
     """Every problem in visuals.json, one line each; [] when it is safe to build frames."""
-    probs, refs = [], {}
+    probs = []
     for n, it in enumerate(items, 1):
         if not isinstance(it, dict):
             probs.append(f"mục {n}: phải là object JSON")
             continue
         kind = it.get("kind")
-        if kind == "patch":
-            found = _patch_problems(it, ids)
-        elif kind in ("svg", "photo"):
-            found = _reference_problems(it, ids, run_dir)
-            if _int(it.get("id")):
-                if it["id"] in refs:
-                    found.append(f"id {it['id']} đã có hình ở mục {refs[it['id']]}")
-                refs.setdefault(it["id"], n)
-        else:
-            found = [f"kind {kind!r} không hợp lệ (patch, svg hoặc photo)"]
-        if kind in ("patch", "svg", "photo") and not (isinstance(it.get("note"), str) and it["note"].strip()):
-            found.append("thiếu note: một dòng ghi vì sao vá, hoặc hình vẽ lại gì và đã bỏ gì")
+        if kind != "patch":  # the video plays NotebookLM's own pictures: no reference cards, no pencil photos
+            probs.append(f"visuals.json mục {n} ({kind}): kind {kind!r} không còn dùng: chỉ còn 'patch' (vá chữ sai)")
+            continue
+        found = _patch_problems(it, ids)
+        if not (isinstance(it.get("note"), str) and it["note"].strip()):
+            found.append("thiếu note: một dòng ghi vì sao vá")
         probs += [f"visuals.json mục {n} ({kind}): {p}" for p in found]
     return probs
+
+
+SAME = 6  # mean grey difference under which a box already looks as in the still: the wrong text is on screen
+APPEAR = 0.75  # the text has started to show once the box is a quarter of the way from how it began to the still
+
+
+def appear_time(video: Path, a: float, b: float, box: tuple[int, int, int, int], still: np.ndarray) -> float:
+    """When the text a patch covers starts to show in `video` between a and b (s): `still` is the grey frame it was
+    read from. The patched still replaces the video from then on, so the wrong text is never seen."""
+    from vshort.media import iter_frames
+    x0, y0, x1, y1 = box
+    want = still[y0:y1, x0:x1].astype(np.int16)
+    first = None
+    for t, f in iter_frames(video, fps=10, start=a, end=b):
+        d = float(np.abs(f[y0:y1, x0:x1].astype(np.int16) - want).mean())
+        if first is None:
+            if d <= SAME:
+                return a
+            first = d
+        elif d <= APPEAR * first:
+            return max(a, t - 0.1)
+    return b

@@ -179,6 +179,8 @@ def _item(**kw):
 @pytest.mark.parametrize("item, needle", [
     ("not an object", "object"),
     ({"kind": "gif"}, "gif"),
+    (_item(), "không còn dùng"),  # reference cards and pencil photos are gone: only patches are left
+    ({**_item(), "kind": "svg"}, "không còn dùng"),
     ({"kind": "patch", "ids": [], "box": [0, 0, 10, 10], "text": "x"}, "ids"),
     ({"kind": "patch", "ids": [True], "box": [0, 0, 10, 10], "text": "x"}, "ids"),
     ({"kind": "patch", "ids": [7], "box": [0, 0, 300, 50], "text": "x"}, "[7]"),
@@ -193,20 +195,6 @@ def _item(**kw):
     ({"kind": "patch", "ids": [1], "box": [0, 0, 300, 50], "text": "x", "bold": "yes"}, "bold"),
     ({"kind": "patch", "ids": [1], "box": [0, 0, 300, 50], "text": "tin-tuc.com"}, ".example"),
     ({"kind": "patch", "ids": [1], "box": [0, 0, 300, 50], "text": "https://cai-dat.vn/tin"}, ".example"),
-    (_item(file="../x.jpg"), "visuals/"),
-    (_item(file="visuals/missing.jpg"), "visuals/missing.jpg"),
-    (_item(file="/etc/passwd"), "visuals/"),
-    (_item(file="visuals/a\0.jpg"), "không hợp lệ"),
-    (_item(source="file:///etc/passwd"), "source"),
-    (_item(accessed="yesterday"), "accessed"),
-    (_item(credit=" "), "credit"),
-    (_item(credit="Nguồn:\nA"), "credit"),
-    (_item(credit="Nguồn: " + "rất dài " * 20), "credit"),
-    (_item(id=7), "7"),
-    ({**_item(), "note": ""}, "note"),
-    ({**_item(), "note": "  "}, "note"),
-    ({k: v for k, v in _item().items() if k != "note"}, "note"),
-    ({"kind": "svg", "id": 1, "file": "visuals/1.jpg", "source": "https://a.example/x", "accessed": "2026-10-31"}, "note"),
     ({"kind": "patch", "ids": [1], "box": [0, 0, 300, 50], "text": "x", "note": ""}, "note"),
     ({"kind": "patch", "ids": [1], "box": [0, 0, 300, 50], "text": "x", "note": 5}, "note"),
     ({"kind": "patch", "ids": [1], "box": [0, 0, 300, 50], "text": "Tải tại apple.com"}, ".example"),
@@ -229,18 +217,30 @@ def test_validate_reports(item, needle, tmp_path):
     assert probs and needle in " ".join(probs), probs
 
 
-def test_validate_accepts_good_items_and_flags_duplicate_references(tmp_path):
-    (tmp_path / "visuals").mkdir()
-    (tmp_path / "visuals" / "1.jpg").write_bytes(b"x")
+def test_validate_accepts_good_patches(tmp_path):
     patch = {"kind": "patch", "ids": [1, 2], "box": [96, 96, 404, 144], "text": "tin-tuc.example", "note": "địa chỉ sai"}
-    assert validate([patch, _item()], {1, 2}, tmp_path) == []  # a patch plus a reference on one line is fine
+    assert validate([patch], {1, 2}, tmp_path) == []
     for text in ("tin-tuc.test", "mạng.invalid", "tin-tuc.example.", "Tải tại tin-tuc.example", "iOS 26.3.1", "26.3.1+",
                  "OS Kernel", "payload.dylib", "WebKit.framework", "update.zip", "“tin-tuc.example”",
                  "Link:tin-tuc.test"):
         assert validate([{**patch, "text": text, "bold": True}], {1, 2}, tmp_path) == []
-    assert any("1" in p for p in validate([_item(), _item()], {1}, tmp_path))
 
 
 def test_validate_prints_the_box_and_the_text_problem_together(tmp_path):
     probs = validate([{"kind": "patch", "ids": [1], "box": [0, 0, 900, 50], "text": "tin-tuc.com"}], {1}, tmp_path)
     assert any("900" in p for p in probs) and any(".example" in p for p in probs)
+
+
+def test_appear_time_when_text_is_drawn_mid_line(make_video, tmp_path):
+    from vshort.media import frame_at
+    from vshort.visuals import appear_time
+    v = make_video(tmp_path, scenes=[(0, 2, "drawn")], captions=[])  # cream page; the dark bar (the wrong text) from 1 s
+    still = frame_at(v, 1.5, gray=True)
+    assert appear_time(v, 0.0, 1.8, (200, 300, 520, 700), still) == pytest.approx(0.9, abs=0.1)
+
+
+def test_appear_time_when_text_is_there_from_the_start(make_video, tmp_path):
+    from vshort.media import frame_at
+    from vshort.visuals import appear_time
+    v = make_video(tmp_path, scenes=[(0, 2, "drawn")], captions=[])
+    assert appear_time(v, 1.2, 1.8, (200, 300, 520, 700), frame_at(v, 1.5, gray=True)) == 1.2

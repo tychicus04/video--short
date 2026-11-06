@@ -11,6 +11,7 @@ import zlib
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+import numpy as np
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 from vshort import auto, cards, cms, cover, motion, publish, render, shapes, shots, sound
@@ -26,7 +27,7 @@ from vshort.stills import NLM_OUTRO, _label, contact_sheet, grid_image, pick_sti
 from vshort.textfit import FONTS
 from vshort.tts import (Clip, QuotaExceeded, clip_paths, gemini_speaker, load_api_key, synth_lines, synth_script,
                         zerotts_speaker)
-from vshort.visuals import SUBTITLE, patch_text, pencil, svg_frame, ui_problems, validate
+from vshort.visuals import SUBTITLE, appear_time, patch_text, pencil, svg_frame, ui_problems, validate
 
 ROOT = Path(__file__).resolve().parent.parent
 OK, FAILED, BAD_INPUT, AUTH, QUOTA = 0, 1, 2, 4, 75
@@ -322,6 +323,8 @@ def cmd_motion(a) -> int:
 
 
 def cmd_visuals(a) -> int:
+    """The patched stills: frames/<id>.png for every line with a wrong text, and frames.json saying from when (source
+    seconds) each replaces the video; every other line plays the video."""
     run = Run(a.run)
     stills = run.read("stills.json")
     src = run.file("visuals.json")
@@ -333,55 +336,41 @@ def cmd_visuals(a) -> int:
     if not isinstance(items, list):
         _err("visuals.json phải là một danh sách các mục")
         return BAD_INPUT
-    ids = {s["id"] for s in stills}
-    probs = validate(items, ids, run.path)
-    if (doc := _motion(run)) is BAD_JSON or (bind := _bind(run) if doc is not None else None) is BAD_JSON:
-        return BAD_INPUT
-    probs += motion.clashes(items, motion.lines(bind))
+    probs = validate(items, {s["id"] for s in stills}, run.path)
     probs += [f"thiếu stills/{s['id']}.png (chạy lại `vshort stills`)" for s in stills
               if not run.file(f"stills/{s['id']}.png").exists()]
-    refs = {}
-    for n, it in enumerate(items, 1):  # render every reference whose own item is fine, so a corrupt file shows up too
-        if validate([it], ids, run.path) or it["kind"] == "patch":
-            continue
-        try:
-            refs[it["id"]] = svg_frame(run.file(it["file"])) if it["kind"] == "svg" else pencil(
-                ImageOps.exif_transpose(Image.open(run.file(it["file"]))), it["credit"])
-        except Exception as e:  # agent-made file: any decoder error is a bad item
-            probs.append(f"visuals.json mục {n} ({it['kind']}): không đọc/vẽ được {it['file']}: {e}")
-            continue
-        if it["kind"] == "svg":  # a photo is laid out clear of them by pencil()
-            probs += [f"visuals.json mục {n} (svg): {p}" for p in ui_problems(refs[it["id"]])]
+    patched = sorted({i for it in items if not probs for i in it["ids"]})
+    if patched and not run.file("clean.mp4").exists():
+        probs.append("thiếu clean.mp4 (chạy `vshort clean`)")
     for p in probs:
         _err(p)
     if probs:
         return BAD_INPUT
-    patches = [it for it in items if it["kind"] == "patch"]
+    lines = merged(_sentences(run), run.read("script.vi.json"))
+    start = {s.id: 0.0 if k == 0 else s.start for k, s in enumerate(lines)}  # where retime starts the line's picture
+    at = {s["id"]: s["t"] for s in stills}
     frames = []  # drawn in memory first: a failure must leave the previous frames/ and frames.json as they were
     try:
-        for s in stills:
-            i = s["id"]
-            if i in refs:  # a reference replaces the still, patches included
-                img, group = refs[i], f"v{i}"
-            else:
-                img, group = Image.open(run.file(f"stills/{i}.png")).convert("RGB"), f"s{s['scene']}"
-                for p in patches:
-                    if i in p["ids"]:
-                        img = patch_text(img, tuple(p["box"]), p["text"], p.get("bold", False))
-            frames.append((i, img, group))
+        for i in patched:
+            still = Image.open(run.file(f"stills/{i}.png")).convert("RGB")
+            img, boxes = still, [it["box"] for it in items if i in it["ids"]]
+            for it in items:
+                if i in it["ids"]:
+                    img = patch_text(img, tuple(it["box"]), it["text"], it.get("bold", False))
+            box = (min(b[0] for b in boxes), min(b[1] for b in boxes), max(b[2] for b in boxes), max(b[3] for b in boxes))
+            shown = appear_time(run.file("clean.mp4"), start.get(i, at[i]), at[i], box, np.asarray(still.convert("L")))
+            frames.append((i, img, round(shown, 3)))
     except Exception as e:  # any drawing error: report it, touch nothing
         _err(f"không dựng được khung hình {i}: {e}")
         return FAILED
     out = run.file("frames")
     shutil.rmtree(out, ignore_errors=True)  # a rerun must not keep frames of lines that are gone
     out.mkdir()
-    rows = []
-    for i, img, group in frames:
+    for i, img, _ in frames:
         img.save(out / f"{i}.png")
-        rows.append({"id": i, "file": f"frames/{i}.png", "group": group})
-    run.write("frames.json", rows)
+    run.write("frames.json", [{"id": i, "file": f"frames/{i}.png", "from": shown} for i, _, shown in frames])
     run.mark("visuals")
-    print(f"{len(rows)} khung hình: {len(refs)} hình tư liệu, {len(patches)} chỗ vá chữ")
+    print(f"{len(frames)} câu có chữ vá" + (": " + ", ".join(f"câu {i} từ {s:.1f} s" for i, _, s in frames) if frames else ""))
     return OK
 
 

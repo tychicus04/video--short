@@ -151,8 +151,8 @@ MOTION_DESIGN = ("Việc 1 — vẽ khung từ brief. RUN={run}\n\nĐọc {run}/
                  "Chạy `vshort motion {run} --design` tới khi mã 0.")
 MOTION_BIND = ("Việc 2 — gắn nhịp vào lời. RUN={run}\n\nĐọc {run}/motion.json và {run}/script.vi.json, viết "
                "{run}/motion.bind.json. Chạy `vshort motion {run}` tới khi mã 0.")
-VISUALS = ("RUN={run}\n\nĐọc {run}/motion.bind.json (lines) để biết câu nào đã có hình động (đừng chọn tư liệu cho các câu đó), "
-           "{run}/sources.md (nguồn tư liệu thật) và {run}/brief.vi.md (mục \"Lưu ý độ chính xác\") khi vá chữ.")
+VISUALS = ("RUN={run}\n\nĐọc {run}/brief.vi.md (mục \"Lưu ý độ chính xác\") và {run}/script.vi.json; chỉ vá chữ sai dữ kiện, "
+           "không có gì sai thì ghi [].")
 NHIP = ("RUN={run}\n\nChạy `vshort shots {run} --prep`, đọc {run}/shots/phrases.txt, rồi làm nhịp hình như hướng dẫn; "
         "tự chạy `vshort shots {run}` tới khi mã 0.")
 COVER = ("Việc riêng: chọn ảnh đại diện, viết tiêu đề đăng và prompt ảnh bìa cho video, không làm gì khác (không tạo notebook, không nạp "
