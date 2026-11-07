@@ -128,6 +128,8 @@ def test_headline_sits_in_the_title_bar_and_falls_back_to_the_spoken_title(tmp_p
         yellow = (a[:, :, 0] > 200) & (a[:, :, 1] > 200) & (a[:, :, 2] < 120)
         assert yellow[y0:y1, x0:x1].any(), shape  # the starred word is yellow
     assert cover.headline(Image.new("RGB", (1920, 1080)), "chữ " * 200, "16x9") is None
+    for shape, size in cover.SIZES.items():  # a real spoken title (≤ 40 characters by the brief's rule) fits both bars
+        assert cover.headline(Image.new("RGB", size), "SharePoint chưa vá, ransomware vào thẳng", shape), shape
 
     run = _run(tmp_path)
     (run / "cover" / "pick.json").write_text(json.dumps({"n": None, "why": "", "title": "T: ổn", "thumb": "chữ " * 200}))

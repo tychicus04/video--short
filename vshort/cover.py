@@ -37,7 +37,7 @@ BAR = {"9x16": (tuple(round(v * 1.5) for v in render.STRIPE), tuple(round(v * 1.
        "16x9": ((90, 756, 120, 1000), (143, 756, 1480, 1000))}
 PAD = (33, 22)  # the headline's margin inside the box, px
 YELLOW, TEAL = render.YELLOW[:3], render.TEAL[:3]  # the stripe's yellow also marks the *starred* words
-EM = (150, 64)  # largest and smallest headline size, px
+EM = (150, 44)  # largest and smallest headline size, px: 44 takes a spoken title in 3 lines, as the video's bar does
 MAX_NAME = 200  # bytes of the folder/file name: APFS allows 255, Vietnamese takes 2–3 bytes a letter
 # The prompt Tai pastes into the Gemini app to draw a poster cover by hand (an API key that draws costs money: Tai said
 # no, 05/11). The agent writes only what changes per video (pick.json "poster"); the frame stays the same every time.
@@ -273,7 +273,7 @@ def make(run_dir: Path) -> dict:
     img, spoken = img.convert("RGB"), spoken_title(run_dir)
     info["title"] = " ".join((pick.get("title") or spoken).replace("*", "").split())
     for name, (w, h) in SIZES.items():
-        clean = cut(img, w, h, BAR[name][1][1])
+        clean = cut(img, w, h, BAR[name][1][1] if name == "9x16" else None)  # the 16:9 is the CMS lead: never moved
         clean.save(out / f"anh-dai-dien-{name}.jpg", quality=92)
         thumb = (pick.get("thumb") and headline(clean, pick["thumb"], name)) or headline(clean, spoken, name)
         if thumb is None:
