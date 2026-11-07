@@ -45,6 +45,8 @@ def test_cut_shows_the_whole_picture_rather_than_blow_up_a_sliver():
     img.paste((0, 0, 255), (1100, 0, 1200, 630))
     mid = np.asarray(cover.cut(img, 1080, 1920))[960]  # a 9:16 slice would be blown up 3x: fit it instead
     assert (mid[:, 0] > 200).any() and (mid[:, 2] > 200).any()  # both coloured edges are in the cover
+    raised = np.asarray(cover.cut(img, 1080, 1920, bottom=1020))[:, 5, 0]  # the red edge's column
+    assert (raised[:1021] > 200).sum() > 500 and not (raised[1021:] > 200).any()  # the whole picture ends above the bar
 
 
 def test_candidates_keep_big_lead_images_and_survive_bad_pages(tmp_path, monkeypatch):
@@ -114,15 +116,17 @@ def test_folder_name_takes_any_title_macos_and_windows_accept():
     assert cover.folder_name(" ... ") == "video"
 
 
-def test_headline_stays_in_its_box_and_falls_back_to_the_spoken_title(tmp_path):
+def test_headline_sits_in_the_title_bar_and_falls_back_to_the_spoken_title(tmp_path):
     for shape, (w, h) in cover.SIZES.items():
-        x0, y0, x1, y1 = cover.TEXT_BOX[shape]
+        (sx0, sy0, sx1, sy1), (x0, y0, x1, y1) = cover.BAR[shape]
         img = cover.headline(Image.new("RGB", (w, h), (0, 0, 255)), "LỖ HỔNG *ẨN* TRONG BỘ ĐIỀU KHIỂN", shape)
         a = np.asarray(img).astype(int)
-        ink = (a[:, :, 0] > 200) & (a[:, :, 2] < 120) | (a.min(2) > 200)  # yellow or white letters
-        ys, xs = np.nonzero(ink)
-        assert x0 <= xs.min() and xs.max() <= x1 and y0 <= ys.min() and ys.max() <= y1, shape
-        assert (a[:, :, 0] > 200)[ink & (a[:, :, 2] < 120)].any()  # the starred word is yellow
+        assert tuple(a[(sy0 + sy1) // 2, (sx0 + sx1) // 2]) == cover.YELLOW, shape  # the stripe
+        assert tuple(a[y0 + 3, x1 - 3]) == cover.TEAL and tuple(a[0, 0]) == (0, 0, 255), shape  # the box; no fade
+        ys, xs = np.nonzero(a.min(2) > 200)  # white letters
+        assert x0 < xs.min() and xs.max() < x1 and y0 < ys.min() and ys.max() < y1, shape
+        yellow = (a[:, :, 0] > 200) & (a[:, :, 1] > 200) & (a[:, :, 2] < 120)
+        assert yellow[y0:y1, x0:x1].any(), shape  # the starred word is yellow
     assert cover.headline(Image.new("RGB", (1920, 1080)), "chữ " * 200, "16x9") is None
 
     run = _run(tmp_path)

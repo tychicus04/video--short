@@ -20,6 +20,7 @@ from urllib.request import Request, urlopen
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 
+from vshort import render
 from vshort.textfit import FONTS
 
 SIZES = {"16x9": (1920, 1080), "9x16": (1080, 1920)}
@@ -29,10 +30,13 @@ MAX_PAGES, MAX_BYTES = 10, 20_000_000
 UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36"
 TILE = (480, 270)
 THUMB_FONT = FONTS / "BeVietnamPro-ExtraBold.ttf"
-HIGHLIGHT = (255, 214, 0)  # *starred* words of the headline
-# where the headline sits, px: 16:9 bottom left, clear of the duration badge (bottom right); 9:16 under the middle,
-# inside the 3:4 band profile grids show (y 240–1680) and over the blur when a wide picture is fitted
-TEXT_BOX = {"16x9": (90, 560, 1480, 1000), "9x16": (70, 1190, 1010, 1640)}
+# the headline sits in the magazine's title bar, (stripe, box) px, fully open (Tai, 07/11): 9:16 where the video shows it
+# (render's 720x1280 bar ×1.5, inside the 3:4 band profile grids show, y 240–1680); 16:9 the same bar bottom left, clear
+# of the duration badge (bottom right)
+BAR = {"9x16": (tuple(round(v * 1.5) for v in render.STRIPE), tuple(round(v * 1.5) for v in render.BAR)),
+       "16x9": ((90, 756, 120, 1000), (143, 756, 1480, 1000))}
+PAD = (33, 22)  # the headline's margin inside the box, px
+YELLOW, TEAL = render.YELLOW[:3], render.TEAL[:3]  # the stripe's yellow also marks the *starred* words
 EM = (150, 64)  # largest and smallest headline size, px
 MAX_NAME = 200  # bytes of the folder/file name: APFS allows 255, Vietnamese takes 2–3 bytes a letter
 # The prompt Tai pastes into the Gemini app to draw a poster cover by hand (an API key that draws costs money: Tai said
@@ -129,12 +133,13 @@ def _sheet(out: Path, rows: list[dict]) -> None:
     sheet.save(out / "sheet.jpg", quality=88)
 
 
-def cut(img: Image.Image, w: int, h: int) -> Image.Image:
-    """w×h from img: the window of that shape with the most detail, leaning to the middle (subjects sit there)."""
+def cut(img: Image.Image, w: int, h: int, bottom: int | None = None) -> Image.Image:
+    """w×h from img: the window of that shape with the most detail, leaning to the middle (subjects sit there); a picture
+    fitted whole ends above `bottom` (the title bar) when it can."""
     W, H = img.size
     cw, ch = (round(H * w / h), H) if W / H > w / h else (W, round(W * h / w))
     if w / cw > MAX_UP:
-        return _fit(img, w, h)
+        return _fit(img, w, h, bottom)
     g = np.asarray(img.convert("L"), float)
     detail = np.abs(np.diff(g, axis=0))[:, :-1] + np.abs(np.diff(g, axis=1))[:-1]
     across = cw < W
@@ -148,14 +153,15 @@ def cut(img: Image.Image, w: int, h: int) -> Image.Image:
     return img.crop(box).resize((w, h), Image.LANCZOS)
 
 
-def _fit(img: Image.Image, w: int, h: int) -> Image.Image:
+def _fit(img: Image.Image, w: int, h: int, bottom: int | None = None) -> Image.Image:
     s = max(w / img.width, h / img.height)
     back = img.resize((round(img.width * s), round(img.height * s)))
     back = back.crop(((back.width - w) // 2, (back.height - h) // 2, (back.width - w) // 2 + w, (back.height - h) // 2 + h))
     back = Image.eval(back.filter(ImageFilter.GaussianBlur(30)), lambda v: v * 0.55)
     s = min(w / img.width, h / img.height)
     front = img.resize((round(img.width * s), round(img.height * s)), Image.LANCZOS)
-    back.paste(front, ((w - front.width) // 2, (h - front.height) // 2))
+    top = (h - front.height) // 2
+    back.paste(front, ((w - front.width) // 2, top if bottom is None else max(0, min(top, bottom - front.height))))
     return back
 
 
@@ -198,24 +204,23 @@ def _layout(words, w: int, h: int):
 
 
 def headline(img: Image.Image, text: str, shape: str) -> Image.Image | None:
-    """img with the headline in TEXT_BOX[shape] over a dark fade; None when it does not fit."""
-    x0, y0, x1, y1 = TEXT_BOX[shape]
-    fit = _layout(_words(text), x1 - x0, y1 - y0)
+    """img with the headline typed into the title bar BAR[shape]; None when it does not fit."""
+    stripe, box = BAR[shape]
+    fit = _layout(_words(text), box[2] - box[0] - 2 * PAD[0], box[3] - box[1] - 2 * PAD[1])
     if not fit:
         return None
     font, lines = fit
     pitch, over = _pitch(font)
-    top = y1 - len(lines) * pitch
-    a = np.asarray(img.convert("RGB"), float)
-    fade = np.clip((np.arange(a.shape[0]) - (top - 260)) / 300, 0, 1) * 0.72  # dark under the words, fading out above
-    img = Image.fromarray((a * (1 - fade)[:, None, None]).astype(np.uint8))
-    d, space, y = ImageDraw.Draw(img), font.getlength(" "), top + over
-    for words, lw in lines:
-        x = x0 if shape == "16x9" else (x0 + x1 - lw) / 2
+    img = img.convert("RGB")  # a copy: the clean cover stays clean
+    d, space = ImageDraw.Draw(img), font.getlength(" ")
+    d.rectangle(stripe, fill=YELLOW)
+    d.rectangle(box, fill=TEAL)
+    y = (box[1] + box[3] - len(lines) * pitch) / 2 + over
+    for words, _ in lines:
+        x = box[0] + PAD[0]
         for word in words:
             for piece, hi in word:
-                d.text((x, y), piece, font=font, fill=HIGHLIGHT if hi else "white", stroke_width=max(2, font.size // 18),
-                       stroke_fill="black")
+                d.text((x, y), piece, font=font, fill=YELLOW if hi else "white")
                 x += font.getlength(piece)
             x += space
         y += pitch
@@ -268,7 +273,7 @@ def make(run_dir: Path) -> dict:
     img, spoken = img.convert("RGB"), spoken_title(run_dir)
     info["title"] = " ".join((pick.get("title") or spoken).replace("*", "").split())
     for name, (w, h) in SIZES.items():
-        clean = cut(img, w, h)
+        clean = cut(img, w, h, BAR[name][1][1])
         clean.save(out / f"anh-dai-dien-{name}.jpg", quality=92)
         thumb = (pick.get("thumb") and headline(clean, pick["thumb"], name)) or headline(clean, spoken, name)
         if thumb is None:
