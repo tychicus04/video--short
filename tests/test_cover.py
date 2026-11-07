@@ -137,6 +137,20 @@ def test_headline_sits_in_the_title_bar_and_falls_back_to_the_spoken_title(tmp_p
     assert json.loads((run / "cover" / "cover.json").read_text())["title"] == "T: ổn"
 
 
+def test_the_9x16_thumb_is_the_videos_frame_once_the_title_is_typed(tmp_path):
+    import subprocess
+    from vshort.media import FF
+    run = _run(tmp_path)
+    (run / "timeline.json").write_text(json.dumps({"total": 3, "placements": [{"id": 1, "start": 0.3, "dur": 2.0}]}))
+    subprocess.run([FF, "-loglevel", "error", "-y", "-f", "lavfi", "-i", "color=c=red:s=72x128:r=30:d=2",  # typed at 2.2 s
+                    "-f", "lavfi", "-i", "color=c=blue:s=72x128:r=30:d=1", "-filter_complex", "concat=n=2:v=1",
+                    "-pix_fmt", "yuv420p", str(run / "final.mp4")], check=True)
+    assert main(["cover", str(run)]) == 0
+    im = Image.open(run / "cover" / "thumb-9x16.jpg")
+    assert im.size == (1080, 1920) and im.getpixel((540, 960))[2] > 200  # the blue frame after the title is typed
+    assert Image.open(run / "cover" / "thumb-16x9.jpg").getpixel((960, 100))[1] > 80  # the 16:9 keeps the green still
+
+
 def test_package_lays_out_one_folder_named_by_the_title(tmp_path):
     run = _run(tmp_path)
     (run / "cover" / "pick.json").write_text(json.dumps({"n": None, "why": "", "title": "Cũ: tên"}))

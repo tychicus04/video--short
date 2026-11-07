@@ -3,7 +3,8 @@ headline on it, and the export folder named by the publish title.
 
 `candidates` gathers the sources' lead images onto a numbered sheet; an agent looks at it and writes cover/pick.json
 ({"n": k | null, "why": ..., "title": publish title, "thumb": headline, "poster": prompt parts}); `make` cuts the pick
-(or, failing that, the video's first still) to both shapes, writes the headline on them and writes cover/prompt.txt, the
+(or, failing that, the video's first still) to both shapes, writes the headline on them (the 9:16 thumb is the video's own
+frame with its title bar instead) and writes cover/prompt.txt, the
 prompt Tai pastes into the Gemini app for a poster cover; `package` lays out xuat/<title>/ for the Mac to pull.
 """
 import json
@@ -21,6 +22,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 
 from vshort import render
+from vshort.media import frame_at
 from vshort.textfit import FONTS
 
 SIZES = {"16x9": (1920, 1080), "9x16": (1080, 1920)}
@@ -233,6 +235,18 @@ def spoken_title(run_dir: Path) -> str:
     return " ".join(first.replace("|", " ").split())
 
 
+def title_frame(run_dir: Path) -> Image.Image | None:
+    """The 9:16 thumb (Tai, 07/11): final.mp4's own frame once the spoken title is fully typed in the bar, logo and all;
+    None before the video is timed."""
+    tl = run_dir / "timeline.json"
+    if not tl.exists():
+        return None
+    first = json.loads(tl.read_text(encoding="utf-8"))["placements"][0]
+    typed = render.title_times(first["start"], first["start"] + first["dur"])[1]
+    frame = frame_at(run_dir / "final.mp4", typed + 0.05)  # the cursor is gone, the bar not yet leaving
+    return Image.fromarray(frame).resize(SIZES["9x16"], Image.LANCZOS)
+
+
 def folder_name(title: str) -> str:
     """title as a folder/file name that macOS and Windows both take."""
     name = re.sub(r"\s*:\s*", " - ", unicodedata.normalize("NFC", title))
@@ -259,7 +273,8 @@ def poster_prompt(pick: dict) -> str | None:
 
 def make(run_dir: Path) -> dict:
     """cover/anh-dai-dien-{16x9,9x16}.jpg from the pick (the video's first still when there is none) and
-    cover/thumb-{16x9,9x16}.jpg with the headline on them: the agent's, else the spoken title when it does not fit."""
+    cover/thumb-{16x9,9x16}.jpg: the 9:16 is the video's title frame; else, and on the 16:9, the headline in the bar, the
+    agent's, else the spoken title when it does not fit."""
     out = run_dir / "cover"
     out.mkdir(exist_ok=True)
     pick = json.loads((out / "pick.json").read_text(encoding="utf-8")) if (out / "pick.json").exists() else {}
@@ -275,7 +290,8 @@ def make(run_dir: Path) -> dict:
     for name, (w, h) in SIZES.items():
         clean = cut(img, w, h, BAR[name][1][1] if name == "9x16" else None)  # the 16:9 is the CMS lead: never moved
         clean.save(out / f"anh-dai-dien-{name}.jpg", quality=92)
-        thumb = (pick.get("thumb") and headline(clean, pick["thumb"], name)) or headline(clean, spoken, name)
+        thumb = (name == "9x16" and title_frame(run_dir)) or (pick.get("thumb") and headline(clean, pick["thumb"], name)) \
+            or headline(clean, spoken, name)
         if thumb is None:
             raise ValueError(f"tiêu đề không vừa ảnh {name}: {spoken!r}")
         thumb.save(out / f"thumb-{name}.jpg", quality=92)
