@@ -92,7 +92,7 @@ Không chép code của OpenMontage: phần đó theo AGPL.
 
 | # | Chặng | Ai làm | Ra |
 |---|---|---|---|
-| 1 | Tìm hiểu | `vs-researcher` (như cũ, bỏ bản tiếng Anh) | `brief.vi.md`, `sources.md` |
+| 1 | Tìm hiểu | `vs-researcher` (như cũ, kể cả notebook NotebookLM để gom nguồn; bỏ bản tiếng Anh) | `brief.vi.md`, `sources.md` |
 | 2 | Duyệt brief (dừng) | Tai; chế độ tự động thì `brief_check` | — |
 | 3 | Viết lời | `vs-writer` (mới, Sonnet) | `script.vi.json` |
 | 4 | Duyệt lời (dừng) | Tai | — |
@@ -101,6 +101,16 @@ Không chép code của OpenMontage: phần đó theo AGPL.
 | 7 | Dựng video | `vshort render` (HyperFrames rồi ffmpeg) | `final.mp4` |
 | 8 | Soát và sửa | `vs-reviewer` (Opus, danh mục mới), tối đa 2 vòng | `review.md`, `review.json` |
 | 9 | Ảnh bìa và xuất | như cũ | `xuat/…` |
+
+### 1–2 · Tìm hiểu và brief
+
+Phần này giữ nguyên, kể cả notebook NotebookLM, bước kiểm đăng nhập và `notebook.txt`.
+
+Thêm một luật: brief của kiểu neon **phải có cơ chế**. Mục "Cơ chế từng bước" có bước 0 "Bình thường" và ít nhất 2 bước nữa, mỗi
+bước đúng nguồn.
+- Luật này nằm trong `vs-researcher.md` và `BRIEF_CHECK`.
+- Không tìm được cơ chế có nguồn thì brief ghi rõ như vậy, và run dừng ở bước duyệt brief cho Tai quyết. Ở chế độ tự động cũng dừng.
+- Lý do: mục đích Tai đặt là "giải thích cơ chế". Dựng sơ đồ từ ý chính là chỗ dễ nói quá nhất.
 
 ### 3 · Viết lời (`vs-writer`)
 
@@ -132,6 +142,20 @@ Như hiện nay: Gemini đọc cả bài một lần, hết lượt thì ZeroTTS
   không có màu tự chọn ngoài bốn nghĩa.
 - **Code xếp chỗ và kiểm.** `vshort scene RUN` dàn vị trí rồi kiểm (mục "Kiểm bằng code"). Lỗi in ra để agent sửa. Agent chạy lại
   tới khi mã 0, giống `vshort visuals` hiện nay.
+
+**Ngoài phần cơ chế.** Khoảng 40 % video không phải cơ chế. Hình ở các phần đó:
+
+| Phần | Hình |
+|---|---|
+| Tiêu đề | thanh tiêu đề |
+| Chi tiết mở màn | `chip` (ngày, con số) và `quote`, như đoạn 4–10 s của bản thử |
+| Ý chính, cái giá, điều chưa xác nhận | **giữ sơ đồ cơ chế**, chuyển `state` mờ; mỗi ý là một `chip` hay `quote` gắn cạnh đúng nút |
+| Câu chốt | `statement` trên sơ đồ mờ |
+| Lời kêu gọi | `statement` cùng một icon nhỏ |
+
+- Với ý chính: con số màu vàng; điều chưa xác nhận có chip vàng "chưa xác nhận"; cái giá hay rủi ro màu đỏ.
+- Không chuyển sang kiểu mỗi câu một thẻ. Đó là kiểu B Tai không chọn.
+- Mỗi câu có ít nhất một nhịp hình. Không quá 5 giây liền không có gì đổi, trừ câu tiêu đề.
 
 ### 7 · Dựng video
 
@@ -221,6 +245,15 @@ Danh sách từ bản thử, cộng phần cần để diễn tả ba brief cũ 
 
 Không icon nào là mã hay giao diện công cụ cụ thể.
 
+**Nút đứng yên.**
+- Không nút nào trượt từ chỗ này sang chỗ khác. Chỉ mảnh, hạt sáng và badge mới bay.
+- Mỗi đoạn, tính giữa hai lần `clear`, có một bố cục. Nút mới hiện vào ô còn trống của bố cục đó.
+- Muốn đổi bố cục thì `clear` rồi dựng lại.
+- Nút ở tâm (330, 560) được giữ qua lần đổi nếu bố cục mới cũng có tâm. Bản thử làm đúng như vậy:
+  - vòng 6 ô chứa người dùng ở đoạn 10–16 s, rồi chứa PC, GPU và máy chủ từ giây 16;
+  - data center ở tâm thành khối tác vụ.
+- Vì vậy mỗi đoạn chỉ cần tính vị trí một lần, và phép kiểm chồng lấn chỉ xét các mốc.
+
 ### Vị trí do code tính
 
 - **Hình học tính trong Python**, không trong trình duyệt và không do agent đặt.
@@ -268,9 +301,14 @@ Không icon nào là mã hay giao diện công cụ cụ thể.
    - y < 141 chỉ có logo;
    - y ≥ 1151 trống;
    - dải phụ đề chỉ có phụ đề.
-4. **Tối đa 2 màu neon** cùng lúc.
-5. **Chữ vừa chỗ:** nhãn, chip và statement không quá bề rộng cho phép; font có đủ dấu tiếng Việt.
-6. **Mọi con số và tên riêng** trong chip, quote và statement đều có trong brief, cùng cách so như `check_numbers`.
+4. **Tối đa 2 màu neon cùng lúc.**
+   - Tính mọi phần tử của sơ đồ có độ mờ ≥ 0,6: nút, đường nối, hạt, badge, chip, quote, statement, hero và nhãn mục.
+   - Không tính phụ đề, thanh tiêu đề, logo và phần tử đang ở `state` mờ. `state` mờ vẽ bằng chính màu cũ ở độ mờ 0,35.
+   - Bản thử phạm luật này ở giây 28,9–31,35: xanh dương, vàng và xanh lá cùng lúc. Bản thật phải làm mờ các máy trước khi vòng
+     xanh lá hiện.
+5. **Không quá 5 giây liền không có nhịp hình**, trừ câu tiêu đề.
+6. **Chữ vừa chỗ:** nhãn, chip và statement không quá bề rộng cho phép; font có đủ dấu tiếng Việt.
+7. **Mọi con số và tên riêng** trong chip, quote và statement đều có trong brief, cùng cách so như `check_numbers`.
 
 Sau khi render:
 - `ffprobe` cho độ dài bằng `total`;
@@ -313,12 +351,15 @@ không còn cắt cảnh:
 ## Chuyển đổi và chấp nhận
 
 - **Luồng cũ vẫn chạy được** cho tới khi Tai chấp nhận luồng mới.
-  - Run mới mang cờ kiểu trong `run.json`. `vshort auto` chọn luồng theo cờ đó.
   - Lý do: Tai làm video mỗi ngày.
+  - Run kiểu neon mang cờ `"style": "neon"` trong `run.json`, đặt bằng `vshort auto --topic … --style neon` từ dòng lệnh.
+    `vshort auto` chọn luồng theo cờ đó.
+  - `stages.py` chọn danh sách chặng theo cờ: 9 chặng cho neon, 10 chặng cho kiểu cũ.
+  - Bảng điều khiển web không có nút chọn kiểu. Hai run chấp nhận do mình chạy.
 - **Chấp nhận:**
   - Chạy 2 chủ đề thật qua luồng mới: một sự cố bảo mật, một giới thiệu công nghệ.
   - Tai xem và so với bản thử.
-  - Tai đồng ý thì luồng mới thành mặc định.
+  - Tai đồng ý thì luồng mới thành luồng duy nhất: bỏ cờ, bỏ luồng cũ.
 - **Sau khi Tai chấp nhận mới xóa code cũ:**
   - lấy video NotebookLM (`source`, `fetch`);
   - `captions.py` và `detect`;
@@ -361,7 +402,17 @@ không còn cắt cảnh:
 - phụ đề và logo vẽ trong composition;
 - logo trên miếng nền trắng;
 - mốc của 3 tiếng hiệu ứng;
-- luồng cũ chạy song song tới khi chấp nhận.
+- luồng cũ chạy song song tới khi chấp nhận;
+- sau khi người soát đọc bản thiết kế (09/11):
+  - nút đứng yên, mỗi đoạn một bố cục;
+  - ngoài phần cơ chế thì giữ sơ đồ mờ và gắn chip;
+  - cách đếm 2 màu;
+  - quá 5 giây không đổi là lỗi;
+  - brief phải có cơ chế;
+  - phần tìm hiểu giữ NotebookLM;
+  - chọn kiểu bằng cờ dòng lệnh, không có nút trên web.
+
+**Cần Tai cho phép:** Task 1 cài lên pve2 gói npm `hyperframes@0.8.206`, kèm puppeteer-core, và font IBM Plex Mono (giấy phép OFL).
 
 **Để builder tự quyết:**
 - dạng JSON chính xác của `scene.json`;
