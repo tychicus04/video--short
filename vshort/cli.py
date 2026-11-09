@@ -18,7 +18,7 @@ from vshort.media import frame_at, probe
 from vshort.plates import clean, scene_changes, scene_cuts
 from vshort.render import OUTRO, build_ass, export_outro, export_title, render_pieces
 from vshort.run import Run, config
-from vshort.scene import phrase_table
+from vshort.scene import SceneError, check, load_scene, phrase_table, resolve
 from vshort.script import (Sentence, check_brief, check_neon, check_numbers, check_script, check_style,
                            group_sentences, mechanism_steps, merge_text, merged)
 from vshort.stills import NLM_OUTRO, contact_sheet, grid_image, pick_still, scene_of
@@ -387,18 +387,40 @@ def cmd_render(a) -> int:
 
 
 def cmd_scene(a) -> int:
-    """`--table`: the numbered phrases and the brief's mechanism steps, what the scene agent writes scene.json against."""
-    if not a.table:
-        _err("`vshort scene` mới có `--table` (kiểm và dàn giờ kịch bản hình chưa làm)")
-        return BAD_INPUT
+    """`--table`: the numbered phrases and the brief's mechanism steps, what the scene agent writes scene.json against.
+    Otherwise: scene.json timed to the voice into scene.resolved.json, if it passes every check; the problems, one a line, if not."""
     run = Run(a.run)
-    if gone := [f for f in ("timeline.json", "script.vi.json", "brief.vi.md") if not run.file(f).exists()]:
+    need = ["timeline.json", "script.vi.json", "brief.vi.md"] + ([] if a.table else ["scene.json"])
+    if gone := [f for f in need if not run.file(f).exists()]:
         _err("thiếu " + ", ".join(gone) + " (chạy lại các bước trước)")
         return BAD_INPUT
-    for p in phrase_table(run.read("timeline.json"), run.read("script.vi.json")):
-        print(f"{p.i}  {p.start:.2f}  {p.text}")
-    print()
-    print("\n".join(mechanism_steps(run.file("brief.vi.md").read_text(encoding="utf-8"))))
+    timeline = run.read("timeline.json")
+    table = phrase_table(timeline, run.read("script.vi.json"))
+    brief = run.file("brief.vi.md").read_text(encoding="utf-8")
+    if a.table:
+        for p in table:
+            print(f"{p.i}  {p.start:.2f}  {p.text}")
+        print()
+        print("\n".join(mechanism_steps(brief)))
+        return OK
+    first = timeline["placements"][0]
+    try:
+        rt = resolve(load_scene(run.read("scene.json")), table, _speech(table[0].text), timeline["total"],
+                     (first["start"], first["start"] + first["dur"]))
+    except json.JSONDecodeError as e:
+        _err(f"scene.json không phải JSON: {e}")
+        return BAD_INPUT
+    except SceneError as e:
+        for p in e.problems:
+            _err(p)
+        return BAD_INPUT
+    if problems := check(rt, brief):
+        for p in problems:
+            _err(p)
+        return BAD_INPUT
+    run.write("scene.resolved.json", rt)
+    run.mark("scene")
+    print(run.file("scene.resolved.json"))
     return OK
 
 

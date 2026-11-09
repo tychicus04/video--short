@@ -4,11 +4,11 @@ import re
 
 import pytest
 
-from vshort import layout
+from vshort import layout, render
 from vshort.cli import main
 from vshort.fit import Placement, phrase_times
-from vshort.scene import (ICONS, LAYOUTS, LEAD, Beat, Link, Node, Phrase, SceneError, beat_time, icons, load_scene,
-                          phrase_table)
+from vshort.scene import (ICONS, LAYOUTS, LEAD, MAX_GAP, Beat, Link, Node, Phrase, SceneError, beat_time, check, icons,
+                          load_scene, phrase_table, resolve)
 
 TIMELINE = {"total": 9.0, "placements": [{"id": 1, "start": 0.2, "dur": 2.0}, {"id": 2, "start": 2.7, "dur": 3.0},
                                          {"id": 3, "start": 6.2, "dur": 1.5}]}
@@ -353,11 +353,414 @@ def test_scene_table_prints_each_phrase_then_the_mechanism(tmp_path, capsys):
         "0. Bình thường: máy chủ ở giữa\n1. Kẻ tấn công gửi yêu cầu\n")
 
 
-def test_scene_without_table_is_not_done_yet(tmp_path, capsys):
-    assert main(["scene", _run(tmp_path)]) == 2
-    assert "--table" in capsys.readouterr().err
-
-
 def test_scene_table_names_what_is_missing(tmp_path, capsys):
     assert main(["scene", str(tmp_path), "--table"]) == 2
     assert "timeline.json" in capsys.readouterr().err
+
+
+# ---- resolve: the scene timed to the voice; check: what it refuses
+
+TABLE = phrase_table(TIMELINE, SCRIPT)
+SAID = (0.2, 2.2)  # the title's spoken span: the first placement's start and start + dur
+TITLE = "Tiêu đề của video"
+ALL = [Phrase(i, 3.0 * i, 3.0 * i + 3.0, f"cụm {i}") for i in range(15)]  # a table long enough for the two sections below
+
+
+def el(id, kind, box, tone="normal", **more):
+    return {"id": id, "kind": kind, "tone": tone, "box": box, **more}
+
+
+def chip(id, text, box, tone="claim"):
+    return el(id, "chip", box, tone, text=text)
+
+
+def act(t, do, *ids, **more):
+    return {"t": t, "do": do, "ids": list(ids), **more}
+
+
+def hero(id, label="", tone="safe", x=330, y=554):
+    """As `place` makes it: the big icon's ink box, and its label under it (`box` holds both)."""
+    ink, lab = [x - 73.08, y - 73.08, x + 73.08, y + 73.08], [x - 85, 756, x + 85, 790] if label else [x, 756, x, 756]
+    box = [min(ink[0], lab[0]), ink[1], max(ink[2], lab[2]), lab[3] if label else ink[3]]
+    return el(id, "hero", box, tone, icon="shield", x=x, y=y, size=170, label=label, label_box=lab)
+
+
+def rt_of(els, acts, total=20.0, title=None):
+    return {"total": total, "title": title, "captions": [], "elements": els, "actions": acts}
+
+
+def test_check_overlap():
+    a, b = chip("s2.3", "PHẢI TIN?", [100, 300, 260, 340]), chip("s2.4", "AN TOÀN", [200, 310, 360, 350])
+    got = check(rt_of([a, b], [act(3, "on", "s2.3"), act(6, "on", "s2.4"), act(9, "off", "s2.3", "s2.4")], 12), "")
+    assert len(got) == 1 and got[0].startswith("6,0 s") and "'s2.3'" in got[0] and "'s2.4'" in got[0] and "PHẢI TIN?" in got[0]
+    # the first is gone (its fade is over) when the second comes: they never share the screen
+    gone = rt_of([a, b], [act(3, "on", "s2.3"), act(5, "off", "s2.3", d=0.35), act(6, "on", "s2.4")], 9)
+    assert check(gone, "") == []
+    # a swap: the old icon leaves as the new comes, in the same box
+    old, new = el("u", "icon", [10, 300, 90, 380]), el("s1.2", "icon", [10, 300, 90, 380], of="u")
+    assert check(rt_of([old, new], [act(2, "on", "u"), act(4, "swap", "u", "s1.2")], 8), "") == []
+
+
+def test_check_text_on_a_link_and_a_solid_and_solids_on_each_other():
+    link = el("l1", "link", [100, 400, 400, 400], x1=100, y1=400, x2=400, y2=400, style="solid")
+    c, dc = chip("s1.2", "PHẢI TIN?", [200, 380, 300, 420]), el("dc", "icon", [250, 300, 330, 380])
+    got = check(rt_of([link, c, dc], [act(2, "on", "l1"), act(3, "on", "s1.2"), act(4, "on", "dc")], 8), "")
+    assert any("chip 's1.2' 'PHẢI TIN?' đè lên nối 'l1'" in p and p.startswith("3,0 s") for p in got)
+    assert any("chip 's1.2'" in p and "nút 'dc'" in p and p.startswith("4,0 s") for p in got)
+    a, b = el("a", "icon", [100, 300, 180, 380]), el("b", "icon", [170, 300, 250, 380])
+    got = check(rt_of([a, b], [act(2, "on", "a"), act(4, "on", "b")], 8), "")
+    assert len(got) == 1 and "nút 'a' đè lên nút 'b'" in got[0]
+
+
+def test_check_a_hero_is_an_icon_and_a_label_not_the_box_around_both():
+    h = hero("s1.3", "BẰNG CHỨNG MẬT MÃ")  # its box runs from the icon's top to the label's foot and across to both ends
+    corner = chip("c1", "GÓC", [60, 600, 200, 640])  # inside the box, clear of the drawn icon and the label
+    over_label = chip("c2", "ĐÈ", [260, 760, 400, 790])
+    on_icon = chip("c3", "TRÊN", [300, 500, 380, 540])
+    got = check(rt_of([h, corner, over_label, on_icon], [act(2, "draw", "s1.3"), act(5, "on", "c1", "c2", "c3")], 8), "")
+    assert len(got) == 2  # (and the hero's colour with the chips': two colours, no third)
+    assert not any("'c1'" in p for p in got) and any("'c2'" in p and "hero" in p for p in got) and any("'c3'" in p for p in got)
+
+
+def test_check_tiles_of_one_beat_may_touch():
+    a, b = el("s1.2.0", "tile", [300, 440, 332, 472]), el("s1.2.1", "tile", [300, 440, 332, 472])
+    other = el("s1.3.0", "tile", [310, 450, 342, 482])
+    assert check(rt_of([a, b], [act(2, "move", "s1.2.0", "s1.2.1", **{"from": [[0, 0], [9, 9]]})], 6), "") == []
+    got = check(rt_of([a, other], [act(2, "on", "s1.2.0"), act(4, "on", "s1.3.0")], 8), "")
+    assert len(got) == 1
+
+
+def test_check_safe_zone():
+    far = chip("c1", "XA QUÁ", [560, 680, 640, 720])  # x 640 under y 535: the buttons
+    top = chip("c2", "TRÊN", [200, 100, 300, 130])
+    low = chip("c3", "DƯỚI", [200, 980, 300, 1010])  # into the caption band
+    ok = chip("c4", "VỪA", [500, 300, 640, 340])  # above y 535 the right edge is free
+    got = check(rt_of([far, top, low, ok], [act(2, "on", "c1", "c2", "c3", "c4")], 6), "")
+    assert len(got) == 3 and all(p.startswith("2,0 s") for p in got)
+    assert "'c1'" in got[0] and "618" in got[0] and "'c2'" in got[1] and "141" in got[1] and "'c3'" in got[2] and "1000" in got[2]
+
+
+def test_check_three_tones():
+    claim = chip("s1.1", "CHƯA XÁC NHẬN", [60, 300, 300, 340], "claim")
+    node = el("dc", "icon", [500, 300, 580, 380], "risk")
+    hero_ = hero("s1.2")
+    acts = [act(2, "on", "dc"), act(3, "on", "s1.1"), act(5, "draw", "s1.2", d=0.7)]
+    got = check(rt_of([claim, node, hero_], acts, 9), "")
+    assert len(got) == 1 and got[0].startswith("5,0 s") and "3 màu" in got[0] and "đỏ" in got[0] and "'dc'" in got[0]
+    dimmed = [acts[0], acts[1], act(4, "tone", "dc", to="dim"), acts[2]]  # dim takes effect at its own time
+    assert check(rt_of([claim, node, hero_], dimmed, 9), "") == []
+    again = dimmed + [act(7, "tone", "dc", to="risk")]  # a colour brings it back
+    assert len(check(rt_of([claim, node, hero_], again, 9), "")) == 1
+    white = el("s1.4", "statement", [60, 870, 600, 960], None, text="mỗi máy một phần")  # white is not a colour
+    assert check(rt_of([claim, node, white], [acts[0], acts[1], act(5, "type", "s1.4", d=1)], 9), "") == []
+
+
+@pytest.mark.parametrize("acts, total, title, times", [
+    ([act(2, "on", "c"), act(8.5, "on", "c")], 10, None, ("2,0 s", "8,5 s")),  # between two actions
+    ([act(2, "on", "c"), act(7, "on", "c")], 9, None, None),  # exactly 5 s is allowed
+    ([act(9, "on", "c")], 12, {"out": 3.86}, ("3,9 s", "9,0 s")),  # from the title leaving to the first action
+    ([act(1, "on", "c")], 6.5, None, ("1,0 s", "6,5 s")),  # from the last action to the end
+    ([act(1, "on", "c")], 6.0, {"out": 0.5}, None),
+])
+def test_check_gap(acts, total, title, times):
+    got = check(rt_of([chip("c", "VỪA", [60, 300, 200, 340])], acts, total, title), "")
+    if times is None:
+        assert got == []
+    else:
+        assert len(got) == 1 and "5 giây" in got[0] and all(t in got[0] for t in times)
+
+
+def test_check_an_action_outside_the_video():
+    c = chip("c", "VỪA", [60, 300, 200, 340])
+    got = check(rt_of([c], [act(2, "on", "c"), act(5, "type", "c", d=1), act(11, "off", "c")], 8), "")
+    assert len(got) == 1 and "11,0 s" in got[0] and "'c'" in got[0] and "ngoài video" in got[0]
+
+
+def test_check_number_not_in_brief():
+    c = chip("s1.1", "1000 lần", [60, 300, 200, 340])
+    got = check(rt_of([c], [act(2, "on", "s1.1")], 6), "Có 5 lần.")
+    assert len(got) == 1 and "1000" in got[0] and "'s1.1'" in got[0] and got[0].startswith("2,0 s") and "brief" in got[0]
+    date = chip("s1.2", "05.11.2026", [60, 300, 200, 340])  # the brief writes it another way (Review Focus 4)
+    assert check(rt_of([date], [act(2, "on", "s1.2")], 6), "ngày 5/11/2026") == []
+    never = chip("s1.3", "9999", [60, 400, 200, 440])  # never shown, never on a frame
+    assert check(rt_of([c, never], [act(2, "on", "s1.1"), act(4, "off", "s1.1")], 6), "Có 1000 lần.") == []
+
+
+def test_check_numbers_in_a_quote_a_statement_a_hero_label_and_a_section_label():
+    q = el("s1.1", "quote", [60, 380, 600, 750], "claim", text="giảm 40 %", who="CÔNG TY 77")
+    s = el("s1.2", "statement", [60, 870, 600, 960], None, text="mất 12 giờ")
+    h = hero("s1.3", "CẤP 3")
+    sec = el("s1.label", "section", [60, 190, 300, 220], "normal", text="MỤC 8")
+    got = check(rt_of([q, s, h, sec], [act(2, "on", "s1.label", "s1.1"), act(5, "on", "s1.2"), act(8, "on", "s1.3")], 11), "")
+    for who, num in (("s1.1", "40"), ("s1.1", "77"), ("s1.2", "12"), ("s1.3", "3"), ("s1.label", "8")):
+        assert any(who in p and f"số {num}" in p or (who in p and num in p) for p in got), (who, num, got)
+
+
+def test_check_names_are_checked_unless_all_capitals_or_a_section_label():
+    brief = "OpenMatter tuyên bố về AI."
+    ok = chip("c1", "OpenMatter tuyên bố", [60, 300, 300, 340])
+    bad = chip("c2", "do Veritas tuyên bố", [60, 400, 300, 440])
+    caps = chip("c3", "PHẢI TIN VERITAS?", [60, 500, 300, 540])  # ponytail: all capitals get the number check only
+    sec = el("s1.label", "section", [60, 190, 300, 220], "normal", text="Veritas Đề Xuất")  # a section label is exempt
+    q = el("s1.1", "quote", [60, 600, 600, 750], "claim", text="AI an toàn", who="công ty Veritas")
+    got = check(rt_of([ok, bad, caps, sec, q], [act(2, "on", "c1", "c2", "c3", "s1.label"), act(5, "on", "s1.1")], 8), brief)
+    assert len(got) == 2 and "'c2'" in got[0] and "Veritas" in got[0] and "'s1.1'" in got[1] and "Veritas" in got[1]
+
+
+# a scene on the four-row TABLE above: sentences 1-3 are said at 2.7, 4.2 and 6.2 s
+def one_section(beats, nodes=None, **more):
+    return {"sections": [{"id": "s1", "label": "", "tone": "normal", "layout": "pair", "keep": [], "links": [], "beats": beats,
+                          "nodes": nodes or [{"id": "dc", "icon": "server", "label": "máy chủ", "slot": "hub"}], **more}]}
+
+
+def resolved(data, table=TABLE, total=9.0, said=SAID, title=TITLE):
+    return resolve(load_scene(data), table, title, total, said)
+
+
+def test_phrase_out_of_range():
+    d = one_section([{"at": 1, "do": "draw", "ids": ["dc"]}, {"at": 41, "do": "chip", "text": "PHẢI TIN?", "near": "dc"},
+                     {"at": 3, "do": "show", "ids": ["dc"]}])
+    with pytest.raises(SceneError) as e:
+        resolved(d)
+    assert len(e.value.problems) == 1 and "cụm 41 không có" in e.value.problems[0]
+    assert "s1" in e.value.problems[0] and "nhịp 1" in e.value.problems[0]
+
+
+def test_a_section_without_beats_is_a_problem():
+    with pytest.raises(SceneError) as e:
+        resolved(one_section([]))
+    assert "mục s1" in e.value.problems[0]
+
+
+def test_title_matches_cover():
+    rt = resolved(one_section([{"at": 1, "do": "draw", "ids": ["dc"]}]))
+    p0 = TIMELINE["placements"][0]  # cover.py grabs its frame once the spoken title is typed
+    assert rt["title"]["t1"] == render.title_times(p0["start"], p0["start"] + p0["dur"])[1]
+    assert rt["title"]["out"] == render.title_times(p0["start"], p0["start"] + p0["dur"])[2]
+    assert (rt["title"]["size"], rt["title"]["lines"]) == render.title_fit(TITLE)
+    assert render.title_times(TABLE[0].start, TABLE[0].end)[1] != rt["title"]["t1"]  # row 0 runs on to the next sentence
+    assert [c[2] for c in rt["captions"]] == ["một hai ba", "bốn năm sáu", "kết thúc"]  # the title is not also a caption
+    assert rt["total"] == 9.0
+
+
+def test_no_bar_for_a_title_that_does_not_fit_and_the_caption_keeps_the_line():
+    rt = resolved(one_section([{"at": 1, "do": "draw", "ids": ["dc"]}]), title="CHỮ " * 80)
+    assert rt["title"] is None and rt["captions"][0] == [0.0, 2.7, "Tiêu đề của video"] and len(rt["captions"]) == 4
+
+
+def test_a_beat_is_timed_to_its_phrase():
+    rt = resolved(one_section([{"at": 2, "do": "draw", "ids": ["dc"]}, {"at": 3, "do": "chip", "text": "PHẢI TIN?",
+                                                                       "near": "dc", "delay": 0.5}]))
+    first = next(a for a in rt["actions"] if a["do"] == "draw")
+    assert first["t"] == pytest.approx(TABLE[2].start - LEAD) and 0.3 <= first["d"] <= 0.8 and first["ids"] == ["dc"]
+    assert next(a for a in rt["actions"] if a["ids"] == ["s1.1"])["t"] == pytest.approx(TABLE[3].start - LEAD + 0.5)
+    assert [a["t"] for a in rt["actions"]] == sorted(a["t"] for a in rt["actions"])
+
+
+def test_place_errors_come_out_of_resolve_too():
+    d = one_section([{"at": 1, "do": "draw", "ids": ["dc"]}], nodes=[{"id": "dc", "icon": "server", "slot": "hub",
+                                                                      "label": "một cái nhãn dài hơn cả chiều rộng cho phép"}])
+    with pytest.raises(SceneError) as e:
+        resolved(d)
+    assert "nhãn của dc" in e.value.problems[0]
+
+
+def test_a_section_may_not_begin_before_the_one_before_has_stopped():
+    d = one_section([{"at": 2, "do": "draw", "ids": ["dc"]}, {"at": 3, "do": "chip", "text": "A", "near": "dc"}])
+    d["sections"].append({"id": "s2", "label": "", "tone": "normal", "layout": "pair", "keep": [],
+                          "nodes": [{"id": "x", "icon": "user", "label": "", "slot": "left"}], "links": [],
+                          "beats": [{"at": 3, "do": "draw", "ids": ["x"]}]})
+    with pytest.raises(SceneError) as e:
+        resolved(d)
+    assert "s2" in e.value.problems[0] and "s1" in e.value.problems[0] and "6,05 s" in e.value.problems[0]
+
+
+TWO = {"sections": [
+    {"id": "s1", "label": "THÔNG THƯỜNG", "tone": "normal", "layout": "ring", "keep": [],
+     "nodes": [{"id": "dc", "icon": "server", "label": "máy chủ", "slot": "hub"},
+               {"id": "u1", "icon": "user", "label": "", "slot": "r0"}, {"id": "u2", "icon": "user", "label": "", "slot": "r3"}],
+     "links": [{"id": "l1", "a": "u1", "b": "dc", "style": "solid"}, {"id": "l2", "a": "u2", "b": "dc", "style": "dashed"}],
+     "beats": [{"at": 1, "do": "draw", "ids": ["dc"]}, {"at": 2, "do": "show", "ids": ["u1", "l1", "u2", "l2"]},
+               {"at": 3, "do": "flow", "link": "l1", "dir": "a-b", "repeat": 2},
+               {"at": 4, "do": "state", "ids": ["dc", "l1"], "to": "risk"},
+               {"at": 4, "do": "chip", "text": "PHẢI TIN?", "near": "dc", "tone": "risk", "delay": 0.6},
+               {"at": 5, "do": "badge", "node": "u1", "icon": "lock"},
+               {"at": 6, "do": "swap", "node": "u2", "icon": "user-x"}]},
+    {"id": "s2", "label": "KIỂM CHỨNG", "tone": "safe", "layout": "pair", "keep": ["dc"],
+     "nodes": [{"id": "k1", "icon": "key-round", "label": "khóa A", "slot": "left"},
+               {"id": "k2", "icon": "key-round", "label": "khóa B", "slot": "right"}], "links": [],
+     "beats": [{"at": 7, "do": "show", "ids": ["k1", "k2"]},
+               {"at": 8, "do": "split", "node": "dc", "to": ["k1", "k2"]},
+               {"at": 9, "do": "merge", "from": ["k1", "k2"], "into": "dc"},
+               {"at": 10, "do": "state", "ids": ["dc"], "to": "safe"},
+               {"at": 11, "do": "statement", "text": "Mỗi máy chỉ thấy một phần"},
+               {"at": 12, "do": "hide", "ids": ["dc", "k1", "k2"]},
+               {"at": 13, "do": "hero", "icon": "shield", "label": "BẰNG CHỨNG MẬT MÃ"}]}]}
+DOS = {"on", "draw", "type", "off", "tone", "flow", "move", "swap"}
+
+
+def assert_contract(rt):
+    """What Task 7's kit relies on (runtime-contract.md): known verbs with their fields, ids that exist, and a tone that never brings
+    back an element that is not on screen (it ends at opacity 1)."""
+    kinds = {e["id"]: e["kind"] for e in rt["elements"]}
+    assert len(kinds) == len(rt["elements"]) and [a["t"] for a in rt["actions"]] == sorted(a["t"] for a in rt["actions"])
+    shown, gone = set(), set()
+    for a in rt["actions"]:
+        do, ids = a["do"], a["ids"]
+        assert do in DOS and ids and all(i in kinds for i in ids), a
+        if do == "draw":
+            assert all(kinds[i] in ("icon", "badge", "link", "hero", "quote") for i in ids) and 0.3 <= a["d"] <= 0.8
+        elif do == "type":
+            assert all(kinds[i] in ("label", "section", "chip", "statement", "quote", "hero") for i in ids) and a["d"] > 0
+        elif do == "flow":
+            assert kinds[ids[0]] == "link" and a["dir"] in ("a-b", "b-a") and a["repeat"] >= 1 and a["d"] > 0
+        elif do == "move":
+            assert all(kinds[i] == "tile" for i in ids) and len(a["from"]) == len(ids) and a["d"] > 0
+        elif do == "swap":
+            assert len(ids) == 2 and ids[0] in shown and ids[1] not in shown
+        elif do == "tone":
+            assert a["to"] in ("normal", "risk", "claim", "safe", "dim") and all(i in shown and i not in gone for i in ids), a
+        elif do == "off":
+            assert all(i in shown for i in ids)
+        if do == "off":
+            gone |= set(ids)
+        elif do == "swap":
+            gone.add(ids[0])
+            shown.add(ids[1])
+        elif do != "flow":
+            shown |= set(ids)
+            gone -= set(ids)
+
+
+def test_two_sections_resolve_into_the_runtime_contract_and_pass_the_check():
+    rt = resolved(TWO, ALL, 42.0, (0.2, 2.8))
+    assert check(rt, "") == []
+    assert_contract(rt)
+    by = {e["id"]: e for e in rt["elements"]}
+    assert set(by) >= {"dc", "dc.label", "u1", "l1", "s1.label", "s1.4", "s1.5", "s1.6", "s2.label", "k1", "k1.label", "s2.1.0",
+                       "s2.2.1", "s2.4", "s2.6"}
+    # state reaches what belongs to the node
+    tone = next(a for a in rt["actions"] if a["do"] == "tone" and a["to"] == "risk")
+    assert set(tone["ids"]) == {"dc", "dc.label", "l1"}
+    # s2 opens by turning off what s1 leaves, but the kept hub and its label, 0.35 s before its first beat
+    start = ALL[7].start - LEAD
+    off = next(a for a in rt["actions"] if a["do"] == "off" and a["t"] == pytest.approx(start - 0.35))
+    assert off["d"] == 0.35 and {"u1", "l1", "l2", "s1.label", "s1.4", "s1.5", "s1.6"} <= set(off["ids"])  # u2 was swapped out already
+    assert not {"dc", "dc.label"} & set(off["ids"])
+    assert next(a for a in rt["actions"] if a["ids"] == ["s2.label"])["t"] == pytest.approx(start)
+    # a split's tiles fly out of the source node to their nodes; a merge's fly in from over their nodes to one spot over the target
+    split = [a for a in rt["actions"] if a["do"] == "move" and a["ids"][0].startswith("s2.1.")]
+    assert [a["from"] for a in split] == [[[by["dc"]["x"], by["dc"]["y"]]]] * 2
+    merge = [a for a in rt["actions"] if a["do"] == "move" and a["ids"][0].startswith("s2.2.")]
+    assert len(merge) == 2 and all(by[a["ids"][0]]["x"] == by["dc"]["x"] for a in merge) and by["s2.2.0"]["box"] == by["s2.2.1"]["box"]
+    for a, k in zip(merge, ("k1", "k2")):
+        spot = by["s2.1.0" if k == "k1" else "s2.1.1"]  # the split's tile rests over the same node
+        assert a["from"] == [[spot["x"], spot["y"]]]
+    assert {i for a in rt["actions"] if a["do"] == "off" for i in a["ids"]} >= {"s2.2.0", "s2.2.1"}
+
+
+def test_a_tunnel_has_two_rails_so_text_must_stand_further_from_it():
+    link = lambda style: el("l1", "link", [100, 400, 400, 400], x1=100, y1=400, x2=400, y2=400, style=style)
+    c = chip("c", "PHẢI TIN?", [200, 360, 300, 392])  # 8 px over the line
+    acts = [act(2, "on", "l1"), act(3, "on", "c")]
+    assert check(rt_of([link("solid"), c], acts, 6), "") == []
+    assert "đè lên nối 'l1'" in check(rt_of([link("tunnel"), c], acts, 6), "")[0]
+
+
+def test_a_state_before_the_element_is_shown_colours_it_from_the_start():
+    d = one_section([{"at": 1, "do": "state", "ids": ["dc"], "to": "risk"}, {"at": 2, "do": "draw", "ids": ["dc"]}])
+    rt = resolved(d)
+    assert not [a for a in rt["actions"] if a["do"] == "tone"]
+    assert {e["id"]: e["tone"] for e in rt["elements"]} == {"dc": "risk", "dc.label": "risk"}
+
+
+def test_a_kept_node_goes_on_across_three_sections():
+    def sec(sid, layout, keep, beats, nodes=()):
+        return {"id": sid, "label": "", "tone": "normal", "layout": layout, "keep": keep, "links": [], "nodes": list(nodes),
+                "beats": beats}
+    d = {"sections": [
+        sec("s1", "pair", [], [{"at": 1, "do": "draw", "ids": ["dc"]}],
+            [{"id": "dc", "icon": "server", "label": "máy chủ", "slot": "hub"}]),
+        sec("s2", "center", ["dc"], [{"at": 2, "do": "chip", "text": "PHẢI TIN?", "near": "dc"}]),
+        sec("s3", "pair", ["dc"], [{"at": 3, "do": "statement", "text": "Mỗi máy chỉ thấy một phần"}])]}
+    rt = resolved(d)
+    assert [e["id"] for e in rt["elements"]].count("dc") == 1
+    off = [i for a in rt["actions"] if a["do"] == "off" for i in a["ids"]]
+    assert off == ["s2.0"] and check(rt, "") == []  # only the chip goes, at s3's start; the hub and its label never do
+
+
+def test_a_hide_reaches_the_tiles_of_a_node_and_a_beat_that_does_nothing_is_no_crash():
+    d = one_section([{"at": 1, "do": "draw", "ids": ["dc"]}, {"at": 2, "do": "split", "node": "dc", "to": "dc"},
+                     {"at": 3, "do": "hide", "ids": ["dc"]}, {"at": 3, "do": "hide", "ids": ["dc"]}])
+    rt = resolved(d)
+    assert [sorted(a["ids"]) for a in rt["actions"] if a["do"] == "off"] == [["dc", "dc.label", "s1.1.0"]]
+    d = one_section([{"at": 1, "do": "dim", "ids": ["dc"]}])
+    d["sections"].append({"id": "s2", "label": "", "tone": "normal", "layout": "pair", "keep": ["dc"], "nodes": [], "links": [],
+                          "beats": [{"at": 2, "do": "dim", "ids": ["dc"]}]})
+    assert resolved(d)["actions"] == []
+
+
+def test_a_dim_and_a_hide_reach_the_labels_and_swap_back_in_order():
+    d = one_section([{"at": 1, "do": "draw", "ids": ["dc"]}, {"at": 2, "do": "swap", "node": "dc", "icon": "lock"},
+                     {"at": 3, "do": "dim", "ids": ["dc"]}])
+    rt = resolved(d)
+    swap = next(a for a in rt["actions"] if a["do"] == "swap")
+    dim = next(a for a in rt["actions"] if a["do"] == "tone")
+    assert swap["ids"] == ["dc", "s1.1"] and set(dim["ids"]) == {"dc.label", "s1.1"} and dim["to"] == "dim"
+
+
+# ---- vshort scene RUN
+
+SCENE_OK = {"sections": [{"id": "s1", "label": "THÔNG THƯỜNG", "tone": "normal", "layout": "pair", "keep": [],
+            "nodes": [{"id": "dc", "icon": "server", "label": "máy chủ", "slot": "hub"}], "links": [],
+            "beats": [{"at": 1, "do": "draw", "ids": ["dc"]}, {"at": 2, "do": "chip", "text": "PHẢI TIN?", "near": "dc"},
+                      {"at": 3, "do": "statement", "text": "Mỗi máy chỉ thấy một phần"}]}]}
+
+
+def _scene_run(tmp_path, scene):
+    run = _run(tmp_path)
+    (tmp_path / "scene.json").write_text(json.dumps(scene))
+    return run
+
+
+def test_scene_writes_the_resolved_file_and_marks_the_step(tmp_path, capsys):
+    assert main(["scene", _scene_run(tmp_path, SCENE_OK)]) == 0
+    rt = json.loads((tmp_path / "scene.resolved.json").read_text(encoding="utf-8"))
+    assert rt["total"] == 9.0 and rt["title"]["lines"] and rt["elements"] and rt["actions"]
+    assert json.loads((tmp_path / "state.json").read_text())["scene"] == "done"
+    assert "scene.resolved.json" in capsys.readouterr().out
+
+
+def test_scene_names_a_missing_scene_json(tmp_path, capsys):
+    assert main(["scene", _run(tmp_path)]) == 2
+    assert "scene.json" in capsys.readouterr().err and not (tmp_path / "scene.resolved.json").exists()
+
+
+def test_scene_prints_every_load_problem_one_per_line(tmp_path, capsys):
+    bad = copy.deepcopy(SCENE_OK)
+    bad["sections"][0]["beats"] += [{"at": 2, "do": "teleport", "ids": ["dc"]}, {"at": 3, "do": "show", "ids": ["ghost"]}]
+    assert main(["scene", _scene_run(tmp_path, bad)]) == 2
+    err = capsys.readouterr().err.strip().splitlines()
+    assert len(err) == 2 and "'teleport'" in err[0] and "'ghost'" in err[1]
+    assert not (tmp_path / "scene.resolved.json").exists() and not (tmp_path / "state.json").exists()
+
+
+def test_scene_prints_place_and_phrase_problems(tmp_path, capsys):
+    far = copy.deepcopy(SCENE_OK)
+    far["sections"][0]["beats"][1]["at"] = 41
+    assert main(["scene", _scene_run(tmp_path, far)]) == 2
+    assert "cụm 41 không có" in capsys.readouterr().err
+
+
+def test_scene_prints_what_the_check_refuses_with_the_time(tmp_path, capsys):
+    liar = copy.deepcopy(SCENE_OK)
+    liar["sections"][0]["beats"][1]["text"] = "TĂNG 1000 LẦN"
+    assert main(["scene", _scene_run(tmp_path, liar)]) == 2
+    err = capsys.readouterr().err
+    assert "1000" in err and "4,0 s" in err and not (tmp_path / "scene.resolved.json").exists()
+
+
+def test_scene_that_is_not_json_is_a_problem_not_a_crash(tmp_path, capsys):
+    run = _run(tmp_path)
+    (tmp_path / "scene.json").write_text("{not json")
+    assert main(["scene", run]) == 2 and "scene.json" in capsys.readouterr().err
