@@ -245,9 +245,35 @@ def ints(text: str) -> set[int]:
     return {int(d) for d in re.findall(r"\d+", text)}
 
 
+DECIMAL = re.compile(r"(?<![\d.,])\d+[.,]\d{1,2}(?![\d.,])")  # "2,7", "9.8"; not "05.11.2026" or "9,402"
+LIST_NUMBER = re.compile(r"(?m)^\s*\d+\.\s")  # a brief's own "1. …" numbering says nothing about a figure
+
+
+def unknown_numbers(text: str, ref: str) -> list[str]:
+    """The numbers in `text` that `ref` lacks. A decimal is one number, compared whole with , = . ("7,2" is not "2,7");
+    any other number is a run of digits (`ints`), counted apart from decimals and from the list numbering of `ref`."""
+    have = {d.replace(",", ".") for d in DECIMAL.findall(ref)}
+    out = list(dict.fromkeys(d for d in DECIMAL.findall(text) if d.replace(",", ".") not in have))
+    known = ints(LIST_NUMBER.sub(" ", DECIMAL.sub(" ", ref)))
+    return out + [str(i) for i in sorted(ints(DECIMAL.sub(" ", text)) - known)]
+
+
+def names(text: str) -> set[str]:
+    """Words that look like names: a capital after the first letter ("OpenMatter", "CVE", "iPhone", "5G"), or a
+    capitalised word that does not start a sentence (the start of the text, or after . ! ? or :; a | does not)."""
+    out = set()
+    for m in re.finditer(r"\w+", text):
+        w, before = m.group(), text[:m.start()].rstrip()
+        if w.isdigit():
+            continue
+        if any(c.isupper() for c in w[1:]) or (w[0].isupper() and before and before[-1] not in ".!?:"):
+            out.add(w)
+    return out  # ponytail: a name at the very start of a sentence slips through; add a word list if Tai sees one
+
+
 def check_neon(script: list[dict], brief: str) -> list[str]:
-    """The narration against the brief: first line the brief's title, only the brief's numbers, captions that fit, the
-    right length. A note on a line explains a number the brief writes in words."""
+    """The narration against the brief: first line the brief's title, only the brief's numbers and names, captions that
+    fit, the right length. A note on a line explains a number or name the brief writes otherwise."""
     probs = []
     title = brief_title(brief)
     if title is None:
@@ -263,8 +289,12 @@ def check_neon(script: list[dict], brief: str) -> list[str]:
             for ph in (p.strip() for p in text.split("|")):
                 if (w := text_width(ph, NEON_EM, NEON_FONT)) > MAX_TEXT_W:
                     probs.append(f"Câu {row['id']}: cụm '{ph}' rộng {w:.0f}px, vượt {MAX_TEXT_W}px")
+        ref = brief + "\n" + row.get("note", "")
         probs += [f"Câu {row['id']}: lời có số {i} mà brief không có; giữ đúng số trong brief, hoặc ghi note nhắc "
-                  "số đó và vì sao khác" for i in sorted(ints(text) - ints(brief) - ints(row.get("note", "")))]
+                  "số đó và vì sao khác" for i in unknown_numbers(text, ref)]
+        probs += [f"Câu {row['id']}: có tên '{w}' mà brief không có; dùng đúng tên trong brief, hoặc ghi note nhắc "
+                  f"'{w}' và vì sao"
+                  for w in sorted(names(text)) if not re.search(rf"(?<!\w){re.escape(w)}(?!\w)", ref, re.I)]
     total = sum(syllables(row["phrases"]) for row in script)
     if not SYL_MIN <= total <= SYL_MAX:
         probs.append(f"Lời có {total} âm tiết (~{total / PACE:.0f} giây); cần {SYL_MIN}–{SYL_MAX} âm tiết (60–90 giây)")

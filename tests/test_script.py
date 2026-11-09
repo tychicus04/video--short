@@ -1,6 +1,6 @@
 from vshort.captions import Fragment
 from vshort.script import (Sentence, brief_title, check_brief, check_neon, check_numbers, check_script, check_style,
-                           group_sentences, ints, mechanism_steps, merge_text, merged, syllables)
+                           group_sentences, ints, mechanism_steps, merge_text, merged, names, syllables, unknown_numbers)
 
 
 def test_merge_drops_ui_label_and_scene_cut_duplicate():
@@ -204,3 +204,41 @@ def test_check_neon_length_is_in_syllables():
     assert syllables(" ".join(r["phrases"] for r in rows)) > 260
     assert not any("âm tiết" in p for p in check_neon(rows, NEON_BRIEF))
     assert any("âm tiết" in p for p in check_neon(rows * 2, NEON_BRIEF))
+
+
+def test_unknown_numbers_compare_decimals_whole_and_ignore_list_numbering():
+    brief = "Có 2,7 triệu USD.\nÝ chính\n1. Mở\n2. Hai\n3. Ba\n29/10/2026: ngày"
+    assert unknown_numbers("khoảng 7,2 triệu USD", brief) == ["7,2"]  # 2,7 swapped, not the same number
+    assert unknown_numbers("khoảng 7 triệu USD", brief) == ["7"]  # a decimal's parts do not whitelist stray integers
+    assert unknown_numbers("khoảng 2.7 triệu USD", brief) == []  # , and . are the same decimal point
+    assert unknown_numbers("Có 3 bước, 1 là mở", "Bước\n1. Mở\n2. Hai\n3. Ba") == ["1", "3"]  # only list numbering
+    assert unknown_numbers("Có 3 bước", "Bước\n1. Mở\n3 bước thôi") == []
+    assert unknown_numbers("ngày 29 tháng 10 năm 2026", brief) == []
+    assert unknown_numbers("điểm 9,8", "điểm 9.8") == [] and unknown_numbers("điểm 9.8", "điểm 9,8") == []
+    assert unknown_numbers("ngày 05.11.2026", "ngày 5/11/2026") == [] == unknown_numbers("ngày 5/11/2026", "ngày 05.11.2026")
+    assert unknown_numbers("7,2 rồi lại 7,2", "x") == ["7,2"]
+
+
+def test_names_are_camelcase_acronyms_and_capitals_inside_a_sentence():
+    assert names("OpenMatter hứa AI chạy trên iPhone, 5G và CVE") == {"OpenMatter", "AI", "iPhone", "5G", "CVE"}
+    assert names("Đoạn mã chạy. Sau đó Hà Nội báo: Một lỗi! Hết 2026") == {"Hà", "Nội"}  # Đoạn, Sau, Một, Hết start a sentence
+    assert names("đi | Hà Nội") == {"Hà", "Nội"}  # a | is not a sentence start
+    assert names("theo ĐHQG và Ưu tiên") == {"ĐHQG", "Ưu"}  # Vietnamese capitals count
+
+
+def test_check_neon_reports_a_name_the_brief_lacks_unless_the_note_names_it():
+    rows = [{"id": 1, "phrases": "OpenMatter hứa AI không cần data center", "note": ""},
+            {"id": 2, "phrases": "Đoạn tin này nói, theo CNBC | và OpenMatter", "note": ""}]
+    probs = check_neon(rows, NEON_BRIEF)
+    assert [p for p in probs if "tên" in p] == ["Câu 2: có tên 'CNBC' mà brief không có; dùng đúng tên trong brief, "
+                                                "hoặc ghi note nhắc 'CNBC' và vì sao"]  # Đoạn starts the sentence
+    assert not any("tên" in p for p in check_neon([rows[0], dict(rows[1], note="cnbc: nguồn của Tai")], NEON_BRIEF))
+
+
+def test_check_neon_reports_a_changed_decimal_and_a_list_number_used_as_a_figure():
+    brief = NEON_BRIEF + "\nCó 2,7 triệu USD"
+    rows = [{"id": 1, "phrases": "OpenMatter hứa AI không cần data center", "note": ""},
+            {"id": 2, "phrases": "Khoảng 7,2 triệu USD, 3 bước", "note": ""}]
+    probs = check_neon(rows, brief)
+    assert any("số 7,2 " in p for p in probs) and any("số 3 " in p for p in probs)
+    assert not any("số 2,7 " in p for p in check_neon([rows[0], dict(rows[1], phrases="Khoảng 2,7 triệu USD")], brief))
