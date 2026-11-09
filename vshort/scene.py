@@ -502,7 +502,10 @@ def _beat(reel: _Reel, eid: str, t: float, b: Beat) -> None:
     elif b.do == "badge":
         reel.emit(t, "on", [eid])
     elif b.do == "swap":
-        reel.emit(t, "swap", [reel.face.get(a["node"], a["node"]), eid])
+        old = reel.face.get(a["node"], a["node"])
+        if eid not in screen.first:  # it comes in the colour the icon it replaces has now: a state may have changed it since `place`
+            by_id[eid]["tone"] = screen.tone[eid] = screen.tone[old]
+        reel.emit(t, "swap", [old, eid])
         reel.face[a["node"]] = eid
     elif b.do == "split":
         src = by_id[a["node"]]

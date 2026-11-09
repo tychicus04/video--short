@@ -700,6 +700,17 @@ def test_a_hide_reaches_the_tiles_of_a_node_and_a_beat_that_does_nothing_is_no_c
     assert resolved(d)["actions"] == []
 
 
+def test_a_swap_in_a_later_section_starts_in_the_colour_its_kept_node_has_now():
+    d = one_section([{"at": 1, "do": "draw", "ids": ["dc"]}, {"at": 2, "do": "state", "ids": ["dc"], "to": "risk"}])
+    d["sections"].append({"id": "s2", "label": "", "tone": "normal", "layout": "pair", "keep": ["dc"], "nodes": [], "links": [],
+                          "beats": [{"at": 3, "do": "swap", "node": "dc", "icon": "lock"}]})
+    rt = resolved(d)
+    new = next(e for e in rt["elements"] if e["id"] == "s2.0")
+    assert new["tone"] == "risk" and next(a for a in rt["actions"] if a["do"] == "swap")["ids"] == ["dc", "s2.0"]
+    assert check(rt, "") == []
+    assert_contract(rt)
+
+
 def test_a_dim_and_a_hide_reach_the_labels_and_swap_back_in_order():
     d = one_section([{"at": 1, "do": "draw", "ids": ["dc"]}, {"at": 2, "do": "swap", "node": "dc", "icon": "lock"},
                      {"at": 3, "do": "dim", "ids": ["dc"]}])
