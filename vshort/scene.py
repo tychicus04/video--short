@@ -179,9 +179,9 @@ def load_scene(data: dict) -> Scene:
         for i in keep:
             if i not in alive:
                 problems.append(f"{where}: keep nhắc tới {i!r}, mà mục trước không còn {i!r} (chưa khai báo hoặc không được giữ)")
-            elif kinds[i] == "link" and (gone := [e for e in ends[i] if e not in keep]):
+            elif kinds.get(i) == "link" and (gone := [e for e in ends.get(i, ()) if e not in keep]):
                 problems.append(f"{where}: giữ nối {i!r} mà không giữ {', '.join(map(repr, gone))}, đầu của nó")
-            elif kinds[i] == "node" and i in coords and slots is not None:
+            elif kinds.get(i) == "node" and i in coords and slots is not None:
                 # a node does not move: it stays where it stood, so the new layout needs a slot at exactly that spot
                 at = next((s for s, xy in slots.items() if all(abs(a - b) < 0.5 for a, b in zip(xy, coords[i]))), None)
                 if at is None:
@@ -207,7 +207,7 @@ def load_scene(data: dict) -> Scene:
         def ref(w: str, key: str, x: str, want: str | None) -> None:
             if x not in own and x not in keep:
                 problems.append(f"{w}: {key} nhắc tới {x!r}, mục {sid} chưa khai báo (cũng không có trong keep)")
-            elif want and kinds[x] != want:
+            elif want and kinds.get(x, want) != want:  # a keep that was refused has no kind: it is already reported
                 problems.append(f"{w}: {key} nhắc tới {x!r}, là {KIND_NAME[kinds[x]]}, mà ở đây cần {KIND_NAME[want]}")
 
         links = []
@@ -220,8 +220,8 @@ def load_scene(data: dict) -> Scene:
             for end in ("a", "b"):
                 if isinstance(ln.get(end), str):
                     ref(w, end, ln[end], "node")
-            if isinstance(ln.get("a"), str) and isinstance(ln.get("b"), str):
-                ends.setdefault(ln.get("id"), (ln["a"], ln["b"]))
+            if all(isinstance(ln.get(k), str) for k in ("id", "a", "b")):
+                ends.setdefault(ln["id"], (ln["a"], ln["b"]))
             links.append(Link(ln.get("id", ""), ln.get("a", ""), ln.get("b", ""), ln.get("style", "solid")))
         beats = []
         for j, b in entries(raw, "beats", where, dict):

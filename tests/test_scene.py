@@ -210,11 +210,11 @@ def test_a_slot_holds_one_node():
     assert len(ps) == 1 and "'hub'" in ps[0] and "'dc'" in ps[0] and "u2" in ps[0]
 
 
-def two(layout, keep, nodes=(), links=()):
+def two(layout, keep, nodes=(), links=(), beats=()):
     """GOOD (a ring: hub dc, u1 at r0, link l1) and a second section."""
     d = copy.deepcopy(GOOD)
     d["sections"].append({"id": "s2", "label": "", "tone": "normal", "layout": layout, "keep": keep, "links": list(links),
-                          "nodes": [{"id": n, "icon": "user", "label": "", "slot": s} for n, s in nodes], "beats": []})
+                          "nodes": [{"id": n, "icon": "user", "label": "", "slot": s} for n, s in nodes], "beats": list(beats)})
     return d
 
 
@@ -252,6 +252,38 @@ def test_a_link_ends_at_a_kept_node_not_at_a_kept_link():
     assert len(ps) == 1 and "s2" in ps[0] and "'l1'" in ps[0] and "là đường nối" in ps[0]
     d["sections"][1]["links"][0]["b"] = "dc"
     assert load_scene(d).sections[1].links[0].b == "dc"
+
+
+def _ghost_in_s2_and_s3():
+    d = two("ring", ["dc", "ghost"])
+    d["sections"].append(section("s3", keep=["dc", "ghost"]))  # the refused keep is carried on, and not reported twice
+    return d
+
+
+@pytest.mark.parametrize("make, who", [  # a keep that was refused has no kind and no ends: never a KeyError
+    (lambda: two("ring", ["dc", "nope"], beats=[{"at": 7, "do": "badge", "node": "nope", "icon": "lock"}]), "nope"),
+    (lambda: two("ring", ["dc", "nope"], links=[{"id": "l2", "a": "dc", "b": "nope"}]), "nope"),
+    (lambda: two("ring", ["dc", "nope"], beats=[{"at": 7, "do": "show", "ids": ["nope"]}]), "nope"),
+    (_ghost_in_s2_and_s3, "ghost"),
+])
+def test_a_refused_keep_is_one_problem_whatever_uses_the_id_after(make, who):
+    ps = problems(make())
+    assert len(ps) == 1 and ps[0].startswith(f"mục s2: keep nhắc tới '{who}'"), ps
+
+
+def test_keeping_a_link_that_was_declared_with_a_problem_adds_no_second_one():
+    d = two("ring", ["dc", "l2"])
+    d["sections"][0]["links"].append({"id": "l2", "b": "dc"})  # no `a`
+    ps = problems(d)
+    assert len(ps) == 1 and "s1" in ps[0] and "l2" in ps[0] and "thiếu a" in ps[0], ps
+
+
+@pytest.mark.parametrize("bad_id", [["l2"], {"x": 1}, 7])
+def test_an_id_that_is_not_text_is_one_problem_not_a_crash(bad_id):
+    d = copy.deepcopy(GOOD)
+    d["sections"][0]["links"].append({"id": bad_id, "a": "u1", "b": "dc"})
+    ps = problems(d)
+    assert len(ps) == 1 and "s1" in ps[0] and "thiếu id" in ps[0], ps
 
 
 def test_wrong_shape_is_a_problem_not_a_crash():
