@@ -1,5 +1,8 @@
 # Video Short – quy trình lồng tiếng khớp nhịp (thiết kế)
 
+> **Từ 09/11/2026: `docs/superpowers/specs/2026-11-09-kieu-neon-design.md`** — bỏ hình NotebookLM; lời Việt viết thẳng từ brief,
+> hình là sơ đồ neon vẽ bằng code (HyperFrames). Chỗ nào khác các tài liệu dưới thì theo tài liệu đó.
+>
 > Bổ sung: `docs/superpowers/specs/2026-10-31-hinh-theo-loi-design.md` (hình theo lời, vá chữ sai) và
 > `docs/superpowers/specs/2026-11-06-hinh-goc-notebooklm-design.md` (từ 06/11/2026: hình là chính video NotebookLM co giãn theo
 > lời Việt; hình động vẽ tay, ẩn dụ, nhịp hình, thẻ tư liệu và máy quay trên ảnh tĩnh đã bỏ).

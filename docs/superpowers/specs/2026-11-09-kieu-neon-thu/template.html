@@ -1,0 +1,506 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hai kiểu hình thử</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<style>
+  :root { --bg:#0d1117; --panel:#161b22; --line:#2b313a; --text:#e6edf3; --muted:#8b949e; --accent:#f5c518; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:'Be Vietnam Pro', system-ui, sans-serif; }
+  header { padding:14px 20px 4px; text-align:center; }
+  header h1 { font-size:19px; margin:0 0 4px; }
+  header p { margin:0; color:var(--muted); font-size:13.5px; }
+  .controls { display:flex; gap:12px; align-items:center; justify-content:center; flex-wrap:wrap; padding:10px 16px; }
+  .controls button { font:inherit; font-weight:700; font-size:14px; padding:8px 18px; border-radius:8px; border:0; background:var(--accent); color:#111; cursor:pointer; }
+  .controls button.ghost { background:var(--line); color:var(--text); }
+  .controls input[type=range] { width:min(460px, 60vw); accent-color:var(--accent); }
+  .controls .time { font-family:'IBM Plex Mono', monospace; color:var(--muted); font-size:13px; min-width:96px; }
+  .controls label { color:var(--muted); font-size:13px; display:flex; gap:6px; align-items:center; cursor:pointer; }
+  .stage { display:flex; gap:28px; justify-content:center; align-items:flex-start; flex-wrap:wrap; padding:6px 12px 24px; }
+  .col { display:flex; flex-direction:column; align-items:center; gap:10px; }
+  .phone { position:relative; border-radius:16px; overflow:hidden; box-shadow:0 0 0 2px var(--line), 0 14px 40px rgba(0,0,0,.55); background:#000; }
+  .options { display:flex; width:100%; }
+  .option { cursor:pointer; padding:10px 14px; border:1px solid var(--line); border-radius:10px; background:var(--panel); width:100%; }
+  .option.selected { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset; }
+  .option h3 { margin:0 0 3px; font-size:15px; }
+  .option p { margin:0; font-size:12.5px; color:var(--muted); line-height:1.45; }
+
+  /* ---------- compositions (720x1280, scaled into .phone) ---------- */
+  .comp { position:absolute; left:0; top:0; width:720px; height:1280px; overflow:hidden; transform-origin:0 0; font-family:'Be Vietnam Pro', sans-serif; }
+  .comp .full { position:absolute; inset:0; }
+  .comp .abs { position:absolute; }
+  .comp .hid { opacity:0; }
+  .comp .ch { opacity:0; }
+  .comp .mono { font-family:'IBM Plex Mono', monospace; }
+  .comp .logo { position:absolute; left:470px; top:24px; width:230px; height:58px; background:#fff; border-radius:10px; padding:5px 10px; display:flex; align-items:center; justify-content:center; }
+  .comp .logo img { width:100%; height:100%; object-fit:contain; }
+  .comp .tb-stripe { position:absolute; left:59px; top:680px; width:20px; height:162px; background:#F8FF00; transform-origin:0 50%; }
+  .comp .tb-box { position:absolute; left:94px; top:680px; width:567px; height:162px; background:#206B88; transform-origin:0 50%; display:flex; align-items:center; padding:0 26px; }
+  .comp .tb-text { font-weight:800; font-size:44px; line-height:1.18; color:#fff; }
+  .comp .zones { position:absolute; inset:0; pointer-events:none; opacity:0; }
+  .stage.show-zones .comp .zones { opacity:1; }
+  .comp .zones div { position:absolute; background:rgba(255,40,80,.28); outline:1px dashed rgba(255,120,140,.8); }
+
+  /* neon */
+  .neon .bg { background:
+      radial-gradient(ellipse at 50% 42%, rgba(30,60,110,.28), rgba(0,0,0,0) 62%),
+      radial-gradient(circle, rgba(140,175,255,.16) 1.5px, rgba(0,0,0,0) 2px) 0 0 / 36px 36px,
+      #04060c; }
+  .neon .g-cy { filter: drop-shadow(0 0 3px rgba(43,227,255,.85)) drop-shadow(0 0 11px rgba(43,227,255,.42)); }
+  .neon .g-am { filter: drop-shadow(0 0 3px rgba(255,197,61,.85)) drop-shadow(0 0 11px rgba(255,197,61,.42)); }
+  .neon .g-rd { filter: drop-shadow(0 0 3px rgba(255,77,97,.9)) drop-shadow(0 0 12px rgba(255,77,97,.45)); }
+  .neon .g-gr { filter: drop-shadow(0 0 3px rgba(61,255,158,.85)) drop-shadow(0 0 12px rgba(61,255,158,.42)); }
+  .neon .lbl { font-family:'IBM Plex Mono', monospace; font-weight:600; font-size:26px; letter-spacing:2px; }
+  .neon .t-cy { color:#2BE3FF; text-shadow:0 0 8px rgba(43,227,255,.7); }
+  .neon .t-am { color:#FFC53D; text-shadow:0 0 8px rgba(255,197,61,.7); }
+  .neon .t-rd { color:#FF4D61; text-shadow:0 0 8px rgba(255,77,97,.7); }
+  .neon .t-gr { color:#3DFF9E; text-shadow:0 0 8px rgba(61,255,158,.7); }
+  .neon .chip { border:3px solid currentColor; border-radius:40px; padding:6px 22px; box-shadow:0 0 10px currentColor, inset 0 0 8px currentColor; }
+  .neon .quote { font-weight:800; font-size:54px; line-height:1.16; color:#fff; text-shadow:0 0 14px rgba(255,197,61,.35); }
+  .neon .cap { position:absolute; left:102px; width:516px; bottom:140px; text-align:center; font-weight:700; font-size:40px; line-height:1.2; color:#fff;
+               text-shadow:0 0 10px rgba(43,227,255,.45), 0 2px 3px rgba(0,0,0,.95); }
+
+  /* phong su (Binance-like report) */
+  .bin .bg { background:
+      linear-gradient(rgba(255,255,255,.035) 1px, rgba(0,0,0,0) 1px) 0 0 / 48px 48px,
+      linear-gradient(90deg, rgba(255,255,255,.035) 1px, rgba(0,0,0,0) 1px) 0 0 / 48px 48px,
+      radial-gradient(ellipse at 40% 35%, #13202f, #070b12 70%); }
+  .bin .y { color:#F5C518; }
+  .bin .lbl { font-family:'IBM Plex Mono', monospace; font-weight:600; font-size:22px; letter-spacing:2px; color:#F5C518; }
+  .bin .panel { background:#101926; border:1px solid #223044; }
+  .bin .stmt { font-weight:800; color:#fff; line-height:1.15; }
+  .bin .cap { position:absolute; left:36px; width:576px; bottom:140px; background:rgba(9,14,22,.93); border-left:6px solid #F5C518;
+              padding:12px 18px; font-weight:600; font-size:30px; line-height:1.28; color:#fff; }
+  .bin .num { width:54px; height:54px; background:#F5C518; color:#0a0f17; font-family:'IBM Plex Mono', monospace; font-weight:600; font-size:30px;
+              display:flex; align-items:center; justify-content:center; flex:none; }
+  .bin .chipb { display:flex; align-items:center; gap:10px; height:70px; padding:0 14px; border:1.5px solid #3BA7C9; background:rgba(59,167,201,.12);
+                border-radius:8px; font-weight:700; font-size:26px; color:#fff; }
+  .bin .cell { width:180px; height:150px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; position:absolute; }
+  .bin .tag { font-family:'IBM Plex Mono', monospace; font-weight:600; font-size:19px; letter-spacing:1px; color:#ff8a8f; border:1px solid #E5484D;
+              background:rgba(229,72,77,.15); padding:6px 12px; display:inline-block; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Hai kiểu hình thử — cùng giọng đọc video OpenMatter (0–34 giây)</h1>
+  <p>Bản thử để chọn hướng, sẽ bỏ đi sau khi chọn. Bấm “Phát” để xem cả hai cùng lúc. Bấm vào ô bên dưới video để chọn kiểu bạn thích hơn.</p>
+</header>
+<div class="controls">
+  <button id="play">▶ Phát</button>
+  <button id="restart" class="ghost">⟲ Từ đầu</button>
+  <input id="scrub" type="range" min="0" max="34.6" step="0.01" value="0">
+  <span class="time" id="time">00.0 / 34.6 s</span>
+  <label><input type="checkbox" id="zones"> Hiện vùng nút TikTok/Reels che</label>
+</div>
+<div class="stage" id="stage">
+  <div class="col">
+    <div class="phone" id="phoneA"></div>
+    <div class="options"><div class="option" data-choice="neon" onclick="toggleSelect(this)">
+      <h3>A · Neon (kiểu video HTTP/3)</h3>
+      <p>Nền tối chấm lưới, một sơ đồ liền mạch không cắt cảnh, nét neon bật sáng đúng lúc lời nhắc tới, màu theo nghĩa.</p>
+    </div></div>
+  </div>
+  <div class="col">
+    <div class="phone" id="phoneB"></div>
+    <div class="options"><div class="option" data-choice="phong-su" onclick="toggleSelect(this)">
+      <h3>B · Phóng sự (kiểu video Binance của tạp chí)</h3>
+      <p>Khung HUD cố định (REC, đồng hồ, nhãn mục, băng chữ chạy), mỗi câu một thẻ, cắt ở đầu câu kèm chớp màu, phụ đề cả câu trong hộp.</p>
+    </div></div>
+  </div>
+</div>
+<audio id="voice" preload="auto" src="data:audio/mpeg;base64,__AUDIO_B64__"></audio>
+
+<script>
+const D = 34.6;
+const ENV = __ENV__;          // voice loudness, 15 per second, 0..1
+const CAPS = __CAPS__;        // [start, end, phrase]
+const LINES = __LINES__;      // [{start, end, text}] sentences 2..6
+const TITLE = __TITLE__;
+const LOGO = 'data:image/png;base64,__LOGO_B64__';
+const NS = 'http://www.w3.org/2000/svg';
+window.__timelines = window.__timelines || {};
+
+// ---------- helpers ----------
+function H(tag, cls, parent, css, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (css) e.style.cssText = css;
+  if (text != null) e.textContent = text;
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function S(tag, attrs, parent) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function chars(e, text) {           // typed text: one span per character, revealed in place (no reflow)
+  e.textContent = '';
+  return [...text].map(c => H('span', 'ch', e, null, c));
+}
+function type(tl, spans, t, d) { tl.to(spans, { opacity: 1, duration: 0.001, stagger: d / spans.length, ease: 'none' }, t); }
+function on(tl, t, ...els) { tl.to(els, { keyframes: { opacity: [0, 1, 0.25, 1, 0.6, 1] }, duration: 0.2, ease: 'none' }, t); }
+function off(tl, t, d, ...els) { tl.to(els, { opacity: 0, duration: d, ease: 'power1.out' }, t); }
+function show(tl, t, ...els) { tl.to(els, { opacity: 1, duration: 0.01 }, t); }
+function draw(tl, root, t, d) {      // stroke-draw every path/line/circle/rect under root
+  const ps = root.matches && root.matches('path,line,circle,rect,polyline') ? [root] : [...root.querySelectorAll('path,line,circle,rect,polyline')];
+  ps.forEach(p => { const L = Math.ceil(p.getTotalLength()) + 2; p.style.strokeDasharray = L; p.style.strokeDashoffset = L; });
+  tl.to(ps, { strokeDashoffset: 0, duration: d, ease: 'power2.inOut' }, t);
+}
+const IC = {
+  user:   ['M12 12a4 4 0 1 0 0-8a4 4 0 1 0 0 8z', 'M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7'],
+  pc:     ['M3 4h18v12H3z', 'M8 21h8', 'M12 16v5'],
+  gpu:    ['M2 7h20v10H2z', 'M8 15a3 3 0 1 0 0-6a3 3 0 1 0 0 6z', 'M16 15a3 3 0 1 0 0-6a3 3 0 1 0 0 6z', 'M5 17v3M9 17v3M13 17v3M17 17v3'],
+  server: ['M3 3h18v7H3z', 'M3 14h18v7H3z', 'M7 6.5h.01', 'M7 17.5h.01', 'M11 6.5h6', 'M11 17.5h6'],
+  dc:     ['M3 21V8l9-5 9 5v13z', 'M3 21h18', 'M7 11h10', 'M7 14h10', 'M7 17h10'],
+  doc:    ['M6 2h8l4 4v16H6z', 'M14 2v4h4', 'M9 11h6', 'M9 15h6'],
+  lock:   ['M5 11h14v10H5z', 'M8 11V7a4 4 0 0 1 8 0v4'],
+  shield: ['M12 2l8 3v6c0 5-3.5 9-8 11c-4.5-2-8-6-8-11V5z'],
+  check:  ['M8.5 12.2l2.4 2.4l4.8-5'],
+  tick:   ['M5 12.5l4.5 4.5L19 7'],
+  eyeoff: ['M2 12s3.6-7 10-7s10 7 10 7s-3.6 7-10 7S2 12 2 12z', 'M12 15a3 3 0 1 0 0-6a3 3 0 1 0 0 6z', 'M4 4l16 16'],
+  warn:   ['M12 3l10 18H2z', 'M12 10v5', 'M12 18v.01'],
+};
+function icon(svgParent, name, cx, cy, size, color, px) {   // icon centred at cx,cy inside an existing svg
+  const g = S('g', { transform: `translate(${cx - size / 2},${cy - size / 2}) scale(${size / 24})`, fill: 'none', stroke: color,
+                     'stroke-width': (px || 3.5) * 24 / size, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, svgParent);
+  IC[name].forEach(d => S('path', { d }, g));
+  return g;
+}
+function svgIcon(parent, name, size, color, px, css) {        // standalone svg icon for HTML layouts
+  const s = S('svg', { width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke: color, 'stroke-width': (px || 3) * 24 / size,
+                       'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, parent);
+  if (css) s.style.cssText = css;
+  IC[name].forEach(d => S('path', { d }, s));
+  return s;
+}
+function common(root, tl) {            // magazine title bar typed during the spoken title, logo, UI zones
+  const stripe = H('div', 'tb-stripe', root), box = H('div', 'tb-box', root), txt = H('div', 'tb-text', box);
+  const sp = chars(txt, TITLE);
+  tl.fromTo([stripe, box], { scaleX: 0 }, { scaleX: 1, duration: 0.22, ease: 'power2.out' }, 0.05);
+  type(tl, sp, 0.25, 2.9);
+  tl.to([box, stripe], { scaleX: 0, duration: 0.3, ease: 'power2.in' }, 3.86);
+  tl.to(txt, { opacity: 0, duration: 0.2 }, 3.86);
+  const logo = H('div', 'logo', root); H('img', null, logo).src = LOGO;
+  const z = H('div', 'zones', root);
+  H('div', null, z, 'left:0;top:0;width:720px;height:141px');
+  H('div', null, z, 'left:0;top:1151px;width:720px;height:129px');
+  H('div', null, z, 'left:618px;top:535px;width:102px;height:616px');
+}
+
+// ================= A · NEON =================
+function buildNeon(root) {
+  const tl = gsap.timeline({ paused: true });
+  H('div', 'full bg', root);
+  const svg = S('svg', { width: 720, height: 1280, viewBox: '0 0 720 1280', class: 'abs', style: 'left:0;top:0' }, root);
+  const layer = H('div', 'full', root);
+  const CY = '#2BE3FF', AM = '#FFC53D', RD = '#FF4D61', GR = '#3DFF9E', PALE = '#BFF6FF';
+  const C = [330, 560];
+  // ring of six, open above and below the centre so its labels sit clear of the lines; right edge stays left of x 618
+  const P = [0, 50, 130, 180, 230, 310].map(a => [C[0] + 228 * Math.cos(a * Math.PI / 180), C[1] + 228 * Math.sin(a * Math.PI / 180)]);
+
+  // S2 — the claim (4.06–9.74)
+  const date = H('div', 'abs lbl chip t-am hid', layer, 'left:60px;top:190px;font-size:36px'); date.textContent = '05.11.2026';
+  const dsub = H('div', 'abs', layer, 'left:64px;top:268px;font-size:28px;color:#b9c6d8');
+  const dsubS = chars(dsub, '2 ngày sau bầu cử giữa kỳ Mỹ');
+  const bub = S('g', { class: 'g-am', fill: 'none', stroke: AM, 'stroke-width': 4, 'stroke-linejoin': 'round' }, svg);
+  S('path', { d: 'M88 380 H572 Q600 380 600 408 V662 Q600 690 572 690 H190 L130 748 L140 690 H88 Q60 690 60 662 V408 Q60 380 88 380 Z' }, bub);
+  const who = H('div', 'abs lbl t-am', layer, 'left:96px;top:404px;font-size:24px');
+  const whoS = chars(who, 'OPENMATTER TUYÊN BỐ');
+  const qt = H('div', 'abs quote', layer, 'left:96px;top:458px;width:480px');
+  const qtS = chars(qt, '“AI không cần data center khổng lồ”');
+  const attr = H('div', 'abs hid', layer, 'left:180px;top:708px;font-size:24px;color:#FFC53D;opacity:0');
+  attr.textContent = 'công ty tự nhận · thông cáo 05/11/2026';
+  on(tl, 4.08, date); type(tl, dsubS, 4.2, 1.6);
+  draw(tl, bub, 5.95, 0.6); type(tl, whoS, 6.0, 0.8); type(tl, qtS, 7.35, 2.2); on(tl, 9.15, attr);
+  off(tl, 9.95, 0.35, date, dsub, who, qt, attr, bub);
+
+  // S3 — the usual way (10.24–15.5)
+  const lbl3 = H('div', 'abs lbl t-cy', layer, 'left:60px;top:196px');
+  const lbl3S = chars(lbl3, 'THÔNG THƯỜNG');
+  const linesC = S('g', { class: 'g-cy', stroke: CY, 'stroke-width': 2.5, opacity: 0.75 }, svg);
+  const linesR = S('g', { class: 'g-rd', stroke: RD, 'stroke-width': 2.5, opacity: 0 }, svg);
+  const users = S('g', { class: 'g-cy' }, svg), dots = S('g', { class: 'g-cy' }, svg);
+  P.forEach(([x, y]) => {
+    const dx = C[0] - x, dy = C[1] - y, L = Math.hypot(dx, dy), ux = dx / L, uy = dy / L;
+    const a = [x + ux * 46, y + uy * 46], b = [C[0] - ux * 112, C[1] - uy * 112];
+    S('line', { x1: a[0], y1: a[1], x2: b[0], y2: b[1] }, linesC);
+    S('line', { x1: a[0], y1: a[1], x2: b[0], y2: b[1] }, linesR);
+    const u = icon(users, 'user', x, y, 70, CY); u.setAttribute('opacity', 0);
+    S('circle', { cx: a[0], cy: a[1], r: 5, fill: PALE, opacity: 0, 'data-b': b.join(',') }, dots);
+  });
+  const dcC = icon(S('g', { class: 'g-cy' }, svg), 'dc', C[0], C[1], 170, CY, 4);
+  const dcR = icon(S('g', { class: 'g-rd' }, svg), 'dc', C[0], C[1], 170, RD, 4); dcR.setAttribute('opacity', 0);
+  const trust = H('div', 'abs hid', layer, `left:${C[0] - 150}px;top:${C[1] - 152}px;width:300px;text-align:center`);
+  H('span', 'lbl chip t-rd', trust, 'display:inline-block;font-size:22px;padding:4px 16px;background:#05070d', 'PHẢI TIN?');
+  const prov = H('div', 'abs hid', layer, `left:${C[0] - 150}px;top:${C[1] + 92}px;width:300px;text-align:center;font-size:22px;color:#ffd0d6`); prov.textContent = 'nhà cung cấp';
+  type(tl, lbl3S, 10.25, 0.6);
+  draw(tl, dcC, 11.4, 0.8);
+  tl.to([...users.children], { keyframes: { opacity: [0, 1, 0.3, 1] }, duration: 0.18, stagger: 0.07 }, 12.8);
+  draw(tl, linesC, 12.9, 0.6);
+  [...dots.children].forEach((d, i) => {
+    const [bx, by] = d.dataset.b.split(',').map(Number);
+    tl.to(d, { opacity: 1, duration: 0.05 }, 13.3 + i * 0.12);
+    tl.to(d, { attr: { cx: bx, cy: by }, duration: 0.85, ease: 'none', repeat: 2 }, 13.3 + i * 0.12);
+    tl.to(d, { opacity: 0, duration: 0.1 }, 15.8);
+  });
+  tl.to(dcR, { opacity: 1, duration: 0.35 }, 13.45); tl.to(dcC, { opacity: 0, duration: 0.35 }, 13.45);
+  tl.to(linesR, { opacity: 0.75, duration: 0.35 }, 13.45); tl.to(linesC, { opacity: 0, duration: 0.35 }, 13.45);
+  on(tl, 14.3, trust); on(tl, 14.85, prov);
+  off(tl, 15.8, 0.35, lbl3, users, linesR, dcR, trust, prov);
+
+  // S4 — split the job, send the parts out (16.0–22.52)
+  const lbl4 = H('div', 'abs lbl t-am', layer, 'left:60px;top:196px');
+  const lbl4S = chars(lbl4, 'OPENMATTER ĐỀ XUẤT');
+  const task = S('g', { class: 'g-cy', opacity: 0 }, svg);
+  S('rect', { x: C[0] - 69, y: C[1] - 46, width: 138, height: 92, rx: 8, fill: 'rgba(43,227,255,.10)', stroke: CY, 'stroke-width': 3.5 }, task);
+  const taskL = H('div', 'abs lbl t-cy hid', layer, `left:${C[0] - 150}px;top:${C[1] - 98}px;width:300px;text-align:center;font-size:22px`);
+  taskL.textContent = 'TÁC VỤ AI';
+  const paths = S('g', { class: 'g-cy', stroke: CY, 'stroke-width': 2, 'stroke-dasharray': '6 9', opacity: 0.8 }, svg);
+  const devs = S('g', { class: 'g-cy' }, svg), tiles = S('g', { class: 'g-cy' }, svg);
+  const kinds = { 4: ['pc', 'PC'], 5: ['pc', 'PC'], 0: ['gpu', 'GPU'], 3: ['gpu', 'GPU'], 1: ['server', 'Máy chủ'], 2: ['server', 'Máy chủ'] };
+  const order = [4, 5, 0, 3, 2, 1];         // tile i goes to P[order[i]]: PCs on top, GPUs at the sides, servers below
+  const devEls = {}, pathEls = {}, tileEls = [];
+  P.forEach(([x, y], k) => {
+    const g = icon(devs, kinds[k][0], x, y, 84, CY); g.setAttribute('opacity', 0);
+    const t = S('text', { x, y: y + 86, 'text-anchor': 'middle', fill: CY, 'font-family': 'IBM Plex Mono', 'font-size': 22, 'font-weight': 600, opacity: 0 }, devs);
+    t.textContent = kinds[k][1];
+    devEls[k] = [g, t];
+    pathEls[k] = S('line', { x1: C[0], y1: C[1], x2: x, y2: y, opacity: 0 }, paths);
+  });
+  const packed = [[-46, -23], [0, -23], [46, -23], [-46, 23], [0, 23], [46, 23]];
+  packed.forEach(([ox, oy]) => tileEls.push(S('rect', { x: C[0] + ox - 21, y: C[1] + oy - 21, width: 42, height: 42, rx: 6,
+    fill: 'rgba(43,227,255,.16)', stroke: CY, 'stroke-width': 2.5, opacity: 0 }, tiles)));
+  type(tl, lbl4S, 16.05, 0.8);
+  on(tl, 17.3, task, taskL);
+  tl.to(task, { opacity: 0, duration: 0.12 }, 18.5);
+  on(tl, 18.5, ...tileEls);
+  tileEls.forEach((r, i) => { const [ox, oy] = packed[i];
+    tl.to(r, { attr: { x: C[0] + ox * 1.3 - 21, y: C[1] + oy * 1.35 - 21 }, duration: 0.35, ease: 'power2.out' }, 18.62); });
+  const send = (idx, t) => idx.forEach((i, j) => {
+    const k = order[i], [x, y] = P[k];
+    on(tl, t + j * 0.08, ...devEls[k]);
+    tl.to(pathEls[k], { opacity: 1, duration: 0.2 }, t + 0.05 + j * 0.08);
+    tl.to(tileEls[i], { attr: { x: x - 15, y: y - 98, width: 30, height: 30 }, duration: 0.6, ease: 'power2.inOut' }, t + 0.15 + j * 0.08);
+  });
+  send([0, 1], 19.3); send([2, 3], 20.7); send([4, 5], 21.45);
+  off(tl, 22.2, 0.3, taskL);
+
+  // S5 — each machine sees only its part (23.02–27.12)
+  const rings = S('g', { class: 'g-cy', fill: 'none', stroke: CY, 'stroke-width': 3 }, svg);
+  const eyes = S('g', { class: 'g-cy' }, svg);
+  P.forEach(([x, y]) => {
+    S('circle', { cx: x, cy: y, r: 56, transform: `rotate(-90 ${x} ${y})` }, rings);
+    icon(eyes, 'eyeoff', x - 50, y - 62, 34, PALE, 2.5).setAttribute('opacity', 0);
+  });
+  const docA = icon(S('g', { class: 'g-am' }, svg), 'doc', C[0], C[1] - 8, 118, AM, 3.5); docA.setAttribute('opacity', 0);
+  const lockA = icon(S('g', { class: 'g-am' }, svg), 'lock', C[0], C[1] + 22, 42, AM, 3); lockA.setAttribute('opacity', 0);
+  const docG = icon(S('g', { class: 'g-gr' }, svg), 'doc', C[0], C[1] - 8, 118, GR, 3.5); docG.setAttribute('opacity', 0);
+  const lockG = icon(S('g', { class: 'g-gr' }, svg), 'lock', C[0], C[1] + 22, 42, GR, 3); lockG.setAttribute('opacity', 0);
+  const sens = H('div', 'abs t-am', layer, `left:${C[0] - 160}px;top:${C[1] + 64}px;width:320px;text-align:center;font-size:26px;font-weight:600`);
+  const sensS = chars(sens, 'dữ liệu nhạy cảm');
+  off(tl, 22.95, 0.25, lbl4, ...Object.values(pathEls));
+  const lbl5 = H('div', 'abs lbl t-cy', layer, 'left:60px;top:196px'); type(tl, chars(lbl5, 'MỖI MÁY MỘT PHẦN'), 23.05, 0.7);
+  off(tl, 27.5, 0.2, lbl5);
+  const lbl6 = H('div', 'abs lbl t-gr', layer, 'left:60px;top:196px'); type(tl, chars(lbl6, 'KIỂM CHỨNG'), 27.7, 0.5);
+  [...rings.children].forEach((c, i) => draw(tl, c, 23.1 + i * 0.06, 1.5));
+  on(tl, 24.85, ...eyes.children);
+  on(tl, 25.8, docA, lockA); type(tl, sensS, 25.9, 0.9);
+
+  // S6 — results come back with a proof (27.62–34.04)
+  off(tl, 27.6, 0.3, eyes, rings, sens);
+  const slots = order.map(k => { const [x, y] = P[k], dx = x - C[0], dy = y - C[1], L = Math.hypot(dx, dy); return [C[0] + dx / L * 132, C[1] + dy / L * 132]; });
+  tileEls.forEach((r, i) => tl.to(r, { attr: { x: slots[i][0] - 18, y: slots[i][1] - 18, width: 36, height: 36 }, duration: 0.7, ease: 'power2.inOut' }, 27.7 + i * 0.06));
+  const ring = S('circle', { cx: C[0], cy: C[1], r: 178, fill: 'none', stroke: GR, 'stroke-width': 3, class: 'g-gr', transform: `rotate(-90 ${C[0]} ${C[1]})` }, svg);
+  draw(tl, ring, 28.9, 1.0);
+  const checks = S('g', { class: 'g-gr' }, svg);
+  slots.forEach(([x, y]) => icon(checks, 'tick', x + 22, y - 22, 30, GR, 4).setAttribute('opacity', 0));
+  tl.to([...checks.children], { keyframes: { opacity: [0, 1, 0.3, 1] }, duration: 0.18, stagger: 0.08 }, 30.1);
+  tl.to(devs, { opacity: 0.35, duration: 0.4 }, 31.3);
+  tl.to([docG, lockG], { opacity: 1, duration: 0.3 }, 31.35); tl.to([docA, lockA], { opacity: 0, duration: 0.3 }, 31.35);
+  off(tl, 32.5, 0.25, docG, lockG);
+  tl.to(tiles, { opacity: 0.45, duration: 0.3 }, 32.5);
+  tl.to(devs, { opacity: 0, duration: 0.3 }, 32.5);
+  const shield = icon(S('g', { class: 'g-gr' }, svg), 'shield', C[0], C[1] - 6, 170, GR, 4.5);
+  const sCheck = icon(S('g', { class: 'g-gr' }, svg), 'check', C[0], C[1] - 6, 170, GR, 6);
+  draw(tl, shield, 32.6, 0.7); draw(tl, sCheck, 33.15, 0.35);
+  const proof = H('div', 'abs lbl t-gr', layer, `left:${C[0] - 220}px;top:${C[1] + 196}px;width:440px;text-align:center;font-size:30px`);
+  const proofS = chars(proof, 'BẰNG CHỨNG MẬT MÃ');
+  type(tl, proofS, 32.8, 0.8);
+
+  // captions: one phrase at a time
+  CAPS.forEach(([a, b, text]) => { const c = H('div', 'cap hid', root, null, text); show(tl, a, c); tl.to(c, { opacity: 0, duration: 0.01 }, b); });
+  common(root, tl);
+  tl.to({}, { duration: 0 }, D);
+  return tl;
+}
+
+// ================= B · PHONG SU =================
+function buildBin(root) {
+  const tl = gsap.timeline({ paused: true });
+  H('div', 'full bg', root);
+  const Y = '#F5C518', T = '#3BA7C9', R = '#E5484D';
+  // HUD
+  const track = H('div', 'abs', root, 'left:0;top:141px;width:720px;height:4px;background:#1b2431');
+  const fill = H('div', 'abs', track, 'left:0;top:0;width:720px;height:4px;background:#F5C518;transform-origin:0 50%;transform:scaleX(0)');
+  tl.to(fill, { scaleX: 1, duration: D, ease: 'none' }, 0);
+  const secs = [[0, '// MỞ ĐẦU'], [4.06, '// TUYÊN BỐ'], [10.24, '// HIỆN NAY'], [16.0, '// CƠ CHẾ'], [27.62, '// KIỂM CHỨNG']];
+  secs.forEach(([t, s], i) => {
+    const e = H('div', 'abs lbl', root, 'left:40px;top:156px'); const sp = chars(e, s);
+    type(tl, sp, t + 0.02, 0.4);
+    if (i < secs.length - 1) tl.to(e, { opacity: 0, duration: 0.01 }, secs[i + 1][0]);
+  });
+  const rec = H('div', 'abs mono', root, 'left:540px;top:154px;font-size:22px;font-weight:600;color:#dfe7f1;display:flex;align-items:center;gap:8px');
+  const dot = H('span', null, rec, 'width:14px;height:14px;border-radius:50%;background:#E5484D;display:inline-block');
+  H('span', null, rec, null, 'REC');
+  tl.to(dot, { opacity: 0.15, duration: 0.5, repeat: 33, yoyo: true, ease: 'steps(1)' }, 0.5);
+  const tc = H('div', 'abs mono', root, 'left:540px;top:184px;font-size:20px;color:#9fb0c4;width:150px;height:28px');
+  for (let s = 0; s <= 34; s++) {
+    const e = H('div', s ? 'abs hid' : 'abs', tc, 'left:0;top:0', `00:00:${String(s).padStart(2, '0')}`);
+    if (s) show(tl, s, e);
+    if (s < 34) tl.to(e, { opacity: 0, duration: 0.01 }, s + 1);
+  }
+  const meter = H('div', 'abs', root, 'left:470px;top:156px;width:56px;height:24px;display:flex;gap:4px;align-items:flex-end');
+  for (let k = 0; k < 5; k++) {
+    const b = H('div', null, meter, 'width:7px;height:24px;background:#F5C518;transform-origin:50% 100%;transform:scaleY(0.08)');
+    const m = 0.55 + 0.45 * Math.abs(Math.sin(k * 1.7 + 0.4));
+    tl.to(b, { keyframes: ENV.map((v, i) => ({ scaleY: Math.max(0.08, Math.min(1, v * m * (0.8 + 0.2 * (((k * 7 + i * 13) % 10) / 10)))), duration: 1 / 15, ease: 'none' })) }, 0);
+  }
+  const band = H('div', 'abs', root, 'left:36px;top:890px;width:576px;height:40px;background:#0f1722;border-top:1px solid #223044;border-bottom:1px solid #223044;overflow:hidden');
+  const tick = H('div', 'abs mono', band, 'left:0;top:7px;white-space:nowrap;font-size:19px;letter-spacing:2px;color:#9fb0c4');
+  tick.textContent = 'OPENMATTER  ▪  MATTERCHAIN  ▪  DATAVIZOR  ▪  PC  ▪  GPU  ▪  MÁY CHỦ ĐỘC LẬP  ▪  BẰNG CHỨNG MẬT MÃ  ▪  '.repeat(3);
+  tl.to(tick, { x: -1500, duration: D, ease: 'none' }, 0);
+  const flashY = H('div', 'full hid', root, 'background:#F5C518'), flashR = H('div', 'full hid', root, 'background:#E5484D');
+  const flash = (t, el) => tl.to(el, { keyframes: { opacity: [0, 0.45, 0] }, duration: 0.22, ease: 'none' }, t);
+  const card = (t0, t1) => { const c = H('div', 'full hid', root); show(tl, t0, c); if (t1) tl.to(c, { opacity: 0, duration: 0.01 }, t1); return c; };
+  const enter = (t, ...els) => tl.fromTo(els, { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.35, ease: 'power3.out' }, t);
+  const enterX = (t, ...els) => tl.fromTo(els, { opacity: 0, x: -28 }, { opacity: 1, x: 0, duration: 0.3, ease: 'power3.out' }, t);
+
+  // S2 — date + the claim
+  flash(4.06, flashY);
+  const c2 = card(4.06, 10.24);
+  const date = H('div', 'abs mono y', c2, 'left:40px;top:214px;font-size:88px;font-weight:600;letter-spacing:2px');
+  type(tl, chars(date, '05.11.2026'), 4.12, 0.6);
+  const dsub = H('div', 'abs', c2, 'left:44px;top:330px;font-size:30px;color:#c9d4e3');
+  type(tl, chars(dsub, '2 ngày sau bầu cử giữa kỳ Mỹ'), 4.8, 1.1);
+  const q = H('div', 'abs panel', c2, 'left:40px;top:410px;width:572px;height:400px;border-left:6px solid #F5C518');
+  const qlbl = H('div', 'abs lbl', q, 'left:28px;top:26px'); type(tl, chars(qlbl, 'OPENMATTER TUYÊN BỐ'), 6.05, 0.6);
+  H('div', 'abs y', q, 'left:24px;top:52px;font-size:120px;font-weight:800;line-height:1;opacity:.9', '“');
+  const qt = H('div', 'abs stmt', q, 'left:28px;top:150px;width:520px;font-size:54px'); type(tl, chars(qt, 'AI không cần data center khổng lồ'), 7.35, 2.1);
+  const tag = H('div', 'abs tag', q, 'left:28px;top:338px', 'CÔNG TY TỰ NHẬN · 05/11/2026');
+  enter(5.95, q); enter(9.2, tag);
+
+  // S3 — the usual way
+  flash(10.24, flashR);
+  const c3 = card(10.24, 16.0);
+  const dc = svgIcon(c3, 'dc', 170, T, 5, 'position:absolute;left:40px;top:222px');
+  draw(tl, dc, 10.3, 0.8);
+  const l3 = H('div', 'abs lbl', c3, 'left:240px;top:240px'); type(tl, chars(l3, 'MÔ HÌNH HIỆN NAY'), 10.3, 0.6);
+  const s3 = H('div', 'abs stmt', c3, 'left:40px;top:430px;width:572px;font-size:50px'); type(tl, chars(s3, 'AI chạy trong một data center tập trung'), 10.4, 2.9);
+  const warn = H('div', 'abs', c3, 'left:40px;top:690px;width:572px;height:110px;border:2px solid #E5484D;background:rgba(229,72,77,.12);border-radius:6px;display:flex;align-items:center;gap:18px;padding:0 22px');
+  svgIcon(warn, 'warn', 54, R, 3.5);
+  H('div', null, warn, 'font-weight:700;font-size:32px;line-height:1.2;color:#fff', 'Người dùng phải tin nhà cung cấp');
+  enterX(13.35, warn);
+
+  // S4 — the chain
+  flash(16.0, flashY);
+  const c4 = card(16.0, 23.02);
+  const l4 = H('div', 'abs lbl', c4, 'left:40px;top:214px'); type(tl, chars(l4, 'OPENMATTER ĐỀ XUẤT'), 16.05, 0.8);
+  const step = (n, text, top, h) => {
+    const b = H('div', 'abs panel', c4, `left:40px;top:${top}px;width:572px;height:${h}px;padding:19px 18px`);
+    const row = H('div', null, b, 'display:flex;align-items:center;gap:18px');
+    H('div', 'num', row, null, n); H('div', null, row, 'font-weight:700;font-size:32px;color:#fff', text);
+    return b;
+  };
+  const arrow = (top) => { const s = S('svg', { width: 40, height: 44, viewBox: '0 0 40 44', fill: 'none', stroke: Y, 'stroke-width': 4, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, c4);
+    s.style.cssText = `position:absolute;left:47px;top:${top}px`; S('path', { d: 'M20 2V40M8 28l12 12l12-12' }, s); return s; };
+  const st1 = step('1', 'Tác vụ AI', 268, 92); enter(17.35, st1);
+  draw(tl, arrow(362), 17.85, 0.3);
+  const st2 = step('2', 'Chia nhiều phần', 408, 92); enter(18.5, st2);
+  const mini = H('div', 'abs', st2, 'left:380px;top:20px;width:170px;height:52px');
+  const minis = [0, 1, 2, 3, 4, 5].map(i => H('div', 'abs hid', mini, `left:${(i % 3) * 26}px;top:${Math.floor(i / 3) * 26}px;width:24px;height:24px;background:rgba(59,167,201,.35);border:1.5px solid #3BA7C9`));
+  tl.to(minis, { opacity: 1, duration: 0.01, stagger: 0.04 }, 18.6);
+  minis.forEach((m, i) => tl.to(m, { left: (i % 3) * 58, top: Math.floor(i / 3) * 30, duration: 0.35, ease: 'power2.out' }, 18.85));
+  draw(tl, arrow(502), 19.1, 0.25);
+  const st3 = step('3', 'Gửi tới các máy độc lập', 548, 214); enter(19.25, st3);
+  const chips = H('div', 'abs', st3, 'left:18px;top:98px;display:flex;gap:12px');
+  [['pc', 'PC', 19.4], ['gpu', 'GPU', 20.72], ['server', 'Máy chủ', 21.5]].forEach(([ic, txt, t]) => {
+    const c = H('div', 'chipb', chips); svgIcon(c, ic, 38, T, 2.6); H('span', null, c, null, txt); enter(t, c);
+  });
+
+  // S5 — the grid
+  flash(23.02, flashY);
+  const c5 = card(23.02, 27.62);
+  const s5 = H('div', 'abs stmt', c5, 'left:40px;top:214px;width:572px;font-size:44px'); type(tl, chars(s5, 'Mỗi máy chỉ xử lý phần của mình'), 23.05, 1.7);
+  const kinds = ['pc', 'gpu', 'server', 'pc', 'gpu', 'server'];
+  const eyes = [];
+  kinds.forEach((k, i) => {
+    const cell = H('div', 'cell panel', c5, `left:${40 + (i % 3) * 196}px;top:${360 + Math.floor(i / 3) * 166}px`);
+    svgIcon(cell, k, 56, T, 3); H('div', 'mono', cell, 'font-size:21px;color:#c9d4e3;letter-spacing:2px;font-weight:600', `PHẦN ${i + 1}`);
+    eyes.push(svgIcon(cell, 'eyeoff', 30, Y, 2.4, 'position:absolute;right:10px;top:10px;opacity:0'));
+    enter(23.15 + i * 0.12, cell);
+  });
+  tl.to(eyes, { opacity: 1, duration: 0.01, stagger: 0.05 }, 24.85);
+  const s5b = H('div', 'abs', c5, 'left:40px;top:706px;width:572px;height:100px;border-left:6px solid #E5484D;background:rgba(229,72,77,.1);padding:14px 20px;font-weight:700;font-size:30px;line-height:1.2;color:#fff');
+  type(tl, chars(s5b, 'Không máy nào thấy toàn bộ dữ liệu nhạy cảm'), 25.8, 1.3);
+
+  // S6 — the proof
+  flash(27.62, flashY);
+  const c6 = card(27.62, null);
+  const sh = S('svg', { width: 170, height: 200, viewBox: '0 0 24 24', fill: 'none', stroke: Y, 'stroke-width': 1.1, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', preserveAspectRatio: 'xMidYMid meet' }, c6);
+  sh.style.cssText = 'position:absolute;left:40px;top:222px';
+  const shP = S('path', { d: IC.shield[0] }, sh), shC = S('path', { d: IC.check[0], 'stroke-width': 1.5 }, sh);
+  draw(tl, shP, 27.75, 0.75); draw(tl, shC, 32.6, 0.35);
+  const s6 = H('div', 'abs stmt', c6, 'left:236px;top:236px;width:376px;font-size:38px'); type(tl, chars(s6, 'Mỗi kết quả kèm một bảo đảm toán học'), 27.7, 2.2);
+  const row = (top, text, t) => {
+    const r = H('div', 'abs', c6, `left:40px;top:${top}px;display:flex;align-items:center;gap:16px`);
+    const box = H('div', null, r, 'width:46px;height:46px;background:#F5C518;display:flex;align-items:center;justify-content:center');
+    svgIcon(box, 'tick', 32, '#0a0f17', 4);
+    H('div', null, r, 'font-weight:700;font-size:34px;color:#fff', text); enterX(t, r);
+  };
+  row(478, 'Phép tính chạy đúng', 30.1); row(556, 'Không lộ dữ liệu', 31.35);
+  const stamp = H('div', 'abs mono', c6, 'left:40px;top:660px;width:572px;height:110px;background:#F5C518;color:#0a0f17;font-weight:600;font-size:44px;letter-spacing:2px;display:flex;align-items:center;justify-content:center', 'BẰNG CHỨNG MẬT MÃ');
+  tl.fromTo(stamp, { opacity: 0, scale: 1.06 }, { opacity: 1, scale: 1, duration: 0.18, ease: 'power2.out' }, 32.6);
+
+  // captions: the whole sentence in a box
+  LINES.forEach(({ start, end, text }) => { const c = H('div', 'cap hid', root, null, text); show(tl, start, c); tl.to(c, { opacity: 0, duration: 0.01 }, end); });
+  common(root, tl);
+  tl.to({}, { duration: 0 }, D);
+  return tl;
+}
+
+// ---------- mount + preview player ----------
+function mount(phone, id, cls, build) {
+  const root = H('div', 'comp ' + cls, phone);
+  root.id = id; root.dataset.compositionId = id; root.dataset.width = 720; root.dataset.height = 1280; root.dataset.duration = D;
+  window.__timelines[id] = build(root);
+  return root;
+}
+const roots = [mount(document.getElementById('phoneA'), 'neon', 'neon', buildNeon), mount(document.getElementById('phoneB'), 'bin', 'bin', buildBin)];
+function fit() {
+  const s = Math.max(0.28, Math.min(0.62, (window.innerHeight - 250) / 1280, (Math.min(window.innerWidth, 1500) - 110) / 2 / 720));
+  roots.forEach(r => { r.style.transform = `scale(${s})`; r.parentElement.style.width = 720 * s + 'px'; r.parentElement.style.height = 1280 * s + 'px'; });
+  document.querySelectorAll('.options').forEach(o => o.style.width = Math.max(300, 720 * s) + 'px');
+}
+fit(); window.addEventListener('resize', fit);
+const audio = document.getElementById('voice'), playB = document.getElementById('play'), scrub = document.getElementById('scrub'), time = document.getElementById('time');
+function seekAll(t) { for (const k in window.__timelines) window.__timelines[k].seek(t, false); scrub.value = t; time.textContent = t.toFixed(1).padStart(4, '0') + ' / 34.6 s'; }
+function loop() { seekAll(Math.min(audio.currentTime, D)); if (!audio.paused) requestAnimationFrame(loop); }
+playB.onclick = () => {
+  if (audio.paused) { if (audio.currentTime >= D - 0.05) audio.currentTime = 0; audio.play(); playB.textContent = '❚❚ Dừng'; requestAnimationFrame(loop); }
+  else { audio.pause(); playB.textContent = '▶ Phát'; }
+};
+document.getElementById('restart').onclick = () => { audio.currentTime = 0; seekAll(0); if (audio.paused) { audio.play(); playB.textContent = '❚❚ Dừng'; requestAnimationFrame(loop); } };
+scrub.oninput = () => { audio.currentTime = +scrub.value; seekAll(+scrub.value); };
+audio.onended = () => { playB.textContent = '▶ Phát'; seekAll(D); };
+document.getElementById('zones').onchange = e => document.getElementById('stage').classList.toggle('show-zones', e.target.checked);
+seekAll(0);
+</script>
+</body>
+</html>
