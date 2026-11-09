@@ -202,6 +202,18 @@ def test_statement_and_quote_wrap_and_refuse_what_will_not_fit():
             place(Section("s1", "", "normal", "none", (), (), (Beat(1, kind, args),), ()))
 
 
+@pytest.mark.parametrize("text", ["Cập nhật ngay hôm nay", "Tin ai khi máy chủ lộ chìa?"])
+def test_a_statement_of_two_lines_is_balanced_not_left_with_an_orphan(text):  # the greedy wrap gave "…ngay hôm | nay", "…lộ | chìa?"
+    st = by_id(place(Section("s1", "", "normal", "none", (), (), (Beat(1, "statement", {"text": text}),), ())), "s1.0")
+    w = lambda s: text_box(s, "BeVietnamPro-ExtraBold.ttf", 44, 0, 0).x1
+    words, lines = text.split(), st["lines"]
+    assert len(lines) == 2 and " ".join(lines) == text and len(lines[-1].split()) >= 2
+    cuts = [(" ".join(words[:k]), " ".join(words[k:])) for k in range(1, len(words))]
+    assert max(map(w, lines)) == min(max(w(a), w(b)) for a, b in cuts)  # the wider line is as narrow as any split makes it
+    assert max(map(w, lines)) <= 552  # inside the band
+    assert st["box"][2] - st["box"][0] == pytest.approx(max(map(w, lines)))
+
+
 def test_chips_without_near_stack_in_the_left_column():
     chips = tuple(Beat(i, "chip", {"text": t}) for i, t in enumerate(["05.11.2026", "chưa xác nhận", "1000 lần"], start=1))
     for label, y0 in (("", 190), ("THÔNG THƯỜNG", 250)):

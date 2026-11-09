@@ -128,6 +128,17 @@ def _wrap(text: str, font: str, size: int, width: float, max_lines: int) -> list
     return lines if len(lines) <= max_lines and all(map(fit, lines)) else None
 
 
+def _balanced(text: str, font: str, size: int, width: float) -> list[str] | None:
+    """`_wrap` into at most 2 lines, but a text that needs both is split where its wider line is narrowest, so the second line is
+    never one orphan word ("Cập nhật ngay hôm | nay"). None when it will not fit, as `_wrap`."""
+    lines = _wrap(text, font, size, width, 2)
+    if lines is None or len(lines) < 2:
+        return lines
+    words, wide = text.split(), lambda s: text_box(s, font, size, 0, 0).x1
+    cuts = [(" ".join(words[:k]), " ".join(words[k:])) for k in range(1, len(words))]
+    return list(min((c for c in cuts if max(map(wide, c)) <= width), key=lambda c: max(map(wide, c))))  # the greedy cut is one of them
+
+
 def _icon(kind: str, id: str, name: str, x: float, y: float, size: float, tone: str, **more) -> dict:
     h = (size * INK + STROKE["hub" if kind == "icon" and size >= HUB else kind]) / 2  # the drawn ink: live area plus the stroke
     return {"id": id, "kind": kind, "icon": name, "x": x, "y": y, "size": size, "tone": tone,
@@ -244,7 +255,7 @@ def place(section: Section, kept: list[dict] = ()) -> list[dict]:
             out.append(hero)
         elif bt.do == "statement":
             band = STATEMENT_BAND
-            if (lines := _wrap(a["text"], EXTRA, 44, band.x1 - band.x0, 2)) is None:
+            if (lines := _balanced(a["text"], EXTRA, 44, band.x1 - band.x0)) is None:
                 problems.append(f"câu lớn {a['text']!r} ({where}): dài quá, hơn 2 dòng trong dải chữ")
                 continue
             w, lh = max(text_box(s, EXTRA, 44, 0, 0).x1 for s in lines), _line(EXTRA, 44)
