@@ -120,7 +120,7 @@ def test_nodes_links_badges_and_tiles_stand_as_in_the_spike():
     assert (t1["x"], t1["y"]) == pytest.approx((C[0], C[1] - 116))
     u2, m = by_id(els, "u2"), by_id(els, "s1.2.0")  # a merge's tiles hang over the nodes the pieces come from
     assert (m["kind"], m["beat"]) == ("tile", 2) and (m["x"], m["y"]) == pytest.approx((u2["x"], u2["y"] - 83))
-    assert t0["box"] == pytest.approx([u1["x"] - 15, u1["y"] - 98, u1["x"] + 15, u1["y"] - 68], abs=0.01)
+    assert t0["box"] == pytest.approx([u1["x"] - 16.25, u1["y"] - 99.25, u1["x"] + 16.25, u1["y"] - 66.75], abs=0.01)  # 30 + stroke 2.5
 
 
 def test_a_link_too_short_to_draw_is_refused():
@@ -222,4 +222,4 @@ def test_a_kept_hub_is_an_obstacle_and_a_link_to_it_is_cut_at_its_size():
     assert not any(boxes_overlap(lb["box"], k["box"]) for lb in labels for k in solid)
     assert not any(segment_hits_box(link, lb["box"]) for lb in labels)
     # without that old label, u1's own would stand right under its icon: the kept one is what moved it
-    assert by_id(place(sec, kept[:2]), "u1.label")["box"][1] == pytest.approx(603, abs=0.1)
+    assert by_id(place(sec, kept[:2]), "u1.label")["box"][1] == pytest.approx(604.75, abs=0.1)

@@ -23,7 +23,8 @@ SLOTS: dict[str, dict[str, tuple[float, float]]] = {
 }
 
 ICON, HUB = 84, 150  # an icon's side at a normal slot / at the hub
-INK = 20 / 24  # an icon's lines fill this much of its square: Lucide draws inside a 20 × 20 live area of its 24 × 24 grid
+INK = 20 / 24  # an icon's paths fill this much of its square: Lucide draws inside a 20 × 20 live area of its 24 × 24 grid
+STROKE = {"icon": 3.5, "hub": 4, "badge": 2.5, "hero": 4.5, "tile": 2.5}  # px, the kit's (runtime-contract "Strokes")
 SHORT, SHORT_HUB = 46, 112  # a link stops this far from the centre of a normal / hub-sized node
 BADGE, TILE, HERO = 34, 30, 170  # sides of a badge, a split tile and the hero icon
 TUNNEL_HALF = 6  # a `tunnel` link is two rails this far either side of its line; the kit draws them there
@@ -36,7 +37,9 @@ SECTION_XY = (60, 190)
 LEFT_EDGE, RIGHT_EDGE = 40, 680  # nothing nearer the sides (y < 535: the logo's edge and a margin; below: UI_RIGHT)
 DIAGRAM = (250, 900)  # labels and chips next to a node stay in these rows
 HARD = (UI_TOP, 999)  # everything else: below the top bar, and (y >= 1000 is the caption band) above the captions
-LABEL_GAPS, CHIP_GAPS = (8, 16, 24, 32, 40), (12, 24, 36, 48, 60, 72, 84)  # how far from the icon, nearest first
+# How far from the icon's ink, in the order tried. 4 comes after 8 only because in a full ring r0's and r3's label under the icon
+# (at 8) comes within 3 px of the next node's tile; it is tried only when 8 is blocked.
+LABEL_GAPS, CHIP_GAPS = (8, 4, 16, 24, 32, 40), (12, 24, 36, 48, 60, 72, 84)
 FREE_CHIPS = (60, 12)  # a chip without `near`: the left column, and the gap between two of them
 HERO_LABEL_Y = 756
 QUOTE_W = 480  # how wide a quote's words may run: the spike starts them at x 96, y 458 inside the bubble
@@ -121,7 +124,7 @@ def _wrap(text: str, font: str, size: int, width: float, max_lines: int) -> list
 
 
 def _icon(kind: str, id: str, name: str, x: float, y: float, size: float, tone: str, **more) -> dict:
-    h = size * INK / 2  # the box is the live area, where the lines are drawn, not the whole square
+    h = (size * INK + STROKE["hub" if kind == "icon" and size >= HUB else kind]) / 2  # the drawn ink: live area plus the stroke
     return {"id": id, "kind": kind, "icon": name, "x": x, "y": y, "size": size, "tone": tone,
             "box": _lst(Box(x - h, y - h, x + h, y + h)), **more}
 
@@ -215,9 +218,9 @@ def place(section: Section, kept: list[dict] = ()) -> list[dict]:
         elif bt.do in ("split", "merge"):  # a tile for each node the pieces go to (split) or come from (merge)
             for j, nid in enumerate(a["to"] if bt.do == "split" else a["from"]):
                 n = node(nid, where)
-                ty = n["y"] - n["size"] / 2 - 41  # the tile hangs above the icon, as in the spike
+                ty, h = n["y"] - n["size"] / 2 - 41, (TILE + STROKE["tile"]) / 2  # it hangs above the icon, as in the spike
                 put({"id": f"{eid}.{j}", "kind": "tile", "beat": k, "x": n["x"], "y": ty, "size": TILE, "tone": tone,
-                     "box": _lst(Box(n["x"] - TILE / 2, ty - TILE / 2, n["x"] + TILE / 2, ty + TILE / 2))})
+                     "box": _lst(Box(n["x"] - h, ty - h, n["x"] + h, ty + h))})
         elif bt.do == "hero":
             label = a.get("label", "")
             lb = text_box(label, MONO, 30, C[0], HERO_LABEL_Y, "m") if label else Box(C[0], HERO_LABEL_Y, C[0], HERO_LABEL_Y)
