@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=720, height=1280">
+<link rel="stylesheet" href="kit.css">
+<script src="gsap.min.js"></script>
+</head>
+<body>
+<div id="root" data-composition-id="main" data-start="0" data-duration="__DURATION__" data-width="720" data-height="1280">
+  <div id="scene" class="clip" data-start="0" data-duration="__DURATION__" data-track-index="1"></div>
+</div>
+<script>window.SCENE = /*SCENE*/null;</script>
+<script src="kit.js"></script>
+<script>
+window.__timelines = window.__timelines || {};
+window.__timelines["main"] = buildNeon(window.SCENE);
+</script>
+</body>
+</html>
