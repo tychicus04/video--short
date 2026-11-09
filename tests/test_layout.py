@@ -103,7 +103,7 @@ def test_full_layouts_have_no_overlap(layout):  # a full layout must not make mi
 def test_nodes_links_badges_and_tiles_stand_as_in_the_spike():
     sec = ring_section(links_to_hub=True, beats=[Beat(1, "badge", {"node": "u1", "icon": "eyeoff"}),
                                                  Beat(2, "split", {"node": "dc", "to": ["u1", "dc"]}),
-                                                 Beat(3, "merge", {"from": ["u2"], "into": "dc"})])
+                                                 Beat(3, "merge", {"from": ["u2", "u3"], "into": "dc"})])
     els = place(sec)
     dc, u1 = by_id(els, "dc"), by_id(els, "u1")
     assert (dc["size"], u1["size"], dc["kind"], dc["icon"], dc["tone"]) == (HUB, ICON, "icon", "server", "normal")
@@ -118,9 +118,20 @@ def test_nodes_links_badges_and_tiles_stand_as_in_the_spike():
     assert (t0["kind"], t0["size"], t0["beat"]) == ("tile", 30, 1) and "of" not in t0  # a tile is not its node's
     assert (t0["x"], t0["y"]) == pytest.approx((u1["x"], u1["y"] - 83))
     assert (t1["x"], t1["y"]) == pytest.approx((C[0], C[1] - 116))
-    u2, m = by_id(els, "u2"), by_id(els, "s1.2.0")  # a merge's tiles hang over the nodes the pieces come from
-    assert (m["kind"], m["beat"]) == ("tile", 2) and (m["x"], m["y"]) == pytest.approx((u2["x"], u2["y"] - 83))
+    m0, m1 = by_id(els, "s1.2.0"), by_id(els, "s1.2.1")  # a merge's tiles, one a piece, all rest over `into`, on one spot
+    assert (m0["kind"], m0["beat"]) == ("tile", 2) and "s1.2.2" not in {e["id"] for e in els}
+    assert (m0["x"], m0["y"]) == pytest.approx((C[0], C[1] - 116)) and (m1["x"], m1["y"]) == (m0["x"], m0["y"])
+    assert m0["box"] == m1["box"] == t1["box"]
     assert t0["box"] == pytest.approx([u1["x"] - 16.25, u1["y"] - 99.25, u1["x"] + 16.25, u1["y"] - 66.75], abs=0.01)  # 30 + stroke 2.5
+
+
+def test_split_and_merge_name_a_node_that_is_not_there():
+    for beat, ghost in [(Beat(1, "merge", {"from": ["u1"], "into": "ghost"}), "ghost"),
+                        (Beat(1, "merge", {"from": ["ghost"], "into": "dc"}), "ghost"),
+                        (Beat(1, "split", {"node": "ghost", "to": ["u1"]}), "ghost"),
+                        (Beat(1, "split", {"node": "dc", "to": ["ghost"]}), "ghost")]:
+        with pytest.raises(SceneError, match=f"nhịp 0 .*nút '{ghost}'"):
+            place(ring_section(beats=[beat]))
 
 
 def test_a_link_too_short_to_draw_is_refused():

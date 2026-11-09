@@ -13,12 +13,14 @@ _RING_ANGLES = (0, 50, 130, 180, 230, 310)  # degrees; y grows downwards, so 50 
 SLOTS: dict[str, dict[str, tuple[float, float]]] = {
     "none": {},
     "center": {"hub": C},
-    # `below` stands 220 under the hub, not 180: its split tile hangs 98 above its centre, and at 180 that is too near the hub's label
+    # `below` stands 220 under the hub, not 200: at 200 (330, 760) the hub's label fits only at the 4 px fallback, 0.25 px past the 4 px
+    # margin from `below`'s tile, too fragile (the font files are untracked downloads and may differ between the Mac and pve2)
     "pair": {"hub": C, "left": (150, 560), "right": (510, 560), "above": (330, 380), "below": (330, 780)},
     "ring": {"hub": C} | {f"r{k}": (C[0] + 228 * math.cos(math.radians(a)), C[1] + 228 * math.sin(math.radians(a)))
                           for k, a in enumerate(_RING_ANGLES)},
     "chain": {f"c{k}": (330, 330 + 150 * k) for k in range(4)},
-    # the rows are 200 apart, not 170: a label under the top row and a tile over the bottom row need that between them
+    # the rows are 200 apart, not 170: a label under the top row and a tile over the bottom row need room between them, and 200 keeps
+    # the labels at the 8 px gap with room to spare (175 would also pass)
     "grid": {f"g{k}": ((162, 330, 498)[k % 3], (460, 660)[k // 3]) for k in range(6)},
 }
 
@@ -215,9 +217,15 @@ def place(section: Section, kept: list[dict] = ()) -> list[dict]:
         elif bt.do == "swap":
             n = node(a["node"], where)
             put(_icon("icon", eid, a["icon"], n["x"], n["y"], n["size"], n["tone"], of=a["node"], beat=k), obstacle=False)
-        elif bt.do in ("split", "merge"):  # a tile for each node the pieces go to (split) or come from (merge)
-            for j, nid in enumerate(a["to"] if bt.do == "split" else a["from"]):
-                n = node(nid, where)
+        elif bt.do in ("split", "merge"):  # a tile for each piece
+            ends = a["to"] if bt.do == "split" else a["from"]  # where the pieces go (split) or come from (merge)
+            node(a["node"] if bt.do == "split" else a["into"], where)
+            for nid in ends:
+                node(nid, where)
+            # a split's tiles rest over the nodes they go to; a merge's all rest over `into`, on one spot, where they become one
+            # piece (Task 6's `move` flies each from its own node's spot to there)
+            for j, rest in enumerate(ends if bt.do == "split" else [a["into"]] * len(ends)):
+                n = node(rest, where)
                 ty, h = n["y"] - n["size"] / 2 - 41, (TILE + STROKE["tile"]) / 2  # it hangs above the icon, as in the spike
                 put({"id": f"{eid}.{j}", "kind": "tile", "beat": k, "x": n["x"], "y": ty, "size": TILE, "tone": tone,
                      "box": _lst(Box(n["x"] - h, ty - h, n["x"] + h, ty + h))})
