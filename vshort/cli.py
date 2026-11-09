@@ -18,8 +18,9 @@ from vshort.media import frame_at, probe
 from vshort.plates import clean, scene_changes, scene_cuts
 from vshort.render import OUTRO, build_ass, export_outro, export_title, render_pieces
 from vshort.run import Run, config
+from vshort.scene import phrase_table
 from vshort.script import (Sentence, check_brief, check_neon, check_numbers, check_script, check_style,
-                           group_sentences, merge_text, merged)
+                           group_sentences, mechanism_steps, merge_text, merged)
 from vshort.stills import NLM_OUTRO, contact_sheet, grid_image, pick_still, scene_of
 from vshort.tts import (Clip, QuotaExceeded, clip_paths, gemini_speaker, load_api_key, synth_lines, synth_script,
                         zerotts_speaker)
@@ -384,6 +385,23 @@ def cmd_render(a) -> int:
     print(run.file("final.mp4"))
     return OK
 
+
+def cmd_scene(a) -> int:
+    """`--table`: the numbered phrases and the brief's mechanism steps, what the scene agent writes scene.json against."""
+    if not a.table:
+        _err("`vshort scene` mới có `--table` (kiểm và dàn giờ kịch bản hình chưa làm)")
+        return BAD_INPUT
+    run = Run(a.run)
+    if gone := [f for f in ("timeline.json", "script.vi.json", "brief.vi.md") if not run.file(f).exists()]:
+        _err("thiếu " + ", ".join(gone) + " (chạy lại các bước trước)")
+        return BAD_INPUT
+    for p in phrase_table(run.read("timeline.json"), run.read("script.vi.json")):
+        print(f"{p.i}  {p.start:.2f}  {p.text}")
+    print()
+    print("\n".join(mechanism_steps(run.file("brief.vi.md").read_text(encoding="utf-8"))))
+    return OK
+
+
 def cmd_outro(a) -> int:
     export_outro(Path(a.out))
     print(Path(a.out).resolve())
@@ -575,6 +593,10 @@ def main(argv: list[str] | None = None) -> int:
         p.set_defaults(fn=fn)
         if name == "cover":
             p.add_argument("--candidates", action="store_true", help="gather the sources' lead images for an agent to pick")
+    p = sub.add_parser("scene", help="kịch bản hình của kiểu neon: `--table` in bảng cụm và các bước cơ chế để viết scene.json")
+    p.add_argument("run")
+    p.add_argument("--table", action="store_true")
+    p.set_defaults(fn=cmd_scene)
     p = sub.add_parser("outro", help="vẽ lại outro logo ANM ra mp4; mọi video render sau đó ghép file này vào cuối")
     p.add_argument("out", nargs="?", default=str(OUTRO))
     p.set_defaults(fn=cmd_outro)

@@ -1,0 +1,224 @@
+{
+ "_version": "1.61.0",
+ "_source": "lucide-static on npm (https://lucide.dev); every shape converted to one path d in the 24x24 box, stroke 2, round caps and joins",
+ "_license": "ISC License\n\nCopyright (c) 2026 Lucide Icons and Contributors\n\nPermission to use, copy, modify, and/or distribute this software for any\npurpose with or without fee is hereby granted, provided that the above\ncopyright notice and this permission notice appear in all copies.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\" AND THE AUTHOR DISCLAIMS ALL WARRANTIES\nWITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF\nMERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR\nANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES\nWHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN\nACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF\nOR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.\n\n---\n\nThe following Lucide icons are derived from the Feather project:\n\nairplay, alert-circle, alert-octagon, alert-triangle, aperture, arrow-down-circle, arrow-down-left, arrow-down-right, arrow-down, arrow-left-circle, arrow-left, arrow-right-circle, arrow-right, arrow-up-circle, arrow-up-left, arrow-up-right, arrow-up, at-sign, calendar, cast, check, chevron-down, chevron-left, chevron-right, chevron-up, chevrons-down, chevrons-left, chevrons-right, chevrons-up, circle, clipboard, clock, code, columns, command, compass, corner-down-left, corner-down-right, corner-left-down, corner-left-up, corner-right-down, corner-right-up, corner-up-left, corner-up-right, crosshair, database, divide-circle, divide-square, dollar-sign, download, external-link, feather, frown, hash, headphones, help-circle, info, italic, key, layout, life-buoy, link-2, link, loader, lock, log-in, log-out, maximize, meh, minimize, minimize-2, minus-circle, minus-square, minus, monitor, moon, more-horizontal, more-vertical, move, music, navigation-2, navigation, octagon, pause-circle, percent, plus-circle, plus-square, plus, power, radio, rss, search, server, share, shopping-bag, sidebar, smartphone, smile, square, table-2, tablet, target, terminal, trash-2, trash, triangle, tv, type, upload, x-circle, x-octagon, x-square, x, zoom-in, zoom-out\n\nThe MIT License (MIT) (for the icons listed above)\n\nCopyright (c) 2013-present Cole Bemis\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n",
+ "user": [
+  "M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2",
+  "M8 7A4 4 0 1 0 16 7A4 4 0 1 0 8 7Z"
+ ],
+ "user-x": [
+  "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2",
+  "M5 7A4 4 0 1 0 13 7A4 4 0 1 0 5 7Z",
+  "M17 8L22 13",
+  "M22 8L17 13"
+ ],
+ "users": [
+  "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2",
+  "M16 3.128a4 4 0 0 1 0 7.744",
+  "M22 21v-2a4 4 0 0 0-3-3.87",
+  "M5 7A4 4 0 1 0 13 7A4 4 0 1 0 5 7Z"
+ ],
+ "server": [
+  "M4 2H20A2 2 0 0 1 22 4V8A2 2 0 0 1 20 10H4A2 2 0 0 1 2 8V4A2 2 0 0 1 4 2Z",
+  "M4 14H20A2 2 0 0 1 22 16V20A2 2 0 0 1 20 22H4A2 2 0 0 1 2 20V16A2 2 0 0 1 4 14Z",
+  "M6 6L6.01 6",
+  "M6 18L6.01 18"
+ ],
+ "hard-drive": [
+  "M10 16h.01",
+  "M2.212 11.577a2 2 0 0 0-.212.896V18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5.527a2 2 0 0 0-.212-.896L18.55 5.11A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z",
+  "M21.946 12.013H2.054",
+  "M6 16h.01"
+ ],
+ "monitor": [
+  "M4 3H20A2 2 0 0 1 22 5V15A2 2 0 0 1 20 17H4A2 2 0 0 1 2 15V5A2 2 0 0 1 4 3Z",
+  "M8 21L16 21",
+  "M12 17L12 21"
+ ],
+ "smartphone": [
+  "M7 2H17A2 2 0 0 1 19 4V20A2 2 0 0 1 17 22H7A2 2 0 0 1 5 20V4A2 2 0 0 1 7 2Z",
+  "M12 18h.01"
+ ],
+ "cpu": [
+  "M12 20v2",
+  "M12 2v2",
+  "M17 20v2",
+  "M17 2v2",
+  "M2 12h2",
+  "M2 17h2",
+  "M2 7h2",
+  "M20 12h2",
+  "M20 17h2",
+  "M20 7h2",
+  "M7 20v2",
+  "M7 2v2",
+  "M6 4H18A2 2 0 0 1 20 6V18A2 2 0 0 1 18 20H6A2 2 0 0 1 4 18V6A2 2 0 0 1 6 4Z",
+  "M9 8H15A1 1 0 0 1 16 9V15A1 1 0 0 1 15 16H9A1 1 0 0 1 8 15V9A1 1 0 0 1 9 8Z"
+ ],
+ "cloud": [
+  "M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"
+ ],
+ "globe": [
+  "M2 12A10 10 0 1 0 22 12A10 10 0 1 0 2 12Z",
+  "M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20",
+  "M2 12h20"
+ ],
+ "building-2": [
+  "M10 12h4",
+  "M10 8h4",
+  "M14 21v-3a2 2 0 0 0-4 0v3",
+  "M6 10H4a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-2",
+  "M6 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16"
+ ],
+ "file": [
+  "M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z",
+  "M14 2v5a1 1 0 0 0 1 1h5"
+ ],
+ "file-lock": [
+  "M4 9.8V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.706.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2h-3",
+  "M14 2v5a1 1 0 0 0 1 1h5",
+  "M9 17v-2a2 2 0 0 0-4 0v2",
+  "M4 17H10A1 1 0 0 1 11 18V21A1 1 0 0 1 10 22H4A1 1 0 0 1 3 21V18A1 1 0 0 1 4 17Z"
+ ],
+ "mail": [
+  "m22 7-8.991 5.727a2 2 0 0 1-2.009 0L2 7",
+  "M4 4H20A2 2 0 0 1 22 6V18A2 2 0 0 1 20 20H4A2 2 0 0 1 2 18V6A2 2 0 0 1 4 4Z"
+ ],
+ "lock": [
+  "M5 11H19A2 2 0 0 1 21 13V20A2 2 0 0 1 19 22H5A2 2 0 0 1 3 20V13A2 2 0 0 1 5 11Z",
+  "M7 11V7a5 5 0 0 1 10 0v4"
+ ],
+ "lock-open": [
+  "M5 11H19A2 2 0 0 1 21 13V20A2 2 0 0 1 19 22H5A2 2 0 0 1 3 20V13A2 2 0 0 1 5 11Z",
+  "M7 11V7a5 5 0 0 1 9.9-1"
+ ],
+ "key-round": [
+  "M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z",
+  "M16.5 7.5h.01"
+ ],
+ "shield": [
+  "M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"
+ ],
+ "shield-check": [
+  "M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z",
+  "m9 12 2 2 4-4"
+ ],
+ "shield-x": [
+  "M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z",
+  "m14.5 9.5-5 5",
+  "m9.5 9.5 5 5"
+ ],
+ "eye": [
+  "M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0",
+  "M9 12A3 3 0 1 0 15 12A3 3 0 1 0 9 12Z"
+ ],
+ "eye-off": [
+  "M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49",
+  "M14.084 14.158a3 3 0 0 1-4.242-4.242",
+  "M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143",
+  "m2 2 20 20"
+ ],
+ "check": [
+  "M20 6 9 17l-5-5"
+ ],
+ "x": [
+  "M18 6 6 18",
+  "m6 6 12 12"
+ ],
+ "triangle-alert": [
+  "m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3",
+  "M12 9v4",
+  "M12 17h.01"
+ ],
+ "door-open": [
+  "M10 21H2",
+  "M10 3H7a2 2 0 00-2 2v16",
+  "M14 12h.01",
+  "M19 21V5a2 2 0 00-1.675-1.974l-6.163-1.013A1 1 0 0010 3v18a1 1 0 001.124.992z",
+  "M22 21h-3"
+ ],
+ "router": [
+  "M4 14H20A2 2 0 0 1 22 16V20A2 2 0 0 1 20 22H4A2 2 0 0 1 2 20V16A2 2 0 0 1 4 14Z",
+  "M6.01 18H6",
+  "M10.01 18H10",
+  "M15 10v4",
+  "M17.84 7.17a4 4 0 0 0-5.66 0",
+  "M20.66 4.34a8 8 0 0 0-11.31 0"
+ ],
+ "database": [
+  "M3 5A9 3 0 1 0 21 5A9 3 0 1 0 3 5Z",
+  "M3 5V19A9 3 0 0 0 21 19V5",
+  "M3 12A9 3 0 0 0 21 12"
+ ],
+ "network": [
+  "M17 16H21A1 1 0 0 1 22 17V21A1 1 0 0 1 21 22H17A1 1 0 0 1 16 21V17A1 1 0 0 1 17 16Z",
+  "M3 16H7A1 1 0 0 1 8 17V21A1 1 0 0 1 7 22H3A1 1 0 0 1 2 21V17A1 1 0 0 1 3 16Z",
+  "M10 2H14A1 1 0 0 1 15 3V7A1 1 0 0 1 14 8H10A1 1 0 0 1 9 7V3A1 1 0 0 1 10 2Z",
+  "M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3",
+  "M12 12V8"
+ ],
+ "wifi": [
+  "M12 20h.01",
+  "M2 8.82a15 15 0 0 1 20 0",
+  "M5 12.859a10 10 0 0 1 14 0",
+  "M8.5 16.429a5 5 0 0 1 7 0"
+ ],
+ "send": [
+  "M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z",
+  "m21.854 2.147-10.94 10.939"
+ ],
+ "package": [
+  "M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z",
+  "M12 22V12",
+  "M3.29 7L12 12L20.71 7",
+  "m7.5 4.27 9 5.15"
+ ],
+ "bug": [
+  "M12 20v-9",
+  "M14 7a4 4 0 0 1 4 4v3a6 6 0 0 1-12 0v-3a4 4 0 0 1 4-4z",
+  "M14.12 3.88 16 2",
+  "M21 21a4 4 0 0 0-3.81-4",
+  "M21 5a4 4 0 0 1-3.55 3.97",
+  "M22 13h-4",
+  "M3 21a4 4 0 0 1 3.81-4",
+  "M3 5a4 4 0 0 0 3.55 3.97",
+  "M6 13H2",
+  "m8 2 1.88 1.88",
+  "M9 7.13V6a3 3 0 1 1 6 0v1.13"
+ ],
+ "zap": [
+  "M15.914 4a1.5 1.5 0 00-2.474-1.561l-9 9A1.5 1.5 0 005.5 14h4.002a.5.5 0 01.471.666L8.086 20a1.5 1.5 0 002.475 1.56l9-9A1.5 1.5 0 0018.5 10h-3.997a.5.5 0 01-.472-.667z"
+ ],
+ "clock": [
+  "M2 12A10 10 0 1 0 22 12A10 10 0 1 0 2 12Z",
+  "M12 6v6l4 2"
+ ],
+ "calendar": [
+  "M8 2v3",
+  "M16 2v3",
+  "M5 3H19A2 2 0 0 1 21 5V19A2 2 0 0 1 19 21H5A2 2 0 0 1 3 19V5A2 2 0 0 1 5 3Z",
+  "M3 9h18"
+ ],
+ "newspaper": [
+  "M15 18h-5",
+  "M18 14h-8",
+  "M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-4 0v-9a2 2 0 0 1 2-2h2",
+  "M11 6H17A1 1 0 0 1 18 7V9A1 1 0 0 1 17 10H11A1 1 0 0 1 10 9V7A1 1 0 0 1 11 6Z"
+ ],
+ "scale": [
+  "M12 3v18",
+  "m19 8 3 8a5 5 0 0 1-6 0zV7",
+  "M3 7h1a17 17 0 0 0 8-2 17 17 0 0 0 8 2h1",
+  "m5 8 3 8a5 5 0 0 1-6 0zV7",
+  "M7 21h10"
+ ],
+ "badge-check": [
+  "M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z",
+  "m16 9-5.5 5.5L8 12"
+ ],
+ "layers": [
+  "M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z",
+  "M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12",
+  "M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"
+ ]
+}
