@@ -85,6 +85,15 @@ def small_scene():
     }
 
 
+def redraw_scene():
+    """A node and its link switched on (0.2 s), switched off (1.0 s), then drawn (2.0 s): a draw must not hide what an earlier
+    `on` showed, and a draw after an `off` must draw again."""
+    return {"total": 3.4, "title": None, "captions": [],
+            "elements": [icon("a", "server", 180, 560), link("ab", "a", "b", 226, 560, 434, 560)],
+            "actions": [{"t": 0.2, "do": "on", "ids": ["a", "ab"]}, {"t": 1.0, "do": "off", "ids": ["a", "ab"], "d": 0.35},
+                        {"t": 2.0, "do": "draw", "ids": ["a", "ab"], "d": 0.5}]}
+
+
 def full_scene():
     """Every kind and every action once. The kit throws on what it does not know, so validate reaching the end means it knows them."""
     els = [
@@ -211,6 +220,20 @@ def test_renders_a_small_scene(small_render):
     red = lambda r, g, b: (r > 200) & (b < 150) & (g < 120)
     assert count(frame_at(out, 4.5), (440, 520, 520, 600), red) < 5
     assert count(frame_at(out, 5.4), (440, 520, 520, 600), red) > 100
+
+
+@needs_hf
+def test_a_draw_neither_hides_an_earlier_on_nor_pops_in_after_an_off(tmp_path):
+    comp = compose.write_composition(redraw_scene(), tmp_path / "comp")
+    out = tmp_path / "redraw.mp4"
+    hf.render(comp, out)
+    cyan = lambda r, g, b: (b > 150) & (r < 120)  # the link is drawn at .75, so its blue stays under 200
+    ink = lambda t: (count(frame_at(out, t), (140, 520, 220, 600), cyan), count(frame_at(out, t), (226, 550, 434, 570), cyan))
+    shown, gone, growing, drawn = ink(0.7), ink(1.6), ink(2.1), ink(2.8)
+    assert shown[0] > 100 and shown[1] > 200  # `on` at 0.2 s shows the whole node and link, though a draw comes at 2.0 s
+    assert max(gone) < 5  # `off`
+    assert growing[0] < shown[0] / 2 and growing[1] < shown[1] / 2  # 0.1 s into the draw: it starts from nothing again
+    assert drawn[0] > 0.9 * shown[0] and drawn[1] > 0.9 * shown[1]
 
 
 @needs_hf

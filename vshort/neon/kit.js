@@ -40,7 +40,7 @@ const guard = [];   // [element, id] of every text line, which must stay inside 
 
 // ---------- elements ----------
 // One record per element: its root (opacity = the element's own), one layer per colour it ever has, and what the actions need.
-const els = {};
+const els = {}, LEN = new WeakMap();   // LEN: a path's dash length
 for (const e of S.elements) {
   if (els[e.id]) fail(`two elements have the id ${e.id}`);
   els[e.id] = { e, f: { draw: false, type: false }, tones: [e.tone || "white"], paths: [], lines: [], chars: [], cl: null, layers: {}, cur: e.tone || "white" };
@@ -139,11 +139,11 @@ for (const r of Object.values(els)) {
     build(r, r.layers[key], key);
   }
   if (!r.f.draw) continue;
-  for (const p of r.paths) {   // a path about to be drawn starts undrawn: one dash as long as the path, shifted out of sight
+  for (const p of r.paths) {   // a path that is drawn some time is one dash as long as itself: whole at offset 0, hidden at `len`
     const len = Math.ceil(p.getTotalLength()) + 2;
-    p.style.strokeDasharray = len; p.style.strokeDashoffset = len;
+    p.style.strokeDasharray = len;
+    LEN.set(p, len);
   }
-  for (const l of r.lines) { l.el.setAttribute("x2", l.x1); l.el.setAttribute("y2", l.y1); }   // a link grows from its start
 }
 
 // ---------- actions ----------
@@ -157,6 +157,10 @@ const DO = {
     for (const r of of(a)) {
       if (!r.paths.length && !r.lines.length) fail(`draw at ${a.t} s: ${r.e.id} (${r.e.kind}) has no stroke`);
       show(r, a.t);
+      // a stroke stands drawn until its draw starts (an `on` before it shows the whole thing; a draw after an `off` draws again):
+      // at a.t it is emptied, then grown
+      for (const p of r.paths) tl.set(p, { strokeDashoffset: LEN.get(p) }, a.t);
+      for (const l of r.lines) tl.set(l.el, { attr: { x2: l.x1, y2: l.y1 } }, a.t);
       if (r.paths.length) tl.to(r.paths, { strokeDashoffset: 0, duration: a.d, ease: "power2.inOut" }, a.t);
       for (const l of r.lines) tl.to(l.el, { attr: { x2: l.x2, y2: l.y2 }, duration: a.d, ease: "power2.inOut" }, a.t);   // dashes stay put as the line grows
     }
@@ -233,10 +237,10 @@ if (S.title) {   // render.title_card: stripe from its middle, box left → righ
       k++;
     }
   });
-  tl.fromTo(stripe, { scaleY: 0 }, { scaleY: 1, duration: 0.25, ease: "power3.out" }, 0);
-  tl.fromTo(tb, { width: 0 }, { width: BAR[2] - BAR[0] + 1, duration: 0.5, ease: "power3.out" }, 0.15);
-  tl.to(tb, { width: 0, duration: BAR_OUT, ease: "power3.out" }, T.out);
-  tl.to(stripe, { scaleY: 0, duration: STRIPE_OUT, ease: "power3.out" }, T.out + BAR_OUT);
+  tl.fromTo(stripe, { scaleY: 0 }, { scaleY: 1, duration: 0.25, ease: "power2.out" }, 0);
+  tl.fromTo(tb, { width: 0 }, { width: BAR[2] - BAR[0] + 1, duration: 0.5, ease: "power2.out" }, 0.15);
+  tl.to(tb, { width: 0, duration: BAR_OUT, ease: "power2.out" }, T.out);
+  tl.to(stripe, { scaleY: 0, duration: STRIPE_OUT, ease: "power2.out" }, T.out + BAR_OUT);
 }
 
 const logo = H("div", "logo", scene);
