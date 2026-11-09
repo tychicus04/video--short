@@ -129,14 +129,19 @@ def _wrap(text: str, font: str, size: int, width: float, max_lines: int) -> list
 
 
 def _balanced(text: str, font: str, size: int, width: float) -> list[str] | None:
-    """`_wrap` into at most 2 lines, but a text that needs both is split where its wider line is narrowest, so the second line is
-    never one orphan word ("Cập nhật ngay hôm | nay"). None when it will not fit, as `_wrap`."""
+    """`_wrap` into at most 2 lines, with its cut kept, except when the second line is one orphan word ("Cập nhật ngay hôm | nay"):
+    then the cut moves back to the latest point that leaves two or more words below and still fits `width`; if none does, the
+    greedy cut stays. (Not a rebalance of every statement: a cut moved mid-sentence splits Vietnamese compounds, Ruling 36.)
+    None when it will not fit, as `_wrap`."""
     lines = _wrap(text, font, size, width, 2)
-    if lines is None or len(lines) < 2:
+    if lines is None or len(lines) < 2 or len(lines[1].split()) > 1:
         return lines
-    words, wide = text.split(), lambda s: text_box(s, font, size, 0, 0).x1
-    cuts = [(" ".join(words[:k]), " ".join(words[k:])) for k in range(1, len(words))]
-    return list(min((c for c in cuts if max(map(wide, c)) <= width), key=lambda c: max(map(wide, c))))  # the greedy cut is one of them
+    words = text.split()
+    for k in range(len(words) - 2, 0, -1):  # k words on the first line, the rest (at least 2) on the second
+        cut = [" ".join(words[:k]), " ".join(words[k:])]
+        if all(text_box(ln, font, size, 0, 0).x1 <= width for ln in cut):
+            return cut
+    return lines
 
 
 def _icon(kind: str, id: str, name: str, x: float, y: float, size: float, tone: str, **more) -> dict:

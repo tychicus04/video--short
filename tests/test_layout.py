@@ -3,8 +3,8 @@ import math
 
 import pytest
 
-from vshort.layout import (C, Box, HUB, ICON, LABEL_FONT, LABEL_MAX, LABEL_SIZE, MIN_LINK, SLOTS, boxes_overlap, place, segment_hits_box,
-                           text_box)
+from vshort.layout import (C, Box, HUB, ICON, LABEL_FONT, LABEL_MAX, LABEL_SIZE, MIN_LINK, SLOTS, STATEMENT_BAND, _wrap, boxes_overlap,
+                           place, segment_hits_box, text_box)
 from vshort.scene import Beat, Link, Node, SceneError, Section
 
 
@@ -202,16 +202,29 @@ def test_statement_and_quote_wrap_and_refuse_what_will_not_fit():
             place(Section("s1", "", "normal", "none", (), (), (Beat(1, kind, args),), ()))
 
 
-@pytest.mark.parametrize("text", ["Cập nhật ngay hôm nay", "Tin ai khi máy chủ lộ chìa?"])
-def test_a_statement_of_two_lines_is_balanced_not_left_with_an_orphan(text):  # the greedy wrap gave "…ngay hôm | nay", "…lộ | chìa?"
+STATEMENTS = [  # (text, the two lines, or None: the greedy wrap's own, which leaves no orphan and so is kept)
+    ("Tin ai khi máy chủ lộ chìa?", ["Tin ai khi máy chủ", "lộ chìa?"]),  # greedy: "… lộ | chìa?"
+    ("Cập nhật ngay hôm nay", ["Cập nhật ngay", "hôm nay"]),  # greedy: "… hôm | nay"
+    ("Mỗi máy chỉ thấy một phần", ["Mỗi máy chỉ thấy", "một phần"]),  # greedy: "… một | phần"
+    ("Một lỗ hổng mở cả hệ thống", ["Một lỗ hổng mở cả", "hệ thống"]),  # greedy: "… cả hệ | thống"
+    ("Dữ liệu khách hàng đã bị lộ", None),  # a rebalance would cut "khách | hàng"
+    ("Hãy cập nhật bản vá ngay hôm nay", None),  # … "bản | vá"
+    ("Không ai kiểm tra lại chữ ký", None),  # … "kiểm | tra"
+]
+
+
+@pytest.mark.parametrize("text, expected", STATEMENTS, ids=[t for t, _ in STATEMENTS])
+def test_a_statement_loses_its_orphan_last_word_and_no_other_cut_moves(text, expected):
+    # Ruling 36: greedy's cut stays, except when its second line is one word: then the cut moves back to the latest point that leaves
+    # two words below (a rebalance of every statement cut mid-sentence, where Vietnamese compounds are dense)
     st = by_id(place(Section("s1", "", "normal", "none", (), (), (Beat(1, "statement", {"text": text}),), ())), "s1.0")
-    w = lambda s: text_box(s, "BeVietnamPro-ExtraBold.ttf", 44, 0, 0).x1
-    words, lines = text.split(), st["lines"]
-    assert len(lines) == 2 and " ".join(lines) == text and len(lines[-1].split()) >= 2
-    cuts = [(" ".join(words[:k]), " ".join(words[k:])) for k in range(1, len(words))]
-    assert max(map(w, lines)) == min(max(w(a), w(b)) for a, b in cuts)  # the wider line is as narrow as any split makes it
-    assert max(map(w, lines)) <= 552  # inside the band
-    assert st["box"][2] - st["box"][0] == pytest.approx(max(map(w, lines)))
+    band = STATEMENT_BAND.x1 - STATEMENT_BAND.x0
+    greedy = _wrap(text, "BeVietnamPro-ExtraBold.ttf", 44, band, 2)
+    assert len(greedy) == 2  # the sentence does not fit on one line at size 44: a row for a one-liner would test nothing
+    lines = st["lines"]
+    assert lines == (expected or greedy) and " ".join(lines) == text and len(lines) == 2
+    assert all(text_box(ln, "BeVietnamPro-ExtraBold.ttf", 44, 0, 0).x1 <= band for ln in lines)
+    assert st["box"][2] - st["box"][0] == pytest.approx(max(text_box(ln, "BeVietnamPro-ExtraBold.ttf", 44, 0, 0).x1 for ln in lines))
 
 
 def test_chips_without_near_stack_in_the_left_column():
