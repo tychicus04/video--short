@@ -9,13 +9,13 @@ import traceback
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from vshort import timing
+from vshort import script, timing
 from vshort.run import Run
 
 ROOT = Path(__file__).resolve().parent.parent  # agents run here: Sonnet session, advisor off, `model:` of the agent
 CLAUDE = ["claude"]
 TIMEOUT = {"vs-researcher": 1800, "vs-transcriber": 900, "vs-translator": 1200, "vs-visuals": 2400,
-           "vs-reviewer": 3600}  # seconds
+           "vs-reviewer": 3600, "vs-writer": 1200}  # seconds
 _COST = threading.Lock()  # agents may log their cost from two threads
 
 
@@ -140,6 +140,24 @@ BRIEF_CHECK = (
     "và điều chưa xác nhận được nói thành câu. Nếu {run}/sources.md có chi tiết liên quan Việt Nam thì một ý nói điều đó, "
     "không có thì không thêm. Thiếu thì thêm vào cả hai bản. Lệch thì sửa ở cả hai bản. "
     "Không tạo notebook mới, không nạp nguồn mới.")
+# Kiểu neon: the same research (notebook and all, sources are still gathered there), but no English brief, and a mechanism.
+RESEARCH_NEON = (
+    "\n\nKiểu neon: video này không làm bằng NotebookLM nên KHÔNG viết {run}/brief.en.md. Mục \"Cơ chế từng bước\" của "
+    "brief.vi.md là bắt buộc: bước 0 \"Bình thường: …\" rồi ít nhất 2 bước đánh số tiếp, mỗi bước đúng nguồn (ghi nguồn đó "
+    "trong {run}/sources.md); không ghi \"Không có\". Không tìm được cơ chế có nguồn thì nói thẳng điều đó trong brief "
+    "(run sẽ dừng ở bước duyệt brief cho Tai quyết), đừng bịa bước cho đủ. Notebook và {run}/notebook.txt vẫn làm như trên.")
+BRIEF_CHECK_NEON = (
+    "RUN={run}. Chế độ tự động: Tai không duyệt brief. Soát brief ({run}/brief.vi.md) với {run}/sources.md: dữ kiện, ngày, "
+    "điểm tranh cãi. Soát mục \"Cơ chế từng bước\" theo luật an toàn: "
+    "chỉ mức khái niệm, không tên lỗ hổng/kỹ thuật/công cụ, không mã hay lệnh. Mục đó bắt buộc, mở bằng bước 0 \"Bình "
+    "thường: …\" rồi ít nhất 2 bước đánh số, mỗi bước đúng nguồn; thiếu thì thêm nếu {run}/sources.md đủ để viết, không "
+    "đủ thì ghi thẳng vào brief rằng không có cơ chế có nguồn (đừng bịa). \"Ý chính\" có một ý về cái giá hay giới hạn (một "
+    "câu, đúng nguồn) và \"Câu chốt\" trả lời lại câu mở đầu theo nghĩa mới; thiếu thì thêm. Có mục \"Chi tiết mở màn\": "
+    "một câu chi tiết thật, đúng nguồn. Mỗi con số hay cáo buộc trong \"Ý chính\" mở đầu bằng nguồn của nó, và điều chưa "
+    "xác nhận được nói thành câu. Nếu {run}/sources.md có chi tiết liên quan Việt Nam thì một ý nói điều đó, không có thì "
+    "không thêm. Lệch thì sửa. Không tạo notebook mới, không nạp nguồn mới.")
+WRITE = ("RUN={run}\n\nViết lời tiếng Việt thẳng từ {run}/brief.vi.md (Tai đã duyệt) và {run}/sources.md, ghi "
+         "{run}/script.vi.json, rồi chạy `vshort check {run}` tới khi mã 0.")
 TRANSCRIBE = ("RUN={run}. Đọc các ảnh mảnh phụ đề {sheets} ({n} mảnh, chỉ số 0–{last}, theo {run}/fragments.json) "
               "và ghi {run}/fragments_text.json.")
 TRANSLATE = "RUN={run}\n\nĐầu ra nguyên văn của `vshort text`:\n\n```\n{table}\n```"
@@ -241,8 +259,9 @@ def _translation_md(run: Run) -> str:
     return "\n".join(rows) + "\n"
 
 
-def _flow(run: Run) -> int:
-    from vshort.cli import FAILED, OK, WAIT_BRIEF, WAIT_SCRIPT
+def _research(run: Run, extra: str = "") -> dict:
+    """The researcher's step, after a NotebookLM login check; run.json as it is once the notebook id is in it."""
+    from vshort.cli import FAILED
     meta, p = run.read("run.json"), run.path
     if not run.done("research"):
         # Fail before the researcher agent is paid for, not at the first NotebookLM call after it.
@@ -250,19 +269,33 @@ def _flow(run: Run) -> int:
         if code := notebooklm(["auth", "check", "--test"]):
             from vshort.cli import AUTH, RELOGIN
             raise Stop(code, RELOGIN if code == AUTH else "Không kiểm được phiên NotebookLM; xem auto.log")
-        run_claude(run, "research", "vs-researcher", RESEARCH.format(topic=meta["topic"], slug=meta["slug"], run=p),
-                   TIMEOUT["vs-researcher"])
+        run_claude(run, "research", "vs-researcher",
+                   (RESEARCH + extra).format(topic=meta["topic"], slug=meta["slug"], run=p), TIMEOUT["vs-researcher"])
         nb = run.file("notebook.txt").read_text().strip() if run.file("notebook.txt").exists() else ""
         if not nb:
             raise Stop(FAILED, f"researcher không ghi notebook id vào {p}/notebook.txt")
         run.write("run.json", meta | {"notebook_id": nb})
         run.mark("research")
-    meta = run.read("run.json")
-    if meta.get("auto"):
-        _agent(run, "brief_check", "vs-researcher", BRIEF_CHECK.format(run=p))
-    if not meta.get("auto") and not run.done("approve_brief"):
-        raise Stop(WAIT_BRIEF, f"Duyệt brief: {p}/brief.vi.md (sửa thì sửa cả brief.en.md), rồi "
-                               f"`vshort approve {p} brief` và `vshort auto {p}`.", "wait_brief")
+    return run.read("run.json")
+
+
+def _brief_stop(run: Run, check: str, message: str) -> None:
+    """Auto mode: an agent checks the brief. Otherwise stop until Tai has approved it."""
+    from vshort.cli import WAIT_BRIEF
+    if run.read("run.json").get("auto"):
+        _agent(run, "brief_check", "vs-researcher", check.format(run=run.path))
+    elif not run.done("approve_brief"):
+        raise Stop(WAIT_BRIEF, message, "wait_brief")
+
+
+def _flow(run: Run) -> int:
+    from vshort.cli import FAILED, OK, WAIT_SCRIPT, style_of
+    if style_of(run) == "neon":
+        return _flow_neon(run)
+    p = run.path
+    meta = _research(run)
+    _brief_stop(run, BRIEF_CHECK, f"Duyệt brief: {p}/brief.vi.md (sửa thì sửa cả brief.en.md), rồi "
+                                  f"`vshort approve {p} brief` và `vshort auto {p}`.")
     if not run.done("source"):
         timing.start(run.path, "source")
         if code := notebooklm(["source", "add", "-n", meta["notebook_id"], "--type", "text", "--title",
@@ -290,6 +323,45 @@ def _flow(run: Run) -> int:
                                 f"`vshort approve {p} script` và `vshort auto {p}`.", "wait_script")
     _build(run)
     _review(run)
+    return OK
+
+
+def script_md(run: Run) -> str:
+    """loi.md, what Tai approves in the neon style: a row per sentence (what is said, syllables, the seconds they take at
+    the pace of the voice, the writer's note) and the total, since 60–90 s is what he checks."""
+    rows = ["| id | lời | âm tiết | giây ước tính | note |", "|---|---|---|---|---|"]
+    total = 0
+    for r in run.read("script.vi.json"):
+        n = script.syllables(r["phrases"])
+        total += n
+        secs = f"{n / script.PACE:.1f}".replace(".", ",")
+        rows.append(f"| {r['id']} | {' '.join(r['phrases'].replace('|', ' ').split())} | {n} | {secs} | {r.get('note', '')} |")
+    return "\n".join(rows + ["", f"Tổng: {total} âm tiết, ~{total / script.PACE:.0f} giây"]) + "\n"
+
+
+def _flow_neon(run: Run) -> int:
+    """The neon style: no NotebookLM video. The brief, then `vs-writer` writes the narration from it, Tai approves it,
+    then the voice. (The picture — scene, render, review — follows in Task 9.)"""
+    from vshort.cli import FAILED, OK, WAIT_BRIEF, WAIT_SCRIPT
+    p = run.path
+    _research(run, RESEARCH_NEON)
+    _brief_stop(run, BRIEF_CHECK_NEON, f"Duyệt brief: {p}/brief.vi.md, rồi `vshort approve {p} brief` và `vshort auto {p}`.")
+    steps = script.mechanism_steps(run.file("brief.vi.md").read_text(encoding="utf-8"))
+    if len(steps) < 3 or not steps[0].startswith("0."):  # step 0, "Bình thường", and two more: the diagram is drawn from them
+        raise Stop(WAIT_BRIEF, "Brief chưa có cơ chế từng bước (cần bước 0 và ít nhất 2 bước có nguồn) — sửa "
+                               f"{p}/brief.vi.md, rồi `vshort auto {p}`.", "wait_brief")
+    if not run.done("write"):
+        run_claude(run, "write", "vs-writer", WRITE.format(run=p), TIMEOUT["vs-writer"])
+        if code := run_vshort(["check", str(p)]):
+            raise Stop(FAILED, f"lời chưa qua `vshort check` (mã {code}); xem auto.log")
+        run.mark("write")
+    if not run.done("approve_script"):
+        run.file("loi.md").write_text(script_md(run), encoding="utf-8")
+        raise Stop(WAIT_SCRIPT, f"Duyệt lời: {p}/loi.md (sửa thì sửa {p}/script.vi.json), rồi "
+                                f"`vshort approve {p} script` và `vshort auto {p}`.", "wait_script")
+    if not run.done("tts"):
+        _tts_result(run, run_vshort(["tts", str(p)]))
+    _timeline(run)
     return OK
 
 
@@ -472,6 +544,15 @@ def _tts_result(run: Run, code: int) -> None:
         raise Stop(code, f"`vshort tts` lỗi (mã {code}); xem auto.log")
 
 
+def _timeline(run: Run) -> None:
+    p = str(run.path)
+    if not run.done("timeline"):
+        if run_vshort(["timeline", p]) == 2:  # the voice was made from another script
+            run.unmark("tts")
+            _tts_result(run, run_vshort(["tts", p]))
+            _vs(run, "timeline")
+
+
 def _render(run: Run) -> None:
     if not run.done("render") and (code := run_vshort(["render", str(run.path)])):
         raise Stop(code, f"`vshort render {run.path}` lỗi (mã {code}); xem auto.log")
@@ -489,11 +570,7 @@ def _build(run: Run) -> None:
             _visuals(run, VISUALS.format(run=p))
         if tts:
             _tts_result(run, tts.result())
-    if not run.done("timeline"):
-        if run_vshort(["timeline", p]) == 2:  # the voice was made from another script
-            run.unmark("tts")
-            _tts_result(run, run_vshort(["tts", p]))
-            _vs(run, "timeline")
+    _timeline(run)
     _render(run)
 
 

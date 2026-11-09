@@ -48,5 +48,13 @@ người dùng điện thoại và sinh viên 18–30 tuổi ở Việt Nam, qua
 6. **Viết `RUN/sources.md`**: danh sách nguồn đã nạp (tiêu đề, URL, ngày) và các dữ kiện đã đối chiếu.
 7. **Ghi notebook id vào `RUN/notebook.txt`** (chỉ id, một dòng) — `vshort auto` đọc file này để tạo video.
 
+**Kiểu neon.** Khi lời giao có "Kiểu neon" (video không làm bằng NotebookLM, lời Việt do `vs-writer` viết thẳng từ brief):
+- KHÔNG viết `RUN/brief.en.md` (bỏ bước 5); không có bản Anh thì không có chuyện "viết bản Anh sau bản Việt".
+- Mục "Cơ chế từng bước" là **bắt buộc**: bước 0 "Bình thường: …" và ít nhất 2 bước đánh số tiếp, mỗi bước đúng nguồn (ghi nguồn
+  trong `sources.md`). Không ghi "Không có". Video vẽ sơ đồ theo đúng các bước này; sơ đồ dựng từ ý chính là chỗ dễ nói quá.
+- Không tìm được cơ chế có nguồn thì nói thẳng điều đó trong brief và đừng bịa bước cho đủ: run dừng ở bước duyệt brief cho Tai
+  quyết, kể cả ở chế độ tự động.
+- Notebook NotebookLM và `RUN/notebook.txt` vẫn làm như trên: nguồn vẫn được gom ở đó.
+
 Trả về (ngắn): notebook id; tiêu đề (câu mở đầu) đã viết trong brief; và các điểm Tai nên để ý khi duyệt.
 Không tạo video — việc đó chỉ làm sau khi Tai duyệt.

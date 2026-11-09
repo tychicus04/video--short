@@ -129,6 +129,7 @@ class Fakes:
         self.args: dict[str, list[list[str]]] = {}  # vshort step -> the argument list of each call
         self.codes: dict[str, list[int]] = {}  # vshort step -> exit codes to return, in order (then 0)
         self.no_notebook = False
+        self.brief = "# Tiêu đề\n"  # what the researcher writes to brief.vi.md
         self.boom: set[str] = set()  # vshort steps that raise
         self.die_in: str | None = None  # agent step that "kills" the run (raises SystemExit) once
         self.reviews: list[dict | None] = []  # what each reviewer call writes to review.json (None: nothing); then Đạt
@@ -148,7 +149,7 @@ class Fakes:
             raise auto.AgentError(f"{agent} lỗi ở bước {step}")
         f = run.file
         if agent == "vs-researcher" and step == "research":
-            f("brief.vi.md").write_text("# Tiêu đề\n")
+            f("brief.vi.md").write_text(self.brief)
             f("brief.en.md").write_text("# Title\n")
             if not self.no_notebook:
                 f("notebook.txt").write_text("nb-123\n")
@@ -165,6 +166,9 @@ class Fakes:
         elif agent == "vs-translator":
             run.write("script.vi.json", [{"id": 1, "phrases": "Xin | chào", "note": ""},
                                          {"id": 2, "phrases": "Tạm biệt", "note": "ngắn hơn"}])
+        elif agent == "vs-writer":
+            run.write("script.vi.json", [{"id": 1, "phrases": "Tiêu đề", "note": ""},
+                                         {"id": 2, "phrases": "Bình thường | máy chủ chạy đúng", "note": "theo brief"}])
         elif agent == "vs-visuals":
             run.write("visuals.json", [{"kind": "patch", "ids": [2]}])
         return "xong"
@@ -503,3 +507,144 @@ def test_finish_reports_long_holds_from_pieces_json(flow):
     assert auto._retime_note(run) == "Co giãn: câu 2 giữ 2,3 s; câu 3 bỏ đuôi 1,2 s"
     run.write("pieces.json", [piece | {"id": 1, "hold": 0.4, "dropped": 0.0}])
     assert auto._retime_note(run) == "Co giãn: không câu nào phải giữ hay bỏ đuôi"
+
+
+# --- the neon style: the brief, then vs-writer, then the voice ------------------------------------------------------
+
+MECHANISM = "Cơ chế từng bước\n0. Bình thường: máy chủ chạy đúng.\n1. Gói tin đến.\n2. Máy chủ bị chiếm.\n"
+
+
+@pytest.fixture
+def neon_flow(flow):
+    run, fk = flow
+    run.write("run.json", run.read("run.json") | {"style": "neon"})
+    fk.brief = "# Tiêu đề\n\n" + MECHANISM  # the fake researcher's brief has the mechanism the gate wants
+    return run, fk
+
+
+def test_neon_stops_for_brief_then_script_and_never_touches_notebooklm_video(neon_flow):
+    run, fk = neon_flow
+    assert auto.run_auto(run) == WAIT_BRIEF
+    run.mark("approve_brief")
+    assert auto.run_auto(run) == WAIT_SCRIPT and run.file("loi.md").exists()
+    assert fk.agents["vs-writer"] == 1 and "check" in fk.cmds
+    assert not {"fetch", "detect", "text"} & set(fk.cmds) and ["source", "add"] not in fk.nb
+    run.mark("approve_script")
+    auto.run_auto(run)  # on to the voice and its timeline (the scene comes with Task 9)
+    assert fk.order.index("tts") < fk.order.index("timeline")
+
+
+def test_neon_resume_stays_neon(neon_flow):  # Review Focus 5
+    run, fk = neon_flow
+    auto.run_auto(run)
+    run.mark("approve_brief")
+    auto.run_auto(run)
+    assert auto.get_state(run)["state"] == "wait_script"
+    assert fk.agents["vs-translator"] == 0 and "fetch" not in fk.cmds
+    before = (dict(fk.agents), list(fk.cmds))
+    assert auto.run_auto(run) == WAIT_SCRIPT  # a rerun of the stop repeats nothing
+    assert (dict(fk.agents), list(fk.cmds)) == before
+
+
+def test_neon_auto_mode_stops_without_mechanism(neon_flow):
+    run, fk = neon_flow
+    run.write("run.json", run.read("run.json") | {"auto": True})
+    fk.brief = "# Tiêu đề\n"  # no "Cơ chế từng bước"
+    assert auto.run_auto(run) == WAIT_BRIEF and "cơ chế" in auto.get_state(run)["message"]
+    assert auto.get_state(run)["state"] == "wait_brief" and fk.agents["vs-researcher"] == 2 and not fk.agents["vs-writer"]
+
+
+@pytest.mark.parametrize("steps", [
+    "1. Một.\n2. Hai.\n3. Ba.\n",                       # three steps, but no step 0
+    "0. Bình thường: ổn.\n1. Một.\n",                   # step 0 and only one more
+    "Không có\n",
+])
+def test_neon_mechanism_gate_needs_step_0_and_two_more(neon_flow, steps):
+    run, fk = neon_flow
+    run.write("run.json", run.read("run.json") | {"auto": True})
+    fk.brief = "# Tiêu đề\n\nCơ chế từng bước\n" + steps
+    assert auto.run_auto(run) == WAIT_BRIEF and not fk.agents["vs-writer"]
+    assert "cơ chế" in auto.get_state(run)["message"] and f"{run.path}/brief.vi.md" in auto.get_state(run)["message"]
+
+
+def test_neon_gate_also_stops_an_approved_brief_and_passes_once_fixed(neon_flow):
+    run, fk = neon_flow
+    fk.brief = "# Tiêu đề\n"
+    auto.run_auto(run)
+    run.mark("approve_brief")
+    assert auto.run_auto(run) == WAIT_BRIEF and "cơ chế" in auto.get_state(run)["message"] and not fk.agents["vs-writer"]
+    run.file("brief.vi.md").write_text("# Tiêu đề\n\n" + MECHANISM)  # Tai fixes the brief and runs `vshort auto` again
+    assert auto.run_auto(run) == WAIT_SCRIPT and fk.agents["vs-writer"] == 1
+
+
+def test_neon_auto_mode_checks_the_brief_for_the_mechanism_not_the_english(neon_flow):
+    run, fk = neon_flow
+    run.write("run.json", run.read("run.json") | {"auto": True})
+    assert auto.run_auto(run) == WAIT_SCRIPT
+    research, check = fk.prompts["vs-researcher"]
+    assert "KHÔNG viết" in research and "brief.en.md" in research
+    assert "Cơ chế từng bước" in research and "Soát brief" in check
+    assert "cả hai bản" not in check and "brief.en.md" not in check and "Không có" not in check
+
+
+def test_neon_stop_messages_never_send_tai_to_an_english_brief_or_a_translation(neon_flow):
+    run, fk = neon_flow
+    auto.run_auto(run)
+    brief_stop = auto.get_state(run)["message"]
+    run.mark("approve_brief")
+    auto.run_auto(run)
+    script_stop = auto.get_state(run)["message"]
+    for m in (brief_stop, script_stop):
+        assert "brief.en.md" not in m and "bản dịch" not in m and "translation.md" not in m
+    assert f"{run.path}/brief.vi.md" in brief_stop and f"vshort approve {run.path} brief" in brief_stop
+    assert f"{run.path}/loi.md" in script_stop and f"vshort approve {run.path} script" in script_stop
+    assert not run.file("translation.md").exists()
+
+
+def test_neon_writer_gets_the_run_and_its_check_must_pass(neon_flow):
+    run, fk = neon_flow
+    run.mark("approve_brief")
+    fk.codes["check"] = [2]
+    assert auto.run_auto(run) == FAILED
+    st = auto.get_state(run)
+    assert st["state"] == "error" and "vshort check" in st["message"] and "mã 2" in st["message"]
+    assert not run.done("write") and not run.file("loi.md").exists()
+    assert str(run.path) in fk.prompts["vs-writer"][0]
+    assert auto.run_auto(run) == WAIT_SCRIPT and run.done("write")  # the rerun writes again, the check passes
+
+
+def test_neon_loi_md_has_a_row_per_sentence_and_the_estimated_length(neon_flow):
+    from vshort import script
+    run, fk = neon_flow
+    run.mark("approve_brief")
+    auto.run_auto(run)
+    rows = run.file("loi.md").read_text(encoding="utf-8").splitlines()
+    assert rows[0].startswith("| id |") and "âm tiết" in rows[0] and "giây" in rows[0] and "note" in rows[0]
+    assert [c.strip() for c in rows[2].split("|")[1:-1]] == ["1", "Tiêu đề", "2", f"{2 / script.PACE:.1f}".replace(".", ","), ""]
+    cells = [c.strip() for c in rows[3].split("|")[1:-1]]
+    assert cells == ["2", "Bình thường máy chủ chạy đúng", "6", f"{6 / script.PACE:.1f}".replace(".", ","), "theo brief"]
+    assert "|" not in cells[1] and rows[-1] == f"Tổng: 8 âm tiết, ~{8 / script.PACE:.0f} giây"
+
+
+def test_neon_goes_on_from_the_approved_script_to_the_voice_and_its_timeline(neon_flow):
+    run, fk = neon_flow
+    for s in ("approve_brief", "research", "write", "approve_script"):
+        run.mark(s)
+    run.write("script.vi.json", [{"id": 1, "phrases": "Tiêu đề", "note": ""}])
+    run.file("brief.vi.md").write_text(fk.brief)
+    assert auto.run_auto(run) == OK
+    assert fk.cmds == ["tts", "timeline"] and not fk.agents  # nothing is written again, nothing from the old flow
+
+
+def test_neon_stale_voice_reads_again_once_and_quota_stops(neon_flow):
+    from vshort.cli import QUOTA
+    run, fk = neon_flow
+    for s in ("approve_brief", "research", "write", "approve_script"):
+        run.mark(s)
+    run.file("brief.vi.md").write_text(fk.brief)
+    fk.codes["timeline"] = [2]
+    auto.run_auto(run)
+    assert fk.cmds.count("tts") == 2 and fk.cmds.count("timeline") == 2 and run.done("timeline")
+    run.unmark("tts", "timeline")
+    fk.codes["tts"] = [QUOTA]
+    assert auto.run_auto(run) == QUOTA and "ZeroTTS" in auto.get_state(run)["message"]
