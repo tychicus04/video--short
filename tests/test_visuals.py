@@ -200,4 +200,67 @@ def test_agents_quote_neon_limits():
     agents = Path(__file__).resolve().parent.parent / "claude" / "agents"
     writer = (agents / "vs-writer.md").read_text(encoding="utf-8")
     assert all(name in writer for name in ("MAX_TEXT_W", "SYL_MIN", "SYL_MAX")) and f"{SYL_MIN}–{SYL_MAX}" in writer
-    # vs-scene.md (MAX_GAP, MAX_TONES) joins with Task 9, which writes the agent
+    from vshort.scene import MAX_GAP, MAX_TONES
+    scene = (agents / "vs-scene.md").read_text(encoding="utf-8")
+    assert f"`MAX_GAP` ({MAX_GAP:g} giây)" in scene and f"`MAX_TONES` ({MAX_TONES} màu)" in scene
+
+
+def _agent_md(name: str) -> str:
+    from pathlib import Path
+    return (Path(__file__).resolve().parent.parent / "claude" / "agents" / f"{name}.md").read_text(encoding="utf-8")
+
+
+def test_vs_scene_names_the_whole_vocabulary_the_code_loads():
+    from vshort import layout
+    from vshort.scene import (BEAT_KEYS, LAYOUTS, LINK_KEYS, LINK_STYLES, NODE_KEYS, OPTIONAL, SECTION_KEYS, TONES, VERBS,
+                              icons)
+    md = _agent_md("vs-scene")
+    assert md.startswith("---\nname: vs-scene\n") and "tools: Read, Write, Bash\n" in md and "model: sonnet\n" in md
+    keys = set().union(*VERBS.values(), *OPTIONAL.values(), SECTION_KEYS, NODE_KEYS, LINK_KEYS, BEAT_KEYS)
+    slots = {slot for table in layout.SLOTS.values() for slot in table}
+    for word in (*VERBS, *icons(), *LAYOUTS, *LINK_STYLES, *TONES, *slots, *keys):
+        assert f"`{word}`" in md, word
+
+
+def test_vs_scene_examples_pass_the_code_checks():
+    import json
+    import re
+
+    from vshort.scene import Phrase, check, load_scene, resolve
+    blocks = re.findall(r"```json\n(.*?)\n```", _agent_md("vs-scene"), re.S)
+    assert len(blocks) == 4  # SharePoint, Synology, VPN, and what is said outside the mechanism
+    for raw in blocks:
+        data = json.loads(raw)
+        last = max(b["at"] for sec in data["sections"] for b in sec["beats"])
+        table = [Phrase(0, 0.2, 2.7, "Tiêu đề")] + [Phrase(i, 3.0 + 2 * (i - 1), 3.0 + 2 * i, f"cụm {i}") for i in range(1, last + 1)]
+        rt = resolve(load_scene(data), table, "Tiêu đề", 4.0 + 2 * last, (0.2, 2.7))  # a voice 2 s a phrase, a beat in each
+        assert check(rt, raw) == []  # the words of the example are its own brief: the geometry, colours and gaps are what is tested
+
+
+def test_vs_reviewer_neon_writes_the_review_vshort_auto_reads():
+    md = _agent_md("vs-reviewer-neon")
+    assert md.startswith("---\nname: vs-reviewer-neon\n") and "tools: Read, Bash, Write\n" in md and "model: opus\n" in md
+    assert all(f'`"{kind}"`' in md for kind in ("scene", "writer", "none"))  # what read_review(kinds=…) takes, and nothing else
+    assert all(word in md for word in ('"fix"', "Soát lại", "scene.resolved.json", "script.vi.json", "review.json", "review.md", "final.mp4"))
+    assert "visuals" not in md and "translator" not in md  # the old reviewer's agents do not exist here
+
+
+def test_vs_reviewer_neon_contact_sheet_code_runs(tmp_path):
+    import json
+    import re
+    import subprocess
+
+    from PIL import Image
+
+    from vshort.media import FF
+    run, sheets = tmp_path / "run", tmp_path / "sheets"
+    run.mkdir()
+    sheets.mkdir()
+    subprocess.run([FF, "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=size=720x1280:rate=30:duration=14", "-pix_fmt", "yuv420p",
+                    str(run / "final.mp4")], check=True)
+    acts = [{"t": t, "do": "on", "ids": ["a"]} for t in (4.0, 4.3, 6.0, 7.5, 8.0, 9.0, 10.0, 11.0, 12.0)]
+    (run / "scene.resolved.json").write_text(json.dumps({"total": 12.0, "title": {"t0": 0.5, "t1": 3.4, "out": 3.9}, "actions": acts}))
+    [code] = re.findall(r"<<'EOF'\n(.*?)\nEOF", _agent_md("vs-reviewer-neon"), re.S)
+    exec(code.replace('Path("RUN")', f"Path({str(run)!r})").replace("/tmp/vs_review/", f"{sheets}/"), {})
+    made = sorted(sheets.glob("sheet*.png"))
+    assert len(made) == 2 and Image.open(made[0]).size == (4 * 360, 2 * 664)  # 8 + 4 frames: the title's two, the clusters, the ends

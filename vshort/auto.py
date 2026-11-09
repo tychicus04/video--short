@@ -15,7 +15,7 @@ from vshort.run import Run
 ROOT = Path(__file__).resolve().parent.parent  # agents run here: Sonnet session, advisor off, `model:` of the agent
 CLAUDE = ["claude"]
 TIMEOUT = {"vs-researcher": 1800, "vs-transcriber": 900, "vs-translator": 1200, "vs-visuals": 2400,
-           "vs-reviewer": 3600, "vs-writer": 1200}  # seconds
+           "vs-reviewer": 3600, "vs-writer": 1200, "vs-scene": 2400, "vs-reviewer-neon": 3600}  # seconds
 _COST = threading.Lock()  # agents may log their cost from two threads
 
 
@@ -196,6 +196,10 @@ COVER = ("Việc riêng: chọn ảnh đại diện, viết tiêu đề đăng v
 COVER_TIMEOUT = 600  # seconds: one sheet to look at
 MAC_DIR = "~/Movies/vshort"  # where the Mac's LaunchAgent (scripts/vn.tai.vshort-keo.plist) pulls */xuat/ to
 REVIEW = "RUN={run}. final.mp4 đã render. Soát video cuối; ghi {run}/review.md và {run}/review.json."
+SCENE = ("RUN={run}\n\nViết {run}/scene.json cho video này: đọc {run}/brief.vi.md (mục \"Cơ chế từng bước\" và \"Lưu ý độ chính "
+         "xác\") và {run}/script.vi.json, chạy `vshort scene {run} --table` lấy số cụm, rồi `vshort scene {run}` tới khi mã 0.")
+REVIEW_NEON = ("RUN={run}. final.mp4 đã render (kiểu neon). Soát video cuối; ghi {run}/review.md và {run}/review.json, "
+               "mỗi lỗi nặng kèm cách sửa cụ thể trong `fix`.")
 RECHECK = ("Soát lại: chỉ các phần đã sửa.\n\nRUN={run}. review.md cũ: {run}/review.md. Đã sửa (lỗi, agent, câu, thời điểm):\n"
            "{fixed}\nGhi kết quả vào cuối review.md và ghi lại review.json cho lần soát này.")
 FIX = ("RUN={run}\n\nSửa theo {run}/review.json, các lỗi agent={agent}:\n{items}\n{how}")
@@ -204,8 +208,14 @@ FIX_HOW = {
     "translator": ("Ghi bản sửa vào {run}/script.proposed.json (cùng dạng script.vi.json, sửa cả `note`); "
                    "KHÔNG sửa script.vi.json — Tai duyệt bản đề xuất trước."),
 }
+FIX_HOW_NEON = {
+    "scene": ("Chỉ sửa {run}/scene.json ở chỗ các lỗi nêu, làm theo `fix` của từng lỗi, rồi tự chạy `vshort scene {run}` "
+              "tới khi mã 0."),
+    "writer": ("Ghi bản sửa vào {run}/script.proposed.json (cùng dạng script.vi.json, sửa cả `note`); "
+               "KHÔNG sửa script.vi.json — Tai duyệt bản đề xuất trước."),
+}
 MAX_ROUNDS = 2
-BUDGET = 5.0
+BUDGET = 30.0
 FAILED_CODE = 1
 
 
@@ -341,7 +351,8 @@ def script_md(run: Run) -> str:
 
 def _flow_neon(run: Run) -> int:
     """The neon style: no NotebookLM video. The brief, then `vs-writer` writes the narration from it, Tai approves it,
-    then the voice. (The picture — scene, render, review — follows in Task 9.)"""
+    then the voice; then the picture: `vs-scene` plans the diagram, `vshort scene` checks it, `vshort render` makes the
+    video, `vs-reviewer-neon` looks at its frames (≤ MAX_ROUNDS fix rounds)."""
     from vshort.cli import FAILED, OK, WAIT_BRIEF, WAIT_SCRIPT
     p = run.path
     _research(run, RESEARCH_NEON)
@@ -362,17 +373,47 @@ def _flow_neon(run: Run) -> int:
     if not run.done("tts"):
         _tts_result(run, run_vshort(["tts", str(p)]))
     _timeline(run)
+    if not _fixing(run):  # else `_review` finishes the round's fixes first: they unmarked scene and render on purpose
+        _scene(run)
+        _render(run)
+    _review(run)
     return OK
 
 
-def read_review(run: Run) -> dict:
-    """RUN/review.json as the reviewer wrote it: {"verdict": "Đạt"|"Cần sửa", "findings": [{agent, ids, at, what}]}."""
+def _neon(run: Run) -> bool:
+    from vshort.cli import style_of
+    return style_of(run) == "neon"
+
+
+def _fixing(run: Run) -> bool:
+    """A fix round was begun and not finished (the process died in it, or `vshort scene` refused the fix)."""
+    r = get_state(run)["round"]
+    return bool(r) and not run.done(f"fixed{r}")
+
+
+def _scene_check(run: Run) -> None:
+    """`vshort scene` has to pass (it marks `scene` itself): the render is drawn from its scene.resolved.json."""
+    if code := run_vshort(["scene", str(run.path)]):
+        raise Stop(FAILED_CODE, f"kịch bản hình chưa qua `vshort scene` (mã {code}); xem auto.log")
+
+
+def _scene(run: Run) -> None:
+    if not run.done("scene"):
+        run.unmark("render")  # a diagram made again is rendered again (`vshort scene` refused by hand leaves `render` marked)
+        run_claude(run, "scene", "vs-scene", SCENE.format(run=run.path), TIMEOUT["vs-scene"])
+        _scene_check(run)
+
+
+def read_review(run: Run, kinds: tuple[str, ...] = ("visuals", "translator", "none")) -> dict:
+    """RUN/review.json as the reviewer wrote it: {"verdict": "Đạt"|"Cần sửa", "findings": [{agent, ids, at, what, fix}]}; `agent`
+    is one of `kinds`, `fix` (how to fix it) a string if there is one."""
     try:
         rev = run.read("review.json")
         assert rev["verdict"] in ("Đạt", "Cần sửa") and isinstance(rev["findings"], list)
         for f in rev["findings"]:
-            assert f["agent"] in ("visuals", "translator", "none")
+            assert f["agent"] in kinds
             assert isinstance(f["what"], str) and isinstance(f.get("ids", []), list)
+            assert f.get("fix") is None or isinstance(f["fix"], str)
     except (OSError, ValueError, KeyError, TypeError, AssertionError):
         raise AgentError(f"review.json không đọc được (thiếu hoặc sai dạng) — xem {run.path}/review.md") from None
     return rev
@@ -380,11 +421,13 @@ def read_review(run: Run) -> dict:
 
 def _items(fs: list[dict]) -> str:
     return "\n".join(f"- {f['agent']}, câu {', '.join(map(str, f.get('ids', [])))}, {f.get('at', '')}: {f['what']}"
-                     for f in fs)
+                     + (f" — sửa: {f['fix']}" if f.get("fix") else "") for f in fs)
 
 
 def _fix(run: Run, r: int, todo: list[dict]) -> None:
     """Round r's fixes; each agent step is marked, so a run that died midway redoes only what is left."""
+    if _neon(run):
+        return _fix_neon(run, r, todo)
     from vshort.cli import WAIT_SCRIPT
     p = run.path
     by = {a: [f for f in todo if f["agent"] == a] for a in ("visuals", "translator")}
@@ -408,20 +451,52 @@ def _fix(run: Run, r: int, todo: list[dict]) -> None:
     run.mark(f"fixed{r}")
 
 
+def _fix_neon(run: Run, r: int, todo: list[dict]) -> None:
+    """Round r's fixes of a neon run: the scene first (the agent, then `vshort scene` must pass, then the render), the words last
+    (a proposal for Tai: the voice, the scene and the render all follow them)."""
+    from vshort.cli import WAIT_SCRIPT
+    p = run.path
+    by = {a: [f for f in todo if f["agent"] == a] for a in ("scene", "writer")}
+    if by["scene"] and not run.done(f"fix{r}_scene"):  # marked only once `vshort scene` passes: until then a rerun asks again
+        run_claude(run, f"fix{r}_scene", "vs-scene",
+                   FIX.format(run=p, agent="scene", items=_items(by["scene"]), how=FIX_HOW_NEON["scene"].format(run=p)),
+                   TIMEOUT["vs-scene"])
+        run.unmark("scene", "render")
+        _scene_check(run)
+        run.mark(f"fix{r}_scene")
+    if by["writer"]:
+        if not run.done(f"fix{r}_writer"):
+            run.file("script.proposed.json").unlink(missing_ok=True)  # an old proposal is not this round's
+            run_claude(run, f"fix{r}_writer", "vs-writer",
+                       FIX.format(run=p, agent="writer", items=_items(by["writer"]), how=FIX_HOW_NEON["writer"].format(run=p)),
+                       TIMEOUT["vs-writer"])
+            if not run.file("script.proposed.json").exists():
+                raise AgentError("vs-writer không ghi script.proposed.json khi sửa theo review")
+            run.mark(f"fix{r}_writer")
+        run.unmark("approve_script", "tts", "timeline", "scene", "render")
+        run.mark(f"fixed{r}")  # what is left (the voice, the scene, the render) happens once Tai approves
+        raise Stop(WAIT_SCRIPT, _proposal(run), "wait_script")
+    _render(run)
+    run.mark(f"fixed{r}")
+
+
 def _review(run: Run) -> None:
     """Review; while it finds what an agent can fix, fix it and have a fresh reviewer check the fix (≤ MAX_ROUNDS)."""
     p = run.path
+    neon = _neon(run)
+    agent, kinds = ("vs-reviewer-neon", ("scene", "writer", "none")) if neon else ("vs-reviewer", ("visuals", "translator", "none"))
     while True:
         r = get_state(run)["round"]
-        if r and not run.done(f"fixed{r}"):  # died during round r's fixes: finish them first
+        if _fixing(run):  # died during round r's fixes: finish them first
             _fix(run, r, run.read(f"fix{r}.json"))
         if not run.done(f"review{r}"):
-            prompt = REVIEW.format(run=p) if r == 0 else RECHECK.format(run=p, fixed=_items(run.read(f"fix{r}.json")))
+            prompt = (REVIEW_NEON if neon else REVIEW).format(run=p) if r == 0 \
+                else RECHECK.format(run=p, fixed=_items(run.read(f"fix{r}.json")))
             run.file("review.json").unlink(missing_ok=True)  # never act on the previous reviewer's findings
-            run_claude(run, f"review{r}", "vs-reviewer", prompt, TIMEOUT["vs-reviewer"])
-            read_review(run)  # a bad file is not marked done: a rerun asks a reviewer again
+            run_claude(run, f"review{r}", agent, prompt, TIMEOUT[agent])
+            read_review(run, kinds)  # a bad file is not marked done: a rerun asks a reviewer again
             run.mark(f"review{r}")
-        rev = read_review(run)
+        rev = read_review(run, kinds)
         todo = [f for f in rev["findings"] if f["agent"] != "none"]
         if rev["verdict"] == "Đạt" or not todo or r >= MAX_ROUNDS:
             _finish(run, rev, r)
@@ -432,7 +507,7 @@ def _review(run: Run) -> None:
 
 def _proposal(run: Run) -> str:
     old = {r["id"]: r for r in run.read("script.vi.json")}
-    lines = [f"Reviewer thấy lỗi ở bản dịch; bản sửa đề xuất: {run.path}/script.proposed.json"]
+    lines = [f"Reviewer thấy lỗi ở {'lời' if _neon(run) else 'bản dịch'}; bản sửa đề xuất: {run.path}/script.proposed.json"]
     for r in run.read("script.proposed.json"):
         a, b = (" ".join(x.replace("|", " ").split()) for x in (old.get(r["id"], {}).get("phrases", ""), r["phrases"]))
         if a != b:
@@ -481,10 +556,12 @@ def _finish(run: Run, rev: dict, rounds: int) -> None:
     out = [f"Video: {p}/final.mp4",
            _cover(run),
            f"Giọng: {_voice(run)}"]
-    out.append(_retime_note(run))
+    neon = _neon(run)  # no retiming, no patched pictures: the picture is drawn from scene.json
+    if not neon:
+        out.append(_retime_note(run))
     fx = run.read("sfx.json") if run.file("sfx.json").exists() else []
     out.append("Hiệu ứng âm thanh: " + (", ".join(f"{c['name']} {c['at']:.1f} s" for c in fx) or "không có"))
-    for v in run.read("visuals.json") if run.file("visuals.json").exists() else []:
+    for v in run.read("visuals.json") if not neon and run.file("visuals.json").exists() else []:
         out.append(f"- {v.get('kind')} câu {v.get('ids') or v.get('id')}: "
                    + (f"{v.get('old', '')} → {v.get('new', '')}" if v.get("kind") == "patch" else v.get("source", "")))
     left = [f for f in rev["findings"]]
@@ -549,6 +626,8 @@ def _timeline(run: Run) -> None:
     if not run.done("timeline"):
         if run_vshort(["timeline", p]) == 2:  # the voice was made from another script
             run.unmark("tts")
+            if _neon(run):  # the diagram is timed to the old voice
+                run.unmark("scene", "render")
             _tts_result(run, run_vshort(["tts", p]))
             _vs(run, "timeline")
 

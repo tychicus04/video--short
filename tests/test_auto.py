@@ -158,7 +158,7 @@ class Fakes:
         elif agent == "vs-translator" and "script.proposed.json" in prompt:
             run.write("script.proposed.json", [{"id": 1, "phrases": "Chào | bạn", "note": "sửa theo review"},
                                                {"id": 2, "phrases": "Tạm biệt", "note": ""}])
-        elif agent == "vs-reviewer":
+        elif agent in ("vs-reviewer", "vs-reviewer-neon"):
             r = self.reviews.pop(0) if self.reviews else {"verdict": "Đạt", "findings": []}
             if r is not None:
                 run.write("review.json", r)
@@ -166,6 +166,11 @@ class Fakes:
         elif agent == "vs-translator":
             run.write("script.vi.json", [{"id": 1, "phrases": "Xin | chào", "note": ""},
                                          {"id": 2, "phrases": "Tạm biệt", "note": "ngắn hơn"}])
+        elif agent == "vs-writer" and "script.proposed.json" in prompt:
+            run.write("script.proposed.json", [{"id": 1, "phrases": "Tiêu đề", "note": ""},
+                                               {"id": 2, "phrases": "Bình thường | máy chủ chạy", "note": "sửa theo review"}])
+        elif agent == "vs-scene":
+            run.write("scene.json", {"sections": []})
         elif agent == "vs-writer":
             run.write("script.vi.json", [{"id": 1, "phrases": "Tiêu đề", "note": ""},
                                          {"id": 2, "phrases": "Bình thường | máy chủ chạy đúng", "note": "theo brief"}])
@@ -399,7 +404,7 @@ def test_bad_review_json_stops_without_looping(flow):
 def test_over_budget_warns(flow):
     run, fk = flow
     _approved(run)
-    run.write("cost.json", [{"step": "x", "agent": "vs-reviewer", "seconds": 1, "cost_usd": 5.4, "models": [], "ok": True}])
+    run.write("cost.json", [{"step": "x", "agent": "vs-reviewer", "seconds": 1, "cost_usd": auto.BUDGET + 0.4, "models": [], "ok": True}])
     assert auto.run_auto(run) == OK
     assert "Vượt ngân sách" in auto.get_state(run)["message"]
 
@@ -530,7 +535,7 @@ def test_neon_stops_for_brief_then_script_and_never_touches_notebooklm_video(neo
     assert fk.agents["vs-writer"] == 1 and "check" in fk.cmds
     assert not {"fetch", "detect", "text"} & set(fk.cmds) and ["source", "add"] not in fk.nb
     run.mark("approve_script")
-    auto.run_auto(run)  # on to the voice and its timeline (the scene comes with Task 9)
+    auto.run_auto(run)  # on to the voice and its timeline, then the picture
     assert fk.order.index("tts") < fk.order.index("timeline")
 
 
@@ -626,14 +631,15 @@ def test_neon_loi_md_has_a_row_per_sentence_and_the_estimated_length(neon_flow):
     assert "|" not in cells[1] and rows[-1] == f"Tổng: 8 âm tiết, ~{8 / script.PACE:.0f} giây"
 
 
-def test_neon_goes_on_from_the_approved_script_to_the_voice_and_its_timeline(neon_flow):
+def test_neon_goes_on_from_the_approved_script_to_the_voice_its_timeline_and_the_picture(neon_flow):
     run, fk = neon_flow
     for s in ("approve_brief", "research", "write", "approve_script"):
         run.mark(s)
     run.write("script.vi.json", [{"id": 1, "phrases": "Tiêu đề", "note": ""}])
     run.file("brief.vi.md").write_text(fk.brief)
     assert auto.run_auto(run) == OK
-    assert fk.cmds == ["tts", "timeline"] and not fk.agents  # nothing is written again, nothing from the old flow
+    assert fk.cmds[:2] == ["tts", "timeline"] and not fk.agents["vs-writer"]  # nothing is written again
+    assert not {"fetch", "detect", "text", "clean", "stills", "visuals"} & set(fk.cmds) and not fk.agents["vs-visuals"]
 
 
 def test_neon_stale_voice_reads_again_once_and_quota_stops(neon_flow):
@@ -648,3 +654,208 @@ def test_neon_stale_voice_reads_again_once_and_quota_stops(neon_flow):
     run.unmark("tts", "timeline")
     fk.codes["tts"] = [QUOTA]
     assert auto.run_auto(run) == QUOTA and "ZeroTTS" in auto.get_state(run)["message"]
+
+
+# --- the neon style: scene, render, review, the fix rounds -------------------------------------------------------------
+
+def approve_all(run, fk):
+    """Brief approved, script approved: the run is at the voice and the picture."""
+    assert auto.run_auto(run) == WAIT_BRIEF
+    run.mark("approve_brief")
+    assert auto.run_auto(run) == WAIT_SCRIPT
+    run.mark("approve_script")
+
+
+def _scene_finding(what="nhãn đè", fix="dời chip"):
+    return {"verdict": "Cần sửa", "findings": [{"agent": "scene", "ids": [5], "at": "00:21", "what": what, "fix": fix}]}
+
+
+def test_neon_runs_through_to_done(neon_flow):
+    run, fk = neon_flow
+    approve_all(run, fk)                                         # brief, script
+    assert auto.run_auto(run) == OK and auto.get_state(run)["state"] == "done"
+    assert fk.order.index("scene") < fk.order.index("render") and fk.agents["vs-reviewer-neon"] == 1
+    assert fk.order.index("timeline") < fk.order.index("vs-scene") < fk.order.index("scene")  # the agent, then the check
+    assert not fk.agents["vs-reviewer"] and not fk.agents["vs-visuals"] and not fk.agents["vs-translator"]
+    msg = auto.get_state(run)["message"]
+    assert "final.mp4" in msg and "Đạt" in msg and "Chi phí Claude" in msg
+    assert "Co giãn" not in msg and "visuals" not in msg
+
+
+def test_neon_scene_agent_gets_the_run_and_does_not_start_in_fix_mode(neon_flow):
+    run, fk = neon_flow
+    approve_all(run, fk)
+    auto.run_auto(run)
+    [prompt] = fk.prompts["vs-scene"]
+    assert str(run.path) in prompt and "review.json" not in prompt and "Sửa theo" not in prompt
+
+
+def test_neon_finish_leaves_out_the_old_flows_lines(neon_flow):
+    run, fk = neon_flow
+    run.write("visuals.json", [{"kind": "patch", "id": 2, "old": "a", "new": "b"}])  # left over from nothing: still not listed
+    approve_all(run, fk)
+    auto.run_auto(run)
+    assert "patch" not in auto.get_state(run)["message"] and "Co giãn" not in auto.get_state(run)["message"]
+
+
+def test_neon_scene_that_fails_vshort_scene_stops_and_the_rerun_asks_again(neon_flow):
+    run, fk = neon_flow
+    approve_all(run, fk)
+    fk.codes["scene"] = [2]
+    assert auto.run_auto(run) == FAILED
+    st = auto.get_state(run)
+    assert st["state"] == "error" and "vshort scene" in st["message"] and "mã 2" in st["message"]
+    assert not run.done("scene") and "render" not in fk.cmds and fk.agents["vs-scene"] == 1
+    assert auto.run_auto(run) == OK and fk.agents["vs-scene"] == 2
+
+
+def test_neon_scene_finding_replans_and_rerenders(neon_flow):
+    run, fk = neon_flow
+    fk.reviews = [_scene_finding()]
+    approve_all(run, fk)
+    assert auto.run_auto(run) == OK
+    assert fk.agents["vs-scene"] == 2 and fk.cmds.count("render") == 2 and fk.agents["vs-reviewer-neon"] == 2
+    fix_prompt = fk.prompts["vs-scene"][1]
+    assert "review.json" in fix_prompt and "nhãn đè" in fix_prompt and "dời chip" in fix_prompt and "00:21" in fix_prompt
+    assert fk.cmds.count("scene") == 2 and run.done("fixed1") and run.done("fix1_scene")
+    assert fk.prompts["vs-reviewer-neon"][1].startswith("Soát lại") and "dời chip" in fk.prompts["vs-reviewer-neon"][1]
+    # the order of the fix: the agent, `vshort scene` again, and only then the render
+    tail = fk.order[fk.order.index("vs-scene", fk.order.index("render")):]
+    assert tail[:3] == ["vs-scene", "scene", "render"]
+
+
+def test_neon_fix_that_does_not_pass_vshort_scene_is_asked_again_on_resume(neon_flow):
+    run, fk = neon_flow
+    fk.reviews = [_scene_finding()]
+    approve_all(run, fk)
+    fk.codes["scene"] = [0, 1]                       # the first plan passes, the fix does not
+    assert auto.run_auto(run) == FAILED and "vshort scene" in auto.get_state(run)["message"]
+    assert not run.done("fix1_scene") and fk.cmds.count("render") == 1
+    assert auto.run_auto(run) == OK and fk.agents["vs-scene"] == 3 and fk.cmds.count("render") == 2
+
+
+def test_neon_crash_inside_a_scene_fix_redoes_the_fix_on_resume(neon_flow):
+    run, fk = neon_flow
+    fk.reviews = [_scene_finding()]
+    approve_all(run, fk)
+    fk.die_in = "fix1_scene"
+    with pytest.raises(KeyboardInterrupt):
+        auto.run_auto(run)
+    assert auto.run_auto(run) == OK
+    assert fk.agents["vs-scene"] == 2 and fk.cmds.count("render") == 2 and fk.agents["vs-reviewer-neon"] == 2
+
+
+def test_neon_fix_rounds_stop_after_two(neon_flow):
+    run, fk = neon_flow
+    fk.reviews = [_scene_finding()] * 3
+    approve_all(run, fk)
+    assert auto.run_auto(run) == OK
+    assert fk.agents["vs-reviewer-neon"] == 3 and fk.agents["vs-scene"] == 3 and fk.cmds.count("render") == 3
+    assert auto.get_state(run)["state"] == "done" and "còn lỗi" in auto.get_state(run)["message"]
+
+
+def test_neon_writer_finding_waits_for_tai_and_unmarks_voice_and_scene(neon_flow):   # Review Focus 1
+    run, fk = neon_flow
+    fk.reviews = [{"verdict": "Cần sửa", "findings": [{"agent": "writer", "ids": [3], "what": "nói quá brief", "fix": "bỏ 'hoàn toàn'"}]}]
+    approve_all(run, fk)
+    assert auto.run_auto(run) == WAIT_SCRIPT and run.file("script.proposed.json").exists()
+    assert not any(run.done(s) for s in ("approve_script", "tts", "timeline", "scene", "render"))
+    assert run.done("write") and run.done("fixed1")
+    prompt = fk.prompts["vs-writer"][1]
+    assert "script.proposed.json" in prompt and "nói quá brief" in prompt and "bỏ 'hoàn toàn'" in prompt
+    msg = auto.get_state(run)["message"]
+    assert auto.get_state(run)["state"] == "wait_script" and "lời" in msg and "bản dịch" not in msg
+    assert "máy chủ chạy" in msg and f"vshort approve {run.path} script" in msg and not fk.agents["vs-translator"]
+
+
+def test_neon_after_tai_approves_the_new_words_the_voice_the_scene_and_the_render_are_redone(neon_flow):
+    run, fk = neon_flow
+    fk.reviews = [{"verdict": "Cần sửa", "findings": [{"agent": "writer", "ids": [3], "what": "nói quá brief"}]}]
+    approve_all(run, fk)
+    assert auto.run_auto(run) == WAIT_SCRIPT
+    run.file("script.proposed.json").replace(run.file("script.vi.json"))
+    run.mark("approve_script")
+    assert auto.run_auto(run) == OK
+    assert fk.cmds.count("tts") == 2 and fk.agents["vs-scene"] == 2 and fk.cmds.count("render") == 2
+    assert fk.agents["vs-reviewer-neon"] == 2 and fk.prompts["vs-reviewer-neon"][1].startswith("Soát lại")
+    assert fk.agents["vs-writer"] == 2  # the first draft and the fix: not asked a third time
+
+
+def test_neon_scene_and_writer_findings_in_one_round_fix_the_scene_first_then_wait(neon_flow):
+    run, fk = neon_flow
+    fk.reviews = [{"verdict": "Cần sửa", "findings": [
+        {"agent": "scene", "ids": [2], "what": "chip đè", "fix": "dời"}, {"agent": "writer", "ids": [3], "what": "nói quá"}]}]
+    approve_all(run, fk)
+    assert auto.run_auto(run) == WAIT_SCRIPT
+    assert fk.agents["vs-scene"] == 2 and "chip đè" in fk.prompts["vs-scene"][1] and "nói quá" not in fk.prompts["vs-scene"][1]
+    assert "nói quá" in fk.prompts["vs-writer"][1] and "chip đè" not in fk.prompts["vs-writer"][1]
+    assert not run.done("scene") and not run.done("render")
+
+
+def test_neon_reviewer_may_only_name_scene_writer_or_none(neon_flow):
+    run, fk = neon_flow
+    fk.reviews = [{"verdict": "Cần sửa", "findings": [{"agent": "visuals", "ids": [1], "what": "x"}]}]
+    approve_all(run, fk)
+    assert auto.run_auto(run) == FAILED and "review.json" in auto.get_state(run)["message"]
+    assert fk.agents["vs-reviewer-neon"] == 1 and fk.agents["vs-scene"] == 1
+
+
+def test_read_review_kinds_and_the_optional_fix(tmp_path):
+    run = _run(tmp_path)
+    ok = {"verdict": "Cần sửa", "findings": [{"agent": "scene", "ids": [1], "what": "x", "fix": "y"}, {"agent": "none", "what": "z"}]}
+    run.write("review.json", ok)
+    assert auto.read_review(run, ("scene", "writer", "none")) == ok
+    with pytest.raises(auto.AgentError):                                    # the old default does not know "scene"
+        auto.read_review(run)
+    run.write("review.json", {"verdict": "Cần sửa", "findings": [{"agent": "translator", "ids": [1], "what": "x", "fix": "y"}]})
+    assert auto.read_review(run)["findings"][0]["fix"] == "y"               # the old kinds take a fix too
+    with pytest.raises(auto.AgentError):                                    # and the neon ones refuse "translator"
+        auto.read_review(run, ("scene", "writer", "none"))
+    run.write("review.json", {"verdict": "Cần sửa", "findings": [{"agent": "scene", "ids": [1], "what": "x", "fix": 3}]})
+    with pytest.raises(auto.AgentError):                                    # fix is a string
+        auto.read_review(run, ("scene", "writer", "none"))
+    run.write("review.json", {"verdict": "Cần sửa", "findings": [{"agent": "none", "ids": [1], "what": "x", "fix": None}]})
+    auto.read_review(run, ("scene", "writer", "none"))                      # null is "no fix", not a bad file
+
+
+def test_the_old_findings_list_shows_a_fix_only_when_there_is_one():
+    old = {"agent": "visuals", "ids": [2], "at": "00:03", "what": "chữ sai"}
+    assert auto._items([old]) == "- visuals, câu 2, 00:03: chữ sai"
+    assert auto._items([old | {"fix": "sửa thành 8.1"}]) == "- visuals, câu 2, 00:03: chữ sai — sửa: sửa thành 8.1"
+
+
+def test_neon_reading_the_voice_again_throws_away_the_scene_and_the_render(neon_flow):   # Ruling 3
+    run, fk = neon_flow
+    for s in ("approve_brief", "research", "write", "approve_script", "tts", "scene", "render"):
+        run.mark(s)
+    run.file("brief.vi.md").write_text(fk.brief)
+    fk.codes["timeline"] = [2]                       # the voice was made from another script
+    auto.run_auto(run)
+    assert fk.cmds.count("tts") == 1 and fk.cmds.count("timeline") == 2                  # `tts` was unmarked by the stale voice
+    assert fk.agents["vs-scene"] == 1 and fk.cmds.count("scene") == 1 and fk.cmds.count("render") == 1
+    assert fk.order.index("timeline") < fk.order.index("vs-scene") < fk.order.index("render")
+
+
+def test_old_flow_reading_the_voice_again_leaves_scene_and_render_alone(flow):
+    run, fk = flow
+    run.mark("scene")
+    run.mark("render")
+    fk.codes["timeline"] = [2]
+    auto._timeline(run)
+    assert run.done("scene") and run.done("render") and fk.cmds.count("tts") == 1
+
+
+def test_neon_agents_have_their_timeouts():
+    assert auto.TIMEOUT["vs-scene"] == 2400 and auto.TIMEOUT["vs-reviewer-neon"] == 3600 and auto.BUDGET == 30.0
+
+
+def test_neon_a_scene_that_is_made_again_is_rendered_again(neon_flow):
+    """`vshort scene` refused by hand unmarks `scene` only: the next run remakes the scene and must not keep the old video."""
+    run, fk = neon_flow
+    for s in ("approve_brief", "research", "write", "approve_script", "tts", "timeline", "render"):
+        run.mark(s)
+    run.file("brief.vi.md").write_text(fk.brief)
+    assert not run.done("scene")
+    assert auto.run_auto(run) == OK
+    assert fk.agents["vs-scene"] == 1 and fk.cmds.count("render") == 1
+    assert fk.order.index("scene") < fk.order.index("render")
