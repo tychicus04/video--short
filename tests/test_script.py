@@ -219,10 +219,21 @@ def test_unknown_numbers_compare_decimals_whole_and_ignore_list_numbering():
     assert unknown_numbers("7,2 rồi lại 7,2", "x") == ["7,2"]
 
 
+def test_a_decimal_ending_a_clause_is_still_a_decimal():
+    assert unknown_numbers("nhân 4.4", "nhánh 4.4.") == []
+    assert unknown_numbers("là 7,2.", "là 2,7.") == ["7,2"]
+    assert unknown_numbers("NVD chấm 9,8 trên 10", "NVD chấm 9.8 trên 10.") == []
+    assert unknown_numbers("NVD chấm 9,8 trên 10", "NVD chấm 9.8.") == ["10"]  # only the 10 is unknown: 9,8 matches 9.8.
+    assert unknown_numbers("bản 22.04, 24.04 và 26.04", "bản 22.04, 24.04 và 26.04.") == []
+    assert unknown_numbers("bản 8.1.4.1", "bản 8.1.") == ["1", "4", "8"]  # a version of four parts is no decimal
+    assert unknown_numbers("có 9,402 ví", "có 9.402.") == []
+
+
 def test_names_are_camelcase_acronyms_and_capitals_inside_a_sentence():
     assert names("OpenMatter hứa AI chạy trên iPhone, 5G và CVE") == {"OpenMatter", "AI", "iPhone", "5G", "CVE"}
     assert names("Đoạn mã chạy. Sau đó Hà Nội báo: Một lỗi! Hết 2026") == {"Hà", "Nội"}  # Đoạn, Sau, Một, Hết start a sentence
     assert names("đi | Hà Nội") == {"Hà", "Nội"}  # a | is not a sentence start
+    assert names("Xong. | Dù vậy") == set()  # but it does not cancel the full stop before it
     assert names("theo ĐHQG và Ưu tiên") == {"ĐHQG", "Ưu"}  # Vietnamese capitals count
 
 

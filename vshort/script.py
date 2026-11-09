@@ -245,7 +245,8 @@ def ints(text: str) -> set[int]:
     return {int(d) for d in re.findall(r"\d+", text)}
 
 
-DECIMAL = re.compile(r"(?<![\d.,])\d+[.,]\d{1,2}(?![\d.,])")  # "2,7", "9.8"; not "05.11.2026" or "9,402"
+# "2,7", "9.8", and "4.4." that ends a sentence; not "05.11.2026", "8.1.4.1" or "9,402"
+DECIMAL = re.compile(r"(?<![\d.,])\d+[.,]\d{1,2}(?!\d|[.,]\d)")
 LIST_NUMBER = re.compile(r"(?m)^\s*\d+\.\s")  # a brief's own "1. …" numbering says nothing about a figure
 
 
@@ -260,10 +261,10 @@ def unknown_numbers(text: str, ref: str) -> list[str]:
 
 def names(text: str) -> set[str]:
     """Words that look like names: a capital after the first letter ("OpenMatter", "CVE", "iPhone", "5G"), or a
-    capitalised word that does not start a sentence (the start of the text, or after . ! ? or :; a | does not)."""
+    capitalised word that does not start a sentence (the start of the text, or after . ! ? or :, a | looked through)."""
     out = set()
     for m in re.finditer(r"\w+", text):
-        w, before = m.group(), text[:m.start()].rstrip()
+        w, before = m.group(), text[:m.start()].rstrip(" |")
         if w.isdigit():
             continue
         if any(c.isupper() for c in w[1:]) or (w[0].isupper() and before and before[-1] not in ".!?:"):
