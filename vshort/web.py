@@ -154,7 +154,7 @@ def run_detail(request: Request) -> JSONResponse:
     run, now = queue._Folder(queue.run_path(slug)), time.time()
     progress = queue.view(run, row["state"], row["auto"], typ, now)
     cost = _json(slug, "cost.json")
-    return JSONResponse({"row": row, "locked": locked, "brief_vi": _text(slug, "brief.vi.md"),
+    return JSONResponse({"row": row, "locked": locked, "style": "neon" if _neon(slug) else "old", "brief_vi": _text(slug, "brief.vi.md"),
                          "brief_en": _text(slug, "brief.en.md"), "brief_en_stale": _stale(slug),
                          "translation": _translation(slug), "proposed": _proposed(slug), "review_md": _text(slug, "review.md"),
                          "cost": cost if isinstance(cost, list) else [],

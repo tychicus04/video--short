@@ -661,6 +661,7 @@ def test_neon_run_detail_shows_the_script_without_english(client, run_neon):
                                 {"id": 2, "en": "", "phrases": "Tạm | biệt", "note": "n"}]
     assert j["brief_en_stale"] is False  # the same files in an old run make it True
     assert j["progress"]["stages"][3]["label"] == "Duyệt lời" and len(j["progress"]["stages"]) == 9
+    assert j["style"] == "neon"  # the brief screen's approve button is enabled by it: a neon run has no brief.en.md
     assert j["row"]["progress"]["label"] == "Duyệt lời"
 
 
@@ -668,6 +669,7 @@ def test_old_run_detail_still_pairs_the_english(client, run_s):
     os.utime(run_s.file("brief.vi.md"), (3000, 3000))
     j = client.get("/api/runs/s").json()
     assert j["brief_en_stale"] is True and j["translation"][1]["en"] == "Bye." and len(j["progress"]["stages"]) == 10
+    assert j["style"] == "old"
 
 
 def test_neon_save_brief_calls_no_agent(client, run_neon, monkeypatch):

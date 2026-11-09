@@ -97,6 +97,7 @@ export interface ProposedRow {
 export interface Detail {
   row: Row
   locked: boolean // a live `vshort auto` has the run: nothing can be edited
+  style: 'old' | 'neon' // run.json's style: a neon run has no English brief
   brief_vi: string | null
   brief_en: string | null
   brief_en_stale: boolean

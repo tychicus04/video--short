@@ -115,7 +115,7 @@ export function BriefReview({ c }: { c: Ctx }) {
   }
 
   const unsaved = viDirty || enDirty
-  const canApprove = !c.off && !stale && !unsaved && !!d.brief_en
+  const canApprove = !c.off && !stale && !unsaved && (!!d.brief_en || d.style === 'neon') // a neon run has no English brief
 
   return (
     <div className="space-y-4">
