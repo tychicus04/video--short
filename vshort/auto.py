@@ -218,7 +218,7 @@ FIX_HOW_NEON = {
                "KHÔNG sửa script.vi.json — Tai duyệt bản đề xuất trước."),
 }
 MAX_ROUNDS = 2
-BUDGET = 30.0
+BUDGET = {"old": 5.0, "neon": 30.0}  # dollars a video may cost, by style: the neon flow pays for a planner and an Opus reviewer (Ruling 33)
 FAILED_CODE = 1
 
 
@@ -352,6 +352,12 @@ def script_md(run: Run) -> str:
     return "\n".join(rows + ["", f"Tổng: {total} âm tiết, ~{total / script.PACE:.0f} giây"]) + "\n"
 
 
+def _no_mechanism(run: Run) -> bool:
+    """The brief lacks the steps the diagram is drawn from: step 0, "Bình thường", and two more."""
+    steps = script.mechanism_steps(run.file("brief.vi.md").read_text(encoding="utf-8"))
+    return len(steps) < 3 or not steps[0].startswith("0.")
+
+
 def _flow_neon(run: Run) -> int:
     """The neon style: no NotebookLM video. The brief, then `vs-writer` writes the narration from it, Tai approves it,
     then the voice; then the picture: `vs-scene` plans the diagram, `vshort scene` checks it, `vshort render` makes the
@@ -359,11 +365,12 @@ def _flow_neon(run: Run) -> int:
     from vshort.cli import FAILED, OK, WAIT_BRIEF, WAIT_SCRIPT
     p = run.path
     _research(run, RESEARCH_NEON)
-    _brief_stop(run, BRIEF_CHECK_NEON, f"Duyệt brief: {p}/brief.vi.md, rồi `vshort approve {p} brief` và `vshort auto {p}`.")
-    steps = script.mechanism_steps(run.file("brief.vi.md").read_text(encoding="utf-8"))
-    if len(steps) < 3 or not steps[0].startswith("0."):  # step 0, "Bình thường", and two more: the diagram is drawn from them
-        raise Stop(WAIT_BRIEF, "Brief chưa có cơ chế từng bước (cần bước 0 và ít nhất 2 bước có nguồn) — sửa "
-                               f"{p}/brief.vi.md, rồi `vshort auto {p}`.", "wait_brief")
+    lack = f"Brief chưa có cơ chế từng bước (cần bước 0 và ít nhất 2 bước có nguồn) — sửa {p}/brief.vi.md"
+    # a brief that already fails the gate says so at the first stop too: Tai should not approve it, then be stopped again
+    _brief_stop(run, BRIEF_CHECK_NEON, (f"{lack} trước khi duyệt. " if _no_mechanism(run) else "")
+                + f"Duyệt brief: {p}/brief.vi.md, rồi `vshort approve {p} brief` và `vshort auto {p}`.")
+    if _no_mechanism(run):
+        raise Stop(WAIT_BRIEF, f"{lack}, rồi `vshort auto {p}`.", "wait_brief")
     if not run.done("write"):
         run_claude(run, "write", "vs-writer", WRITE.format(run=p), TIMEOUT["vs-writer"])
         if code := run_vshort(["check", str(p)]):
@@ -402,7 +409,7 @@ def _scene_check(run: Run) -> None:
 
 def _scene(run: Run) -> None:
     if not run.done("scene"):
-        run.unmark("render")  # a diagram made again is rendered again (`vshort scene` refused by hand leaves `render` marked)
+        run.unmark("render")  # a diagram made again is rendered again (`vshort scene` unmarks `render` itself; this covers a run left with `render` marked and no `scene`)
         run_claude(run, "scene", "vs-scene", SCENE.format(run=run.path), TIMEOUT["vs-scene"])
         _scene_check(run)
 
@@ -578,8 +585,9 @@ def _finish(run: Run, rev: dict, rounds: int) -> None:
         per[row["agent"]] = per.get(row["agent"], 0) + row["cost_usd"]
     total = total_cost(run)
     out.append(f"Chi phí Claude: ${total:.2f} (" + ", ".join(f"{a} ${c:.2f}" for a, c in per.items()) + ")")
-    if total > BUDGET:
-        out.append(f"Vượt ngân sách ${BUDGET:.0f}.")
+    budget = BUDGET["neon" if neon else "old"]
+    if total > budget:
+        out.append(f"Vượt ngân sách ${budget:.0f}.")
     set_state(run, "done", "\n".join(out))
 
 

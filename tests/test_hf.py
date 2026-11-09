@@ -162,6 +162,20 @@ exec sleep 30""")
     assert not alive(pid)
 
 
+def test_a_group_that_refuses_the_signal_does_not_replace_the_error(tmp_path, monkeypatch):
+    # macOS: killpg raises EPERM (not ESRCH) when the group holds only zombies; that must not escape in place of the HFError
+    comp = fake_cli(tmp_path, monkeypatch, "exec sleep 30")
+    real = os.killpg
+
+    def refuse(pid, sig):
+        real(pid, sig)  # the group does end; the call still reports EPERM
+        raise PermissionError(1, "Operation not permitted")
+
+    monkeypatch.setattr(os, "killpg", refuse)
+    with pytest.raises(hf.HFError, match="quá 2 giây"):
+        hf.render(comp, tmp_path / "x.mp4", timeout=2)
+
+
 def test_a_clean_up_that_cannot_finish_does_not_replace_the_error(tmp_path, monkeypatch):
     comp = fake_cli(tmp_path, monkeypatch, 'mkdir "$(dirname "$3")/locked" && : > "$(dirname "$3")/locked/f" && chmod 000 "$(dirname "$3")/locked"; exit 1')
     try:

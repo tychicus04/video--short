@@ -56,11 +56,11 @@ def _stop(p: subprocess.Popen) -> tuple:
     """Stop the CLI and everything it started (they are one process group): SIGTERM first, since HyperFrames then closes its
     Chrome workers and removes their profile folders in /tmp and its work folders itself (SIGKILL leaves about 3 MB per worker);
     SIGKILL after _GRACE seconds, and for whatever is left once the leader is gone. Returns (stdout, stderr) as far as they got."""
-    with contextlib.suppress(ProcessLookupError):
+    with contextlib.suppress(ProcessLookupError, PermissionError):
         os.killpg(p.pid, signal.SIGTERM)
     with contextlib.suppress(subprocess.TimeoutExpired):
         p.wait(timeout=_GRACE)
-    with contextlib.suppress(ProcessLookupError):
+    with contextlib.suppress(ProcessLookupError, PermissionError):
         os.killpg(p.pid, signal.SIGKILL)
     try:
         return p.communicate(timeout=_GRACE)

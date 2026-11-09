@@ -436,12 +436,14 @@ def _render_neon(run: Run) -> int:
 def cmd_scene(a) -> int:
     """`--table`: the numbered phrases and the brief's mechanism steps, what the scene agent writes scene.json against.
     Otherwise: scene.json timed to the voice into scene.resolved.json, if it passes every check; the problems, one a line, if not.
-    Last round's scene.resolved.json and its "scene" and "render" marks go first, so a refused round (the voice changed, the
-    scene did not follow) never leaves a picture timed to the old voice that can still be rendered."""
+    Last round's scene.resolved.json and its "scene" and "render" marks go first (a neon run's, and only those that are marked:
+    nothing is written for a folder that is not there), so a refused round (the voice changed, the scene did not follow) never
+    leaves a picture timed to the old voice that can still be rendered."""
     run = Run(a.run)
     if not a.table:
         run.file("scene.resolved.json").unlink(missing_ok=True)
-        run.unmark("scene", "render")  # a hand-run `vshort scene` never leaves the old video marked as done
+        if style_of(run) == "neon" and (run.done("scene") or run.done("render")):
+            run.unmark("scene", "render")  # a hand-run `vshort scene` never leaves the old video marked as done
     need = ["timeline.json", "script.vi.json", "brief.vi.md"] + ([] if a.table else ["scene.json"])
     if gone := [f for f in need if not run.file(f).exists()]:
         _err("thiếu " + ", ".join(gone) + " (chạy lại các bước trước)")

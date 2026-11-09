@@ -404,9 +404,18 @@ def test_bad_review_json_stops_without_looping(flow):
 def test_over_budget_warns(flow):
     run, fk = flow
     _approved(run)
-    run.write("cost.json", [{"step": "x", "agent": "vs-reviewer", "seconds": 1, "cost_usd": auto.BUDGET + 0.4, "models": [], "ok": True}])
+    run.write("cost.json", [{"step": "x", "agent": "vs-reviewer", "seconds": 1, "cost_usd": 5.4, "models": [], "ok": True}])
     assert auto.run_auto(run) == OK
-    assert "Vượt ngân sách" in auto.get_state(run)["message"]
+    assert "Vượt ngân sách $5" in auto.get_state(run)["message"]
+
+
+@pytest.mark.parametrize("cost, warns", [(6.0, False), (30.4, True)])
+def test_neon_over_budget_warns_at_its_own_budget(neon_flow, cost, warns):  # Ruling 33: $5 for the old flow, $30 for the neon one
+    run, fk = neon_flow
+    approve_all(run, fk)
+    run.write("cost.json", [{"step": "x", "agent": "vs-reviewer-neon", "seconds": 1, "cost_usd": cost, "models": [], "ok": True}])
+    assert auto.run_auto(run) == OK
+    assert ("Vượt ngân sách $30" in auto.get_state(run)["message"]) is warns
 
 
 # --- final review fixes --------------------------------------------------------------------------------------------
@@ -580,6 +589,18 @@ def test_neon_gate_also_stops_an_approved_brief_and_passes_once_fixed(neon_flow)
     assert auto.run_auto(run) == WAIT_BRIEF and "cơ chế" in auto.get_state(run)["message"] and not fk.agents["vs-writer"]
     run.file("brief.vi.md").write_text("# Tiêu đề\n\n" + MECHANISM)  # Tai fixes the brief and runs `vshort auto` again
     assert auto.run_auto(run) == WAIT_SCRIPT and fk.agents["vs-writer"] == 1
+
+
+def test_neon_a_brief_without_mechanism_says_so_at_the_first_stop(neon_flow):  # not only after Tai has approved it
+    run, fk = neon_flow
+    fk.brief = "# Tiêu đề\n\nCơ chế từng bước\n1. Một.\n2. Hai.\n"  # no step 0
+    assert auto.run_auto(run) == WAIT_BRIEF and auto.get_state(run)["state"] == "wait_brief"
+    msg = auto.get_state(run)["message"]
+    assert "Brief chưa có cơ chế từng bước" in msg and "trước khi duyệt" in msg and f"{run.path}/brief.vi.md" in msg
+    assert f"vshort approve {run.path} brief" in msg  # the usual instructions are still there
+    run.file("brief.vi.md").write_text("# Tiêu đề\n\n" + MECHANISM)  # a good brief gets the plain stop
+    assert auto.run_auto(run) == WAIT_BRIEF
+    assert "cơ chế" not in auto.get_state(run)["message"] and "vshort approve" in auto.get_state(run)["message"]
 
 
 def test_neon_auto_mode_checks_the_brief_for_the_mechanism_not_the_english(neon_flow):
@@ -846,11 +867,12 @@ def test_old_flow_reading_the_voice_again_leaves_scene_and_render_alone(flow):
 
 
 def test_neon_agents_have_their_timeouts():
-    assert auto.TIMEOUT["vs-scene"] == 2400 and auto.TIMEOUT["vs-reviewer-neon"] == 3600 and auto.BUDGET == 30.0
+    assert auto.TIMEOUT["vs-scene"] == 2400 and auto.TIMEOUT["vs-reviewer-neon"] == 3600 and auto.BUDGET == {"old": 5.0, "neon": 30.0}
 
 
 def test_neon_a_scene_that_is_made_again_is_rendered_again(neon_flow):
-    """`vshort scene` refused by hand unmarks `scene` only: the next run remakes the scene and must not keep the old video."""
+    """`vshort scene` unmarks `scene` and `render` itself; a run found with `render` marked and no `scene` (state edited by hand, a
+    run from before that change) remakes the scene all the same and must not keep the old video."""
     run, fk = neon_flow
     for s in ("approve_brief", "research", "write", "approve_script", "tts", "timeline", "render"):
         run.mark(s)

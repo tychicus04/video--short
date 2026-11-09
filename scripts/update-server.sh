@@ -25,10 +25,10 @@ main() {
   for f in "$PWD/claude/agents/"*.md; do ln -sf "$f" "$HOME/.claude/agents/$(basename "$f")"; done
   find "$HOME/.claude/agents" -maxdepth 1 -name 'vs-*.md' -xtype l -delete  # agents gone from the repo: no dangling links
   git diff --quiet "$old" HEAD -- web || (cd web && npm ci --silent && npm run build --silent) || exit 1
+  systemctl --user restart vshort-web  # before the neon install below: were that to fail, the rebuilt web pages would still talk to the old server
   # neon's node_modules: the stamp is the lockfile it was installed from, written only after `npm ci` succeeds (npm ci empties
   # node_modules first, so a failed install leaves no stamp and the next run tries again)
   cmp -s vshort/neon/package-lock.json vshort/neon/node_modules/.vshort-lock || { (cd vshort/neon && npm ci --silent) && cp vshort/neon/package-lock.json vshort/neon/node_modules/.vshort-lock; } || exit 1
-  systemctl --user restart vshort-web
   echo "đã cập nhật ${old:0:7} → $(git rev-parse --short HEAD)"
 }
 main; exit  # git pull may rewrite this file: bash has read all of main by now

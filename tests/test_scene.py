@@ -757,9 +757,11 @@ SCENE_OK = {"sections": [{"id": "s1", "label": "THÔNG THƯỜNG", "tone": "norm
                       {"at": 3, "do": "statement", "text": "Mỗi máy chỉ thấy một phần"}]}]}
 
 
-def _scene_run(tmp_path, scene):
+def _scene_run(tmp_path, scene, style="neon"):
     run = _run(tmp_path)
     (tmp_path / "scene.json").write_text(json.dumps(scene))
+    if style:
+        (tmp_path / "run.json").write_text(json.dumps({"style": style}))
     return run
 
 
@@ -803,6 +805,27 @@ def test_scene_never_leaves_an_old_video_marked_as_done(tmp_path):   # a hand-ru
     assert main(["scene", run, "--table"]) == 0 and state()["render"] == "done"  # the table changes nothing
 
 
+def test_scene_unmarks_only_a_neon_run_and_only_what_is_marked(tmp_path, capsys):
+    # an old-flow run run by mistake: nothing unmarked (its render is not remade), state.json untouched
+    (tmp_path / "old").mkdir()
+    old = _scene_run(tmp_path / "old", SCENE_OK, style=None)
+    (tmp_path / "old" / "state.json").write_text(json.dumps({"render": "done", "scene": "done"}))
+    before = (tmp_path / "old" / "state.json").stat().st_mtime_ns
+    (tmp_path / "old" / "scene.json").write_text("{}")  # refused
+    assert main(["scene", old]) == 2
+    assert json.loads((tmp_path / "old" / "state.json").read_text()) == {"render": "done", "scene": "done"}
+    assert (tmp_path / "old" / "state.json").stat().st_mtime_ns == before
+    # a neon run with nothing marked: state.json is not written
+    neon = _scene_run(tmp_path, SCENE_OK)
+    (tmp_path / "scene.json").write_text("{}")
+    assert main(["scene", neon]) == 2 and not (tmp_path / "state.json").exists()
+    # a folder that is not there: "thiếu …", BAD_INPUT, and the folder is not made
+    capsys.readouterr()
+    gone = tmp_path / "missing"
+    assert main(["scene", str(gone)]) == 2
+    assert "thiếu" in capsys.readouterr().err and not gone.exists()
+
+
 def test_scene_names_a_missing_scene_json(tmp_path, capsys):
     assert main(["scene", _run(tmp_path)]) == 2
     assert "scene.json" in capsys.readouterr().err and not (tmp_path / "scene.resolved.json").exists()
@@ -814,7 +837,7 @@ def test_scene_prints_every_load_problem_one_per_line(tmp_path, capsys):
     assert main(["scene", _scene_run(tmp_path, bad)]) == 2
     err = capsys.readouterr().err.strip().splitlines()
     assert len(err) == 2 and "'teleport'" in err[0] and "'ghost'" in err[1]
-    assert not (tmp_path / "scene.resolved.json").exists() and "scene" not in json.loads((tmp_path / "state.json").read_text())
+    assert not (tmp_path / "scene.resolved.json").exists() and not (tmp_path / "state.json").exists()  # nothing was marked, nothing is written
 
 
 def test_scene_prints_place_and_phrase_problems(tmp_path, capsys):
