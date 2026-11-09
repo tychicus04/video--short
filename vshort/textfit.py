@@ -12,10 +12,15 @@ UI_TOP, UI_RIGHT, UI_RIGHT_FROM, UI_BOTTOM = 141, 618, 535, 1151
 MAX_TEXT_W = 2 * UI_RIGHT - 720  # widest one-line phrase, px at em 50: centred, it ends left of the buttons (was 620)
 
 
+# The neon captions are drawn in Be Vietnam Pro Bold 40 px (the kit's), 10–15 % wider than Patrick Hand at em 50:
+# "Ngày 5 tháng 11 năm 2026" is 475 px in one, 529 px in the other.
+NEON_FONT, NEON_EM = "BeVietnamPro-Bold.ttf", 40
+
+
 @lru_cache
-def _font(em: int) -> ImageFont.FreeTypeFont:
-    return ImageFont.truetype(str(FONTS / "PatrickHand-Regular.ttf"), em)
+def _font(em: int, name: str) -> ImageFont.FreeTypeFont:
+    return ImageFont.truetype(str(FONTS / name), em)
 
 
-def text_width(text: str, em: int = 50) -> float:
-    return _font(em).getlength(text.replace("*", "").replace("|", ""))
+def text_width(text: str, em: int = 50, font: str = "PatrickHand-Regular.ttf") -> float:
+    return _font(em, font).getlength(text.replace("*", "").replace("|", ""))

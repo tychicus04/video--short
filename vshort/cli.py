@@ -18,8 +18,8 @@ from vshort.media import frame_at, probe
 from vshort.plates import clean, scene_changes, scene_cuts
 from vshort.render import OUTRO, build_ass, export_outro, export_title, render_pieces
 from vshort.run import Run, config
-from vshort.script import (Sentence, check_brief, check_numbers, check_script, check_style, group_sentences,
-                           merge_text, merged)
+from vshort.script import (Sentence, check_brief, check_neon, check_numbers, check_script, check_style,
+                           group_sentences, merge_text, merged)
 from vshort.stills import NLM_OUTRO, contact_sheet, grid_image, pick_still, scene_of
 from vshort.tts import (Clip, QuotaExceeded, clip_paths, gemini_speaker, load_api_key, synth_lines, synth_script,
                         zerotts_speaker)
@@ -63,6 +63,12 @@ def _json(stdout: str) -> dict:
 def _speech(phrases: str) -> str:
     """What the voice says = what the subtitles show, without the | and * markup."""
     return " ".join(phrases.replace("|", " ").replace("*", "").split())
+
+
+def style_of(run: Run) -> str:
+    """"neon" or "old". Only `vshort auto --style neon` writes the key; a run without it is the NotebookLM flow."""
+    meta = run.read("run.json") if run.file("run.json").exists() else {}
+    return "neon" if meta.get("style") == "neon" else "old"
 
 
 def _sentences(run: Run) -> list[Sentence]:
@@ -139,10 +145,14 @@ def cmd_text(a) -> int:
 def cmd_check(a) -> int:
     run = Run(a.run)
     script = run.read("script.vi.json")
-    sents = _sentences(run)
-    probs = check_script(sents, script) + check_style(script) + check_numbers(sents, script)
-    if run.file("brief.vi.md").exists():
-        probs += check_brief(script, run.file("brief.vi.md").read_text(encoding="utf-8"))
+    brief = run.file("brief.vi.md")
+    if style_of(run) == "neon":  # the narration is written from the brief: no English to check it against
+        probs = check_neon(script, brief.read_text(encoding="utf-8")) + check_style(script)
+    else:
+        sents = _sentences(run)
+        probs = check_script(sents, script) + check_style(script) + check_numbers(sents, script)
+    if brief.exists():
+        probs += check_brief(script, brief.read_text(encoding="utf-8"))
     for p in probs:
         _err(p)
     if probs:
@@ -393,7 +403,8 @@ def cmd_status(a) -> int:
 def cmd_approve(a) -> int:
     run = Run(a.run)
     if a.what == "brief":
-        if run.file("brief.vi.md").stat().st_mtime > run.file("brief.en.md").stat().st_mtime:
+        if (style_of(run) != "neon"  # neon has no English brief: no video is made from one
+                and run.file("brief.vi.md").stat().st_mtime > run.file("brief.en.md").stat().st_mtime):
             _err("brief.vi.md mới hơn brief.en.md — cập nhật bản tiếng Anh trước (NotebookLM làm video từ bản tiếng Anh)")
             return BAD_INPUT
     else:
@@ -415,7 +426,8 @@ def cmd_auto(a) -> int:
         if code := cmd_new(argparse.Namespace(slug=a.target, notebook=None, runs_dir=a.runs_dir)):
             return code
         run = Run(Path(a.runs_dir or config()["runs_dir"]).expanduser() / a.target)
-        run.write("run.json", run.read("run.json") | {"topic": a.topic, "auto": a.auto})
+        run.write("run.json", run.read("run.json") | {"topic": a.topic, "auto": a.auto}
+                  | ({"style": "neon"} if a.style == "neon" else {}))
     else:
         run = Run(a.target)
     if not a.foreground:  # a video takes ~1.5 h: run on after the session or ssh that started it is gone
@@ -574,6 +586,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("target", help="slug của video mới (cùng --topic) hoặc thư mục RUN đang làm")
     p.add_argument("--topic")
     p.add_argument("--auto", action="store_true", help="không dừng duyệt brief (vẫn dừng duyệt bản dịch)")
+    p.add_argument("--style", choices=["old", "neon"], default="old",
+                   help="kiểu video của video mới (cùng --topic); chạy tiếp thì kiểu nằm trong run.json")
     p.add_argument("--runs-dir")
     p.add_argument("--foreground", action="store_true")
     p.set_defaults(fn=cmd_auto)

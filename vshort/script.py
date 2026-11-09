@@ -5,7 +5,7 @@ import unicodedata
 from dataclasses import dataclass, replace
 
 from vshort.captions import Fragment
-from vshort.textfit import MAX_TEXT_W, text_width
+from vshort.textfit import MAX_TEXT_W, NEON_EM, NEON_FONT, text_width
 
 
 @dataclass
@@ -211,4 +211,61 @@ def check_brief(script: list[dict], brief: str) -> list[str]:
     if cta and said and not _plain(said[-1]["phrases"]).endswith(_plain(cta)) and not said[-1].get("note", "").strip():
         probs.append(f"Câu {said[-1]['id']} là câu cuối nhưng không kết bằng nguyên văn lời kêu gọi trong brief "
                      f"({cta!r}); nếu câu tiếng Anh là câu chốt thì giữ nó và nối lời kêu gọi sau, hoặc ghi note vì sao khác")
+    return probs
+
+
+# Neon style: Claude writes the Vietnamese narration from the approved brief, so it is checked against the brief
+SYL_MIN, SYL_MAX = 260, 390  # 60–90 s of narration at PACE
+
+
+def _after(brief: str, heading: str) -> list[str]:
+    """The stripped lines after the first heading that starts with `heading` ('#', '**' and ':' around it are fine)."""
+    lines = [ln.strip() for ln in brief.splitlines()]
+    head = next((i for i, ln in enumerate(lines) if ln.strip("#*: ").startswith(heading)), None)
+    return [] if head is None else lines[head + 1:]
+
+
+def brief_title(brief: str) -> str | None:
+    """The opening line the brief proposes: the first non-empty line under "Tiêu đề"."""
+    return next((ln.strip('#*:"“”') for ln in _after(brief, "Tiêu đề") if ln), None)
+
+
+def mechanism_steps(brief: str) -> list[str]:
+    """The numbered lines under "Cơ chế từng bước", numbers kept ("0. Bình thường: …")."""
+    steps = []
+    for ln in (ln for ln in _after(brief, "Cơ chế từng bước") if ln):
+        if not re.match(r"\d+\.", ln):
+            break
+        steps.append(ln)
+    return steps
+
+
+def ints(text: str) -> set[int]:
+    """Each run of digits is a number, '.', ',', '/' and '-' all break it: "05.11.2026" = "5/11/2026", "9,8" = "9.8"."""
+    return {int(d) for d in re.findall(r"\d+", text)}
+
+
+def check_neon(script: list[dict], brief: str) -> list[str]:
+    """The narration against the brief: first line the brief's title, only the brief's numbers, captions that fit, the
+    right length. A note on a line explains a number the brief writes in words."""
+    probs = []
+    title = brief_title(brief)
+    if title is None:
+        probs.append("Brief không có mục 'Tiêu đề (câu mở đầu)' để đối chiếu câu đầu")
+    for n, row in enumerate(script):
+        text = row["phrases"]
+        if n == 0:
+            if title is not None and _plain(text) != _plain(title):
+                probs.append(f"Câu {row['id']}: câu đầu phải là tiêu đề của brief ({title!r}), đang là {text!r}")
+            if "|" in text:
+                probs.append(f"Câu đầu (câu {row['id']}) phải hiện trọn câu, không được chia bằng '|'")
+        else:
+            for ph in (p.strip() for p in text.split("|")):
+                if (w := text_width(ph, NEON_EM, NEON_FONT)) > MAX_TEXT_W:
+                    probs.append(f"Câu {row['id']}: cụm '{ph}' rộng {w:.0f}px, vượt {MAX_TEXT_W}px")
+        probs += [f"Câu {row['id']}: lời có số {i} mà brief không có; giữ đúng số trong brief, hoặc ghi note nhắc "
+                  "số đó và vì sao khác" for i in sorted(ints(text) - ints(brief) - ints(row.get("note", "")))]
+    total = sum(syllables(row["phrases"]) for row in script)
+    if not SYL_MIN <= total <= SYL_MAX:
+        probs.append(f"Lời có {total} âm tiết (~{total / PACE:.0f} giây); cần {SYL_MIN}–{SYL_MAX} âm tiết (60–90 giây)")
     return probs

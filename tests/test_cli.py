@@ -441,6 +441,47 @@ def test_auto_foreground_starts_a_run_and_holds_the_lock(tmp_path, monkeypatch):
     assert main(["auto", str(run), "--foreground"]) == 2
 
 
+def test_auto_style_neon_is_written_to_run_json_and_only_then(tmp_path, monkeypatch):
+    from vshort import auto
+    monkeypatch.setattr(auto, "run_auto", lambda run: 0)
+    assert main(["auto", "neon-one", "--topic", "X", "--style", "neon", "--runs-dir", str(tmp_path), "--foreground"]) == 0
+    assert main(["auto", "old-one", "--topic", "X", "--runs-dir", str(tmp_path), "--foreground"]) == 0
+    assert Run(tmp_path / "neon-one").read("run.json")["style"] == "neon"
+    assert "style" not in Run(tmp_path / "old-one").read("run.json")
+    assert (cli.style_of(Run(tmp_path / "neon-one")), cli.style_of(Run(tmp_path / "old-one"))) == ("neon", "old")
+    assert cli.style_of(Run(tmp_path / "chưa")) == "old"  # no run.json at all
+    assert main(["auto", str(tmp_path / "old-one"), "--style", "neon", "--foreground"]) == 0  # the flag lives in run.json
+    assert cli.style_of(Run(tmp_path / "old-one")) == "old"
+
+
+def _neon_run(tmp_path, phrases):
+    (tmp_path / "run.json").write_text('{"slug": "x", "style": "neon"}')
+    (tmp_path / "brief.vi.md").write_text("Tiêu đề (câu mở đầu)\nMột tiêu đề\nLời kêu gọi\nChia sẻ video.\n", encoding="utf-8")
+    rows = [{"id": 1, "phrases": "Một tiêu đề", "note": ""}]
+    rows += [{"id": i + 2, "phrases": p, "note": ""} for i, p in enumerate(phrases)]
+    (tmp_path / "script.vi.json").write_text(json.dumps(rows), encoding="utf-8")  # and no sentences.en.json
+
+
+def test_check_neon_run_checks_the_script_against_the_brief_not_english(tmp_path, capsys):
+    _neon_run(tmp_path, ["Lời nói ngắn gọn thôi mà"] * 56 + ["Chia sẻ video."])
+    assert main(["check", str(tmp_path)]) == 0
+    (tmp_path / "script.vi.json").write_text(json.dumps([{"id": 1, "phrases": "Khác", "note": ""}]))
+    assert main(["check", str(tmp_path)]) == 2
+    err = capsys.readouterr().err
+    assert "tiêu đề của brief" in err and "âm tiết" in err
+
+
+def test_check_neon_run_still_holds_the_end_to_the_briefs_call_to_action(tmp_path, capsys):
+    _neon_run(tmp_path, ["Lời nói ngắn gọn thôi mà"] * 57)
+    assert main(["check", str(tmp_path)]) == 2
+    assert "lời kêu gọi" in capsys.readouterr().err
+
+
+def test_approve_brief_of_a_neon_run_needs_no_english_brief(tmp_path):
+    _neon_run(tmp_path, [])
+    assert main(["approve", str(tmp_path), "brief"]) == 0 and Run(tmp_path).done("approve_brief")
+
+
 def test_auto_launch_detaches_and_refuses_while_running(tmp_path, monkeypatch, capsys):
     import os
     from vshort import auto

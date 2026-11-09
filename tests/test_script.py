@@ -1,6 +1,6 @@
 from vshort.captions import Fragment
-from vshort.script import (Sentence, check_brief, check_numbers, check_script, check_style, group_sentences, merge_text,
-                           merged, syllables)
+from vshort.script import (Sentence, brief_title, check_brief, check_neon, check_numbers, check_script, check_style,
+                           group_sentences, ints, mechanism_steps, merge_text, merged, syllables)
 
 
 def test_merge_drops_ui_label_and_scene_cut_duplicate():
@@ -151,3 +151,56 @@ def test_title_line_is_exempt():
     sents = [Sentence(1, 0.1, 0.9, "Rails.")]
     assert not [p for p in check_script(sents, [{"id": 1, "phrases": RAILS_16_VI.replace(" |", ","), "note": ""}])
                 if "lời Việt" in p]
+
+
+NEON_BRIEF = ("Tiêu đề (câu mở đầu)\nOpenMatter hứa AI không cần data center\n...\nCơ chế từng bước\n0. Bình thường: ..."
+              "\n1. Chia ...\n2. Gửi ...\nÝ chính\n1. Theo thông cáo ngày 5/11/2026, ...\nLời kêu gọi\n\"Chia sẻ video.\"")
+
+
+def test_brief_title_and_mechanism():
+    assert brief_title(NEON_BRIEF) == "OpenMatter hứa AI không cần data center"
+    assert [s[:2] for s in mechanism_steps(NEON_BRIEF)] == ["0.", "1.", "2."]
+    md = "## **Tiêu đề (câu mở đầu)**:\n\n\"Một tiêu đề\"\n\n**Cơ chế từng bước**\n\n1. A\n\n2. B\nÝ chính\n3. không phải bước"
+    assert brief_title(md) == "Một tiêu đề" and mechanism_steps(md) == ["1. A", "2. B"]
+    assert brief_title("Ý chính\n1. x") is None and mechanism_steps("Ý chính\n1. x") == []
+
+
+def test_ints_treat_zero_padded_and_separators_alike():
+    assert ints("05.11.2026") == {5, 11, 2026} == ints("5/11/2026")
+    assert ints("9,8") == ints("9.8")
+
+
+def test_check_neon_title_numbers_length_width():
+    ok = [{"id": 1, "phrases": "OpenMatter hứa AI không cần data center", "note": ""},
+          {"id": 2, "phrases": "Ngày 5 tháng 11 | năm 2026, ...", "note": ""}]
+    probs = check_neon(ok, NEON_BRIEF)
+    assert any("âm tiết" in p for p in probs)  # quá ngắn so với SYL_MIN
+    assert not any("tiêu đề" in p or "số" in p for p in probs)
+    bad = [dict(ok[0], phrases="Tiêu đề khác"), dict(ok[1], phrases="Có 7 | cụm rộng quá " + "chữ " * 40)]
+    probs = check_neon(bad, NEON_BRIEF)
+    assert any("tiêu đề" in p for p in probs) and any("7" in p for p in probs) and any("px" in p for p in probs)
+
+
+def test_check_neon_a_note_explains_a_number_and_the_title_stays_whole():
+    rows = [{"id": 1, "phrases": "OpenMatter hứa AI không cần data center", "note": ""},
+            {"id": 2, "phrases": "Có 7 ví | mất tiền", "note": ""}]
+    assert any("số 7" in p for p in check_neon(rows, NEON_BRIEF))
+    assert not any("số 7" in p for p in check_neon([rows[0], dict(rows[1], note="7 ví: brief viết bảy bằng chữ")], NEON_BRIEF))
+    split = [dict(rows[0], phrases="OpenMatter hứa AI | không cần data center"), rows[1]]
+    assert any("'|'" in p for p in check_neon(split, NEON_BRIEF))
+
+
+def test_check_neon_measures_captions_in_the_neon_font():
+    # 475 px in Patrick Hand (the old captions), 529 px in Be Vietnam Pro Bold 40 (neon's): past MAX_TEXT_W
+    rows = [{"id": 1, "phrases": "OpenMatter hứa AI không cần data center", "note": ""},
+            {"id": 2, "phrases": "Ngày 5 tháng 11 năm 2026", "note": ""}]
+    assert any("px" in p for p in check_neon(rows, NEON_BRIEF))
+    assert not any("px" in p for p in check_neon([rows[0], dict(rows[1], phrases="Ngày 5 tháng 11 | năm 2026")], NEON_BRIEF))
+
+
+def test_check_neon_length_is_in_syllables():
+    rows = [{"id": 1, "phrases": "OpenMatter hứa AI không cần data center", "note": ""}]
+    rows += [{"id": i, "phrases": "Lời nói ngắn gọn thôi mà", "note": ""} for i in range(2, 60)]
+    assert syllables(" ".join(r["phrases"] for r in rows)) > 260
+    assert not any("âm tiết" in p for p in check_neon(rows, NEON_BRIEF))
+    assert any("âm tiết" in p for p in check_neon(rows * 2, NEON_BRIEF))
