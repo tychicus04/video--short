@@ -15,7 +15,9 @@ SLOTS: dict[str, dict[str, tuple[float, float]]] = {
     "center": {"hub": C},
     # `below` stands 220 under the hub, not 200: at 200 (330, 760) the hub's label fits only at the 4 px fallback, 0.25 px past the 4 px
     # margin from `below`'s tile, too fragile (the font files are untracked downloads and may differ between the Mac and pve2)
-    "pair": {"hub": C, "left": (150, 560), "right": (510, 560), "above": (330, 380), "below": (330, 780)},
+    # the slots stand 230 / 220 px from the hub, so a link to it shows 72 / 62 px of line once cut at both ends (SHORT + SHORT_HUB = 158;
+    # at 180 px it was a 22 px stub); `above` at 340 keeps its split tile (y - 83) clear of the section-label band (190 - 230)
+    "pair": {"hub": C, "left": (100, 560), "right": (560, 560), "above": (330, 340), "below": (330, 780)},
     "ring": {"hub": C} | {f"r{k}": (C[0] + 228 * math.cos(math.radians(a)), C[1] + 228 * math.sin(math.radians(a)))
                           for k, a in enumerate(_RING_ANGLES)},
     "chain": {f"c{k}": (330, 330 + 150 * k) for k in range(4)},
@@ -28,6 +30,7 @@ ICON, HUB = 84, 150  # an icon's side at a normal slot / at the hub
 INK = 20 / 24  # an icon's paths fill this much of its square: Lucide draws inside a 20 × 20 live area of its 24 × 24 grid
 STROKE = {"icon": 3.5, "hub": 4, "badge": 2.5, "hero": 4.5, "tile": 2.5}  # px, the kit's (runtime-contract "Strokes")
 SHORT, SHORT_HUB = 46, 112  # a link stops this far from the centre of a normal / hub-sized node
+MIN_LINK = 48  # a link with less line than this showing between its two cut ends is refused: a flow dot would hop along a stub
 BADGE, TILE, HERO = 34, 30, 170  # sides of a badge, a split tile and the hero icon
 TUNNEL_HALF = 6  # a `tunnel` link is two rails this far either side of its line; the kit draws them there
 LABEL_FONT, LABEL_SIZE, LABEL_MAX = "BeVietnamPro-Bold.ttf", 22, 140  # a node's label; wider than 140 px is an error
@@ -192,8 +195,9 @@ def place(section: Section, kept: list[dict] = ()) -> list[dict]:
         a, b = node(ln.a, f"nối {ln.id}"), node(ln.b, f"nối {ln.id}")
         dx, dy = b["x"] - a["x"], b["y"] - a["y"]
         d, sa, sb = math.hypot(dx, dy), _short(a), _short(b)
-        if d <= sa + sb:
-            problems.append(f"nối {ln.id}: {ln.a} và {ln.b} quá gần nhau để nối")
+        if d - sa - sb < MIN_LINK:
+            problems.append(f"nối {ln.id}: {ln.a} và {ln.b} quá gần nhau để nối (chỉ thấy {max(d - sa - sb, 0):.0f} px đường, "
+                            f"cần ít nhất {MIN_LINK})")
             continue
         ux, uy = dx / d, dy / d
         x1, y1, x2, y2 = a["x"] + ux * sa, a["y"] + uy * sa, b["x"] - ux * sb, b["y"] - uy * sb

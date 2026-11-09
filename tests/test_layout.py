@@ -3,7 +3,7 @@ import math
 
 import pytest
 
-from vshort.layout import (C, Box, HUB, ICON, LABEL_FONT, LABEL_MAX, LABEL_SIZE, SLOTS, boxes_overlap, place, segment_hits_box,
+from vshort.layout import (C, Box, HUB, ICON, LABEL_FONT, LABEL_MAX, LABEL_SIZE, MIN_LINK, SLOTS, boxes_overlap, place, segment_hits_box,
                            text_box)
 from vshort.scene import Beat, Link, Node, SceneError, Section
 
@@ -98,6 +98,16 @@ def test_full_layouts_have_no_overlap(layout):  # a full layout must not make mi
     assert not any(boxes_overlap(a["box"], b["box"]) for a, b in itertools.combinations(texts + solid, 2))
     assert not any(segment_hits_box(link, t["box"]) for link in els if link["kind"] == "link" for t in texts)
     assert all(e["box"][2] <= 618 for e in els if e["box"][3] > 535)
+    assert all(math.dist((e["x1"], e["y1"]), (e["x2"], e["y2"])) >= MIN_LINK for e in els if e["kind"] == "link")
+
+
+def test_a_link_too_short_to_see_is_refused_in_vietnamese(monkeypatch):  # the old pair slots left a 22 px stub
+    nodes = (Node("a", "user", "", "left"), Node("b", "server", "", "hub"))
+    sec = Section("s1", "", "normal", "pair", nodes, (Link("l1", "a", "b", "solid"),), (), ())
+    assert place(sec)  # 72 px of line
+    monkeypatch.setitem(SLOTS["pair"], "left", (170, 560))  # 160 px from the hub: 2 px of line
+    with pytest.raises(SceneError, match=r"nối l1: a và b quá gần nhau để nối \(chỉ thấy 2 px đường, cần ít nhất 48\)"):
+        place(sec)
 
 
 def test_nodes_links_badges_and_tiles_stand_as_in_the_spike():
@@ -227,7 +237,7 @@ def test_a_kept_hub_is_an_obstacle_and_a_link_to_it_is_cut_at_its_size():
     assert {e["id"] for e in els} == {"u1", "u2", "u1.label", "u2.label", "l1"}  # only this section's own
     link = by_id(els, "l1")
     assert math.dist((link["x2"], link["y2"]), C) == pytest.approx(112)
-    assert math.dist((link["x1"], link["y1"]), (330, 380)) == pytest.approx(46)
+    assert math.dist((link["x1"], link["y1"]), (330, 340)) == pytest.approx(46)
     labels = [e for e in els if e["kind"] == "label"]
     solid = kept + [e for e in els if e["kind"] == "icon"]
     assert not any(boxes_overlap(lb["box"], k["box"]) for lb in labels for k in solid)

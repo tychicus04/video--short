@@ -94,6 +94,17 @@ def redraw_scene():
                         {"t": 2.0, "do": "draw", "ids": ["a", "ab"], "d": 0.5}]}
 
 
+def red_flow_scene():
+    """A red link between two red nodes, a dot running along it from 0.8 s (3 passes of 0.8 s: to 3.2 s), the link and its nodes
+    fading out at 1.6 s. The dot is part of the link: red like it, and gone when it is."""
+    return {"total": 3.4, "title": None, "captions": [],
+            "elements": [icon("a", "server", 180, 560, tone="risk"), icon("b", "user", 480, 560, tone="risk"),
+                         link("ab", "a", "b", 226, 560, 434, 560, tone="risk")],
+            "actions": [{"t": 0.2, "do": "on", "ids": ["a", "b", "ab"]},
+                        {"t": 0.8, "do": "flow", "ids": ["ab"], "dir": "a-b", "repeat": 3, "d": 0.8},
+                        {"t": 1.6, "do": "off", "ids": ["a", "b", "ab"], "d": 0.35}]}
+
+
 def full_scene():
     """Every kind and every action once. The kit throws on what it does not know, so validate reaching the end means it knows them."""
     els = [
@@ -234,6 +245,20 @@ def test_a_draw_neither_hides_an_earlier_on_nor_pops_in_after_an_off(tmp_path):
     assert max(gone) < 5  # `off`
     assert growing[0] < shown[0] / 2 and growing[1] < shown[1] / 2  # 0.1 s into the draw: it starts from nothing again
     assert drawn[0] > 0.9 * shown[0] and drawn[1] > 0.9 * shown[1]
+
+
+@needs_hf
+def test_a_flow_dot_takes_its_links_colour_and_goes_with_it(tmp_path):  # it used to be cyan in its own root, and outlive the link
+    comp = compose.write_composition(red_flow_scene(), tmp_path / "comp")
+    out = tmp_path / "flow.mp4"
+    hf.render(comp, out)
+    along = (226, 530, 434, 590)
+    cyan = lambda r, g, b: (b > 150) & (g > 150) & (r < g - 40)
+    lit = lambda r, g, b: (r > 150) | (g > 150) | (b > 150)
+    mid = frame_at(out, 1.2)  # half way along the first pass
+    assert count(mid, along, lambda r, g, b: (r > 240) & (g > 120) & (b > 120)) > 20  # the dot is there, a pale red
+    assert count(mid, along, cyan) < 5  # and the red link has not gained a colour
+    assert count(frame_at(out, 2.6), along, lit) < 5  # the link has faded (2.0 s): the dot, still running, went with it
 
 
 @needs_hf

@@ -12,7 +12,8 @@ const ICONS = (() => { const x = new XMLHttpRequest(); x.open("GET", "icons.json
 const COLOR = { normal: "#2BE3FF", risk: "#FF4D61", claim: "#FFC53D", safe: "#3DFF9E", white: "#FFFFFF" };
 const RGB = { normal: "43,227,255", risk: "255,77,97", claim: "255,197,61", safe: "61,255,158", white: "255,255,255" };
 const FONT = { "BeVietnamPro-Bold.ttf": "f-bold", "BeVietnamPro-ExtraBold.ttf": "f-extra", "IBMPlexMono-SemiBold.ttf": "f-mono" };
-const DIM = 0.35, FADE = 0.35, PALE = "#BFF6FF";
+const DIM = 0.35, FADE = 0.35;
+const PALE = { normal: "#BFF6FF", risk: "#FFCAD0", claim: "#FFEEC5", safe: "#C5FFE2", white: "#FFFFFF" };   // a flow dot: its link's colour mixed 70 % with white (normal is the spike's)
 // render.py's title bar (its STRIPE, BAR, YELLOW, TEAL are in kit.css): the box is 569 × 164 as drawn there, the text starts 22 px in
 const BAR = [94, 680, 662, 843], BAR_OUT = 0.45, STRIPE_OUT = 0.2;   // the box rolls back in 0.45 s, then the stripe shrinks in 0.2 (TITLE_OUT 0.65)
 
@@ -186,13 +187,14 @@ const DO = {
       tl.to(r.root, { opacity: 1, duration: FADE }, a.t);
     }
   },
-  flow(a) {   // a dot runs the link n times, then fades
+  flow(a) {   // a dot runs the link n times, then fades: drawn inside the link's own layer, so it has the link's colour, dims and fades with it
     for (const r of of(a)) {
       const e = r.e, [sx, sy, ex, ey] = a.dir === "b-a" ? [e.x2, e.y2, e.x1, e.y1] : a.dir === "a-b" ? [e.x1, e.y1, e.x2, e.y2] : fail(`flow dir ${a.dir}`);
-      const root = H("div", "el", scene), dot = V("circle", { cx: sx, cy: sy, r: 5, fill: PALE }, V("g", { class: "g-normal" }, svgIn(H("div", "lay", root))));
-      tl.to(root, { opacity: 1, duration: 0.05 }, a.t);
+      const dot = V("circle", { cx: sx, cy: sy, r: 5, fill: PALE[r.cur] }, V("g", { class: "g-" + r.cur }, svgIn(r.layers[r.cur])));   // r.cur: the colour the link has now
+      dot.style.opacity = 0;
+      tl.to(dot, { opacity: 1, duration: 0.05 }, a.t);
       tl.to(dot, { attr: { cx: ex, cy: ey }, duration: a.d, repeat: a.repeat - 1, ease: "none" }, a.t);
-      tl.to(root, { opacity: 0, duration: 0.1 }, a.t + a.repeat * a.d);
+      tl.to(dot, { opacity: 0, duration: 0.1 }, a.t + a.repeat * a.d);
     }
   },
   move(a) {   // the tile appears at its `from` and flies to where it rests
