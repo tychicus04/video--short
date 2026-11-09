@@ -11,6 +11,12 @@ a newer release. hyperframes 0.8.206, from `hyperframes --version`. What `hyperf
         Catches console errors, 404s on fonts/scripts and a throwing build script. "deprecated, use `check`" is printed
         on stderr; `check` also lints and inspects layout, so move to it only together with a version bump.
 
+Render time of the 720x1280 gate composition (a ring and two captions; real scenes will be heavier), render() end to end:
+    Mac (M2 Pro, 10 cores):          3 s -> 6.6 s     60 s -> 22.9 s
+    pve2 (24 cores, 15 GB, software): 3 s -> 9.5 s     60 s -> 80.9 s   (~1.25 s per second of video + ~6 s fixed)
+A 90 s video on pve2 is therefore about 120 s with the gate's content; 3 x that is 360 s, under the 600 s floor, so the
+default timeout is 600 s. A scene heavy enough to need more passes its own timeout.
+
 Browser: render uses chrome-headless-shell, not the Chrome you have installed. Order: $HYPERFRAMES_BROWSER_PATH, a shell
 already under ~/.cache/hyperframes/chrome, else it downloads one (152.0.7977.30, 204 MB, ~40 s on the first render).
 It also needs ffmpeg on PATH (both machines have it).
@@ -22,6 +28,7 @@ import json
 import os
 import re
 import subprocess
+import tempfile
 from pathlib import Path
 
 NEON = Path(__file__).resolve().parent / "neon"
@@ -56,17 +63,15 @@ def _tail(cp: subprocess.CompletedProcess) -> str:
     return "\n".join(re.sub(r"\x1b\[[0-9;]*m", "", cp.stderr or cp.stdout).strip().splitlines()[-20:])
 
 
-def render(comp_dir: Path, out: Path, timeout: int = 1800) -> None:
-    """Render comp_dir/index.html to out (silent H.264 MP4, FPS). Written to <out>.tmp.mp4 first and moved into place, so
-    a failure never leaves `out` behind."""
-    tmp = out.with_suffix(".tmp.mp4").resolve()  # absolute: HyperFrames runs with cwd=comp_dir
-    try:
+def render(comp_dir: Path, out: Path, timeout: int = 600) -> None:
+    """Render comp_dir/index.html to out (silent H.264 MP4, FPS). It renders in a scratch folder next to `out` and moves
+    the file into place, so a failure or a timeout leaves neither `out` nor HyperFrames' half-done work files behind."""
+    with tempfile.TemporaryDirectory(dir=out.parent, prefix=f".{out.stem}.") as scratch:
+        tmp = Path(scratch) / "render.mp4"
         cp = _run(["render", "-o", str(tmp), "--fps", str(FPS)], comp_dir, timeout)
         if cp.returncode != 0 or not tmp.exists():
             raise HFError(f"HyperFrames render lỗi (mã {cp.returncode}):\n{_tail(cp)}")
         os.replace(tmp, out)
-    finally:
-        tmp.unlink(missing_ok=True)
 
 
 def validate(comp_dir: Path, timeout: int = 120) -> list[str]:

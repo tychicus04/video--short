@@ -48,8 +48,15 @@ def test_failed_render_leaves_no_output(tmp_path):
 
 
 def test_hyperframes_failure_is_hferror_and_leaves_nothing(tmp_path):
-    empty, out = tmp_path / "empty", tmp_path / "x.mp4"  # a folder with no index.html: HyperFrames itself exits non-zero
+    empty = tmp_path / "empty"  # a folder with no index.html: HyperFrames itself exits non-zero
     empty.mkdir()
     with pytest.raises(hf.HFError):
-        hf.render(empty, out)
-    assert list(tmp_path.glob("x*")) == []
+        hf.render(empty, tmp_path / "x.mp4")
+    assert [p.name for p in tmp_path.iterdir()] == ["empty"]
+
+
+def test_timeout_is_hferror_and_leaves_nothing(tmp_path):
+    gate = copy_gate(tmp_path, duration=60)  # far more than 5 s of work
+    with pytest.raises(hf.HFError, match="quá 5 giây"):
+        hf.render(gate, tmp_path / "x.mp4", timeout=5)
+    assert [p.name for p in tmp_path.iterdir()] == ["gate"]
