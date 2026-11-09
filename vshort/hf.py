@@ -26,16 +26,21 @@ It also needs ffmpeg on PATH (both machines have it).
 Our environment switches off what a pinned, unattended renderer should not do: anonymous telemetry, the update check
 (it logs a self-upgrade attempt in ~/.hyperframes/auto-update.log) and installing agent skills. NO_COLOR keeps the error text plain.
 """
+import contextlib
 import json
 import os
 import re
+import shutil
+import signal
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 
 NEON = Path(__file__).resolve().parent / "neon"
 _BIN = NEON / "node_modules" / ".bin" / "hyperframes"
 FPS = 30
+_GRACE = 5  # seconds a stopped render gets to clean up after SIGTERM, before SIGKILL
 _ENV = {"HYPERFRAMES_NO_TELEMETRY": "1", "HYPERFRAMES_NO_UPDATE_CHECK": "1", "HYPERFRAMES_SKIP_SKILLS": "1", "NO_COLOR": "1"}
 
 
@@ -47,18 +52,41 @@ def available() -> bool:
     return _BIN.exists()
 
 
+def _stop(p: subprocess.Popen) -> tuple:
+    """Stop the CLI and everything it started (they are one process group): SIGTERM first, since HyperFrames then closes its
+    Chrome workers and removes their profile folders in /tmp and its work folders itself (SIGKILL leaves about 3 MB per worker);
+    SIGKILL after _GRACE seconds, and for whatever is left once the leader is gone. Returns (stdout, stderr) as far as they got."""
+    with contextlib.suppress(ProcessLookupError):
+        os.killpg(p.pid, signal.SIGTERM)
+    with contextlib.suppress(subprocess.TimeoutExpired):
+        p.wait(timeout=_GRACE)
+    with contextlib.suppress(ProcessLookupError):
+        os.killpg(p.pid, signal.SIGKILL)
+    try:
+        return p.communicate(timeout=_GRACE)
+    except subprocess.TimeoutExpired as e:  # something outside the group still holds the pipes: take what we have
+        return e.stdout, e.stderr
+
+
 def _run(args: list[str], comp_dir: Path, timeout: int) -> subprocess.CompletedProcess:
     if not comp_dir.is_dir():
         raise HFError(f"Không thấy thư mục composition: {comp_dir}")
     if not available():
         raise HFError(f"Chưa cài HyperFrames: chạy `npm ci` trong {NEON}")
-    try:  # killed on a timeout, it takes its Chrome workers with it (they exit when the pipe to the parent closes)
-        return subprocess.run([str(_BIN), *args], cwd=comp_dir, env={**os.environ, **_ENV}, capture_output=True, text=True,
-                              timeout=timeout)
-    except subprocess.TimeoutExpired as e:  # what it printed before the kill says where it stalled; it arrives as bytes even with text=True
-        raise HFError(f"HyperFrames chạy quá {timeout} giây ({args[0]} {comp_dir}):\n{_said(e.stdout, e.stderr)}") from None
+    try:  # its own session, so that a stop reaches every process it started: ffmpeg writes into the work folder after the node process is gone
+        p = subprocess.Popen([str(_BIN), *args], cwd=comp_dir, env={**os.environ, **_ENV}, stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE, text=True, start_new_session=True)
     except OSError as e:
         raise HFError(f"Không chạy được HyperFrames: {e}") from e
+    try:
+        out, err = p.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        out, err = _stop(p)  # what it printed before the stop says where it stalled
+        raise HFError(f"HyperFrames chạy quá {timeout} giây ({args[0]} {comp_dir}):\n{_said(out, err)}") from None
+    except BaseException:  # Ctrl-C and the like: never leave a renderer running
+        _stop(p)
+        raise
+    return subprocess.CompletedProcess(p.args, p.returncode, out, err)
 
 
 def _tail(text: str) -> str:
@@ -73,16 +101,28 @@ def _said(stdout: str | bytes | None, stderr: str | bytes | None) -> str:
     return "\n".join(p for p in parts if p)
 
 
+def _rm(path: Path) -> None:
+    """Remove a folder and never raise: after a stop the last writer may still be dying, so try again briefly; what stays, stays."""
+    for _ in range(5):
+        shutil.rmtree(path, ignore_errors=True)
+        if not path.exists():
+            return
+        time.sleep(0.2)
+
+
 def render(comp_dir: Path, out: Path, timeout: int = 600) -> None:
     """Render comp_dir/index.html to out (silent H.264 MP4, FPS; a lint error is a failure, --strict). It renders in a scratch
     folder next to `out` and moves the file into place, so a failure or a timeout leaves neither `out` nor HyperFrames'
-    half-done work files behind."""
-    with tempfile.TemporaryDirectory(dir=out.parent, prefix=f".{out.stem}.") as scratch:
-        tmp = Path(scratch) / "render.mp4"
+    half-done work files behind (and a clean-up that fails never replaces the HFError)."""
+    scratch = Path(tempfile.mkdtemp(dir=out.parent, prefix=f".{out.stem}."))
+    try:
+        tmp = scratch / "render.mp4"
         cp = _run(["render", "-o", str(tmp), "--fps", str(FPS), "--strict"], comp_dir, timeout)
         if cp.returncode != 0 or not tmp.exists():
             raise HFError(f"HyperFrames render lỗi (mã {cp.returncode}):\n{_said(cp.stdout, cp.stderr)}")
         os.replace(tmp, out)
+    finally:
+        _rm(scratch)
 
 
 def validate(comp_dir: Path, timeout: int = 120) -> list[str]:
