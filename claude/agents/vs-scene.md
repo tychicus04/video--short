@@ -26,7 +26,7 @@ không viết tọa độ, không chọn màu ngoài bốn nghĩa.
 Một **mục** (section) là một bố cục đứng yên. Chỉ những khóa này có; khóa nào khác là "khóa lạ".
 - mục: `id` (duy nhất), `label` (nhãn gõ dần ở góc trên trái, in hoa, ngắn; `""` là không nhãn), `tone` (màu mặc định của mục),
   `layout`, `keep`, `nodes`, `links`, `beats`. Mục nào cũng cần ít nhất một nhịp.
-- nút: `id`, `icon`, `label` (≤ 12 chữ: nhãn rộng quá 140 px là lỗi, `""` là không nhãn), `slot`.
+- nút: `id`, `icon`, `label` (≤ 10 chữ cái thường: nhãn rộng quá `LABEL_MAX` = 140 px là lỗi, "máy chủ web" (11 ký tự) đã rộng 155 px; `""` là không nhãn), `slot`.
 - nối: `id`, `a`, `b` (id hai nút), `style`.
 - nhịp: `at` (số cụm, số nguyên), `do` (động từ), `delay` (giây, mặc định 0; xếp hai nhịp cùng cụm cách nhau 0,3–0,6 s) và khóa riêng
   của động từ. Hình vào trước cụm 0,15 s.
@@ -62,7 +62,8 @@ xác nhận), `safe` xanh lá (an toàn, giải pháp).
 - `chip` {`text`, [`near`], [`tone`]}: viên chữ ngắn (nên in hoa, vài chữ), mặc định vàng; `near` là id nút nó đứng cạnh.
 - `quote` {`text`, `who`, [`tone`]}: bong bóng lời tuyên bố, `who` là người nói (in hoa, ngắn); chữ trích ngắn, tối đa 4 dòng.
 - `statement` {`text`}: câu lớn màu trắng ở dải dưới, tối đa 2 dòng (khoảng 8 chữ). `hero` {`icon`, [`label`], [`tone`]}: icon lớn
-  giữa hình cho cao trào, mặc định xanh lá.
+  giữa hình cho cao trào, mặc định xanh lá. Hero cần giữa hình trống: nút `hub` còn hiện, kể cả đã `dim`, vẫn "đè lên hero". Dùng hero ở
+  mục `none`, hoặc sau `hide` của nút ở giữa, cách `hide` ít nhất 0,35 s (cụm sau, hay `delay` từ 0,4).
 
 Không có tọa độ, không có "clear": sang mục mới thì mọi thứ không nằm trong `keep` tắt dần (0,35 s) trước nhịp đầu của mục mới.
 
@@ -72,7 +73,9 @@ Không có tọa độ, không có "clear": sang mục mới thì mọi thứ kh
 - Mỗi bước cơ chế là một thay đổi nhìn thấy được của sơ đồ, đặt ở **đúng cụm** nói tới nó. Bước 0 "Bình thường" dựng sơ đồ yên ổn
   (`normal`); các bước sau bẻ nó (`state` sang `risk`, `badge`, `flow`, `swap`…). Không đảo thứ tự, không gộp bước.
 - Nút đứng yên; mỗi mục một bố cục. Muốn đổi bố cục thì sang mục mới.
-- Mỗi mục bắt đầu ở nhịp đầu tiên của nó; nhịp cuối của mục trước phải sớm hơn đó, nên các nhịp đi theo thứ tự `at`.
+- Mỗi mục bắt đầu ở nhịp đầu tiên của nó. Hành động cuối của mục trước phải đến sớm hơn nhịp đầu của mục mới **ít nhất 0,35 s** (lúc
+  mục trước tắt dần), nếu không `vshort scene` báo "mục … mở lúc …". Các `swap` hay `split` so le (`delay`) và `off` của `merge` (+0,7 s
+  sau nhịp của nó) cũng tính là hành động.
 
 **`keep`** (mang nút từ mục trước sang mục này):
 - chỉ id còn sống ở cuối mục trước (khai báo ở đó, hoặc chính nó được giữ);

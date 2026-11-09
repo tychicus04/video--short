@@ -81,11 +81,13 @@ EOF
    - Lệch kiểu do cách dựng kịch bản (hai bố cục chồng nhau, sơ đồ không `dim` khi chip ý chính hiện, màu lẫn nghĩa): `"scene"`. Lỗi
      của bộ dựng (quầng mất, sai font, nhấp nháy, nét vỡ): `"none"`.
 5. **Phụ đề khớp `script.vi.json`.** Chữ từng cụm khớp lời (bỏ `|` và `*`), nằm ở dải phụ đề (đáy khoảng y 1140, giữa x 102–618), hiện
-   đúng lúc cụm được đọc, không tràn. Câu 1 là tiêu đề: nó **không** có phụ đề, nó được gõ vào thanh tiêu đề. Chữ lệch lời là lỗi của
+   đúng lúc cụm được đọc, không tràn. Câu 1 là tiêu đề: nó **không** có phụ đề, nó được gõ vào thanh tiêu đề, trừ khi `title` trong `scene.resolved.json` là `null` (tiêu đề dài quá,
+   `render.title_fit` trả None): khi đó **không có thanh tiêu đề**, và tiêu đề là phụ đề đầu (caption 0), hiện như mọi phụ đề; đó không
+   phải lỗi, đừng báo thiếu thanh hay thừa phụ đề ở câu 1. Chữ lệch lời là lỗi của
    bộ dựng: `"none"`; lời sai nghĩa hay nói quá brief: `"writer"`.
 6. **Thanh tiêu đề.** Vạch vàng và khung xanh (khoảng y 680–843) gõ trọn tiêu đề (câu 1), đủ chữ, không tràn khung, rồi cuộn từ phải sang
    trái và biến mất trước khi sơ đồ vào. Xem khung ở `title.t1` (đã gõ xong) và `title.out + 1` (đã đi); bar còn hiện sau đó hoặc thiếu
-   chữ là lỗi (`"none"`).
+   chữ là lỗi (`"none"`). `title` là `null` thì bỏ cả mục này (không có thanh, không có hai khung đó).
 7. **Logo.** Logo Tạp chí An ninh mạng Việt Nam màu gốc ở góc trên phải (x 470–700, y 24–82) suốt video; góc dưới phải trống.
 8. **Outro.** Khung sau `total` là outro (logo lớn chạy hình), đủ, đúng chỗ, không đứng ở khung cuối của sơ đồ rồi cắt cụt.
 

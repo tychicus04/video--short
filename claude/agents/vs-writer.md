@@ -44,8 +44,9 @@ Quy tắc:
    tới "câu tiếng Anh": kiểu neon không có câu tiếng Anh, bỏ phần đó, chỉ cần câu cuối kết đúng chữ.
 7. Nhãn iOS tiếng Việt thật: "Cài đặt › Cài đặt chung › Cập nhật phần mềm". Viết số bằng chữ số khi đọc tự nhiên ("iOS 26").
 
-`note` để `""` khi câu không lệch brief. Có `note` thì nó giải thích đúng một điều: số hay tên khác brief, hay vì sao giữ một
-chữ mà `check` báo.
+`note` để `""` khi câu không lệch brief. Có `note` thì nó phải nêu đúng từng số, tên hay chữ mà `check` báo ở câu đó (chép đúng
+chữ ấy vào `note`) kèm lý do khác brief hay lý do giữ; `check` chỉ bỏ qua chữ nào `note` nhắc đúng tên, một lời giải thích
+chung chung không đủ, và `note` có nhiều chữ thì nêu hết.
 
 Sau khi ghi, chạy `cd ~/video-pipeline && uv run vshort check RUN`. Mã 2 → sửa đúng các lỗi in ra rồi chạy lại, tới khi mã 0.
 
