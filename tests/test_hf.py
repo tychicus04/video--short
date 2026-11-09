@@ -57,6 +57,8 @@ def test_hyperframes_failure_is_hferror_and_leaves_nothing(tmp_path):
 
 def test_timeout_is_hferror_and_leaves_nothing(tmp_path):
     gate = copy_gate(tmp_path, duration=60)  # far more than 5 s of work
-    with pytest.raises(hf.HFError, match="quá 5 giây"):
+    with pytest.raises(hf.HFError, match="quá 5 giây") as e:
         hf.render(gate, tmp_path / "x.mp4", timeout=5)
     assert [p.name for p in tmp_path.iterdir()] == ["gate"]
+    lines = str(e.value).splitlines()  # the header, then what HyperFrames had printed (where it stalled), without escapes
+    assert len(lines) > 2 and "\x1b" not in str(e.value)

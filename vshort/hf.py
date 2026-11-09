@@ -53,14 +53,16 @@ def _run(args: list[str], comp_dir: Path, timeout: int) -> subprocess.CompletedP
     try:  # killed on a timeout, it takes its Chrome workers with it (they exit when the pipe to the parent closes)
         return subprocess.run([str(_BIN), *args], cwd=comp_dir, env={**os.environ, **_ENV}, capture_output=True, text=True,
                               timeout=timeout)
-    except subprocess.TimeoutExpired:
-        raise HFError(f"HyperFrames chạy quá {timeout} giây ({args[0]} {comp_dir})") from None
+    except subprocess.TimeoutExpired as e:  # what it printed before the kill says where it stalled; it arrives as bytes even with text=True
+        seen = (e.stderr or e.stdout or b"").decode(errors="replace")
+        raise HFError(f"HyperFrames chạy quá {timeout} giây ({args[0]} {comp_dir}):\n{_tail(seen)}") from None
     except OSError as e:
         raise HFError(f"Không chạy được HyperFrames: {e}") from e
 
 
-def _tail(cp: subprocess.CompletedProcess) -> str:
-    return "\n".join(re.sub(r"\x1b\[[0-9;]*m", "", cp.stderr or cp.stdout).strip().splitlines()[-20:])
+def _tail(text: str) -> str:
+    """The last 20 lines, with terminal escape sequences (colours, cursor show/hide) removed."""
+    return "\n".join(re.sub(r"\x1b\[[0-9;?]*[A-Za-z]", "", text).strip().splitlines()[-20:])
 
 
 def render(comp_dir: Path, out: Path, timeout: int = 600) -> None:
@@ -70,7 +72,7 @@ def render(comp_dir: Path, out: Path, timeout: int = 600) -> None:
         tmp = Path(scratch) / "render.mp4"
         cp = _run(["render", "-o", str(tmp), "--fps", str(FPS)], comp_dir, timeout)
         if cp.returncode != 0 or not tmp.exists():
-            raise HFError(f"HyperFrames render lỗi (mã {cp.returncode}):\n{_tail(cp)}")
+            raise HFError(f"HyperFrames render lỗi (mã {cp.returncode}):\n{_tail(cp.stderr or cp.stdout)}")
         os.replace(tmp, out)
 
 
@@ -80,4 +82,4 @@ def validate(comp_dir: Path, timeout: int = 120) -> list[str]:
     try:
         return [e["text"] for e in json.loads(cp.stdout)["errors"]]
     except (json.JSONDecodeError, KeyError, TypeError):
-        raise HFError(f"HyperFrames validate không trả kết quả đọc được (mã {cp.returncode}):\n{_tail(cp)}") from None
+        raise HFError(f"HyperFrames validate không trả kết quả đọc được (mã {cp.returncode}):\n{_tail(cp.stderr or cp.stdout)}") from None
