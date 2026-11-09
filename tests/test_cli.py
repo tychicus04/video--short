@@ -9,9 +9,10 @@ import pytest
 from conftest import write_silence
 from PIL import Image, ImageDraw
 
-from vshort import cli
+from vshort import cli, hf
 from vshort.cli import main
-from vshort.media import frame_at
+from vshort.media import frame_at, probe
+from vshort.render import OUTRO
 from vshort.run import Run
 from vshort.tts import QuotaExceeded, clip_paths
 
@@ -376,6 +377,99 @@ def test_render_cmd_rejects_a_timeline_of_another_script(tmp_path, make_video, c
         [{"id": 1, "phrases": "Một câu", "note": ""}, {"id": 2, "phrases": "", "note": ""}]))  # line 2 now silent
     assert main(["render", str(tmp_path)]) == 2
     assert "timeline.json" in capsys.readouterr().err
+
+# ---- `vshort render` of a neon run: the diagram rendered by HyperFrames, the voice, three accents, the outro ----
+
+def _neon_render_run(tmp_path, total=4.0):
+    """A neon run at the end of `vshort scene`: scene.resolved.json and the voice; no clean.mp4, no English."""
+    (tmp_path / "run.json").write_text('{"slug": "x", "style": "neon"}')
+    rt = {"total": total, "title": None, "captions": [], "elements": [{"id": "n", "kind": "icon"}, {"id": "h", "kind": "hero"}],
+          "actions": [{"t": 0.5, "do": "on", "ids": ["n"]}, {"t": 2.1, "do": "draw", "ids": ["h"], "d": 0.7},
+                      {"t": 3.7, "do": "tone", "ids": ["n"], "to": "risk"}]}
+    (tmp_path / "scene.resolved.json").write_text(json.dumps(rt))
+    write_silence(tmp_path / "narration.wav", total)
+    return rt
+
+
+@pytest.fixture
+def hyperframes(monkeypatch):
+    """HyperFrames without node: the composition is only noted, validate finds nothing, render copies `.clip` to where it is told."""
+    calls = {"written": [], "clip": None}
+    monkeypatch.setattr(cli, "write_composition", lambda rt, d: calls["written"].append((rt, d)))
+    monkeypatch.setattr(hf, "validate", lambda d: [])
+    monkeypatch.setattr(hf, "render", lambda d, out, timeout=600: shutil.copy(calls["clip"], out))
+    return calls
+
+
+def test_render_cmd_neon_makes_the_final_from_the_rendered_diagram(tmp_path, make_video, hyperframes, capsys):
+    rt = _neon_render_run(tmp_path)
+    hyperframes["clip"] = make_video(tmp_path, scenes=[(0, 4, "#2BE3FF")], captions=[])
+    assert main(["render", str(tmp_path)]) == 0
+    out = tmp_path / "final.mp4"
+    assert hyperframes["written"] == [(rt, tmp_path / "neon")] and str(out) in capsys.readouterr().out
+    assert Run(tmp_path).done("render") and (tmp_path / "mix.wav").exists() and (tmp_path / "visuals.mp4").exists()
+    assert abs(probe(out).duration - (4.0 + probe(OUTRO).duration)) < 0.1
+    assert json.loads((tmp_path / "sfx.json").read_text()) == [{"name": "whoosh", "at": 0.5}, {"name": "pop", "at": 2.1},
+                                                               {"name": "glitch", "at": 3.7}]
+    assert np.abs(frame_at(out, 1.0)[640, 360].astype(int) - (0x2B, 0xE3, 0xFF)).max() < 12
+
+
+def test_render_cmd_neon_stops_cleanly_when_hyperframes_fails(tmp_path, hyperframes, monkeypatch, capsys):
+    _neon_render_run(tmp_path)
+    for old in ("final.mp4", "visuals.mp4"):  # the last round's: a failed round must not leave them looking fresh
+        (tmp_path / old).write_bytes(b"old")
+    Run(tmp_path).mark("render")
+
+    def boom(d, out, timeout=600):
+        raise hf.HFError("HyperFrames render lỗi (mã 1):\nlint: gsap_infinite_repeat")
+
+    monkeypatch.setattr(hf, "render", boom)
+    assert main(["render", str(tmp_path)]) == 1
+    assert not (tmp_path / "final.mp4").exists() and not (tmp_path / "visuals.mp4").exists() and not Run(tmp_path).done("render")
+    assert "gsap_infinite_repeat" in capsys.readouterr().err
+
+
+def test_render_cmd_neon_does_not_render_a_composition_that_does_not_validate(tmp_path, hyperframes, monkeypatch, capsys):
+    _neon_render_run(tmp_path)
+    monkeypatch.setattr(hf, "validate", lambda d: ['kit: unknown action "foo" at 2.85 s'])
+
+    def never(d, out, timeout=600):
+        raise AssertionError("rendered a page that does not validate")
+
+    monkeypatch.setattr(hf, "render", never)
+    assert main(["render", str(tmp_path)]) == 1
+    assert 'unknown action "foo"' in capsys.readouterr().err and not (tmp_path / "final.mp4").exists()
+
+
+def test_render_cmd_neon_refuses_visuals_of_the_wrong_length(tmp_path, make_video, hyperframes, capsys):
+    _neon_render_run(tmp_path)
+    hyperframes["clip"] = make_video(tmp_path, scenes=[(0, 3, "#2BE3FF")], captions=[])  # 3 s for a 4 s voice
+    assert main(["render", str(tmp_path)]) == 1
+    assert "visuals.mp4" in capsys.readouterr().err
+    assert not (tmp_path / "visuals.mp4").exists() and not (tmp_path / "final.mp4").exists() and not Run(tmp_path).done("render")
+
+
+@pytest.mark.parametrize("gone", ["scene.resolved.json", "narration.wav"])
+def test_render_cmd_neon_names_what_is_missing(tmp_path, hyperframes, capsys, gone):
+    _neon_render_run(tmp_path)
+    (tmp_path / gone).unlink()
+    assert main(["render", str(tmp_path)]) == 2
+    assert gone in capsys.readouterr().err and not (tmp_path / "final.mp4").exists()
+
+
+@pytest.mark.skipif(not hf.available(), reason="chưa cài vshort/neon (npm ci)")
+def test_render_cmd_neon_with_the_real_hyperframes(tmp_path):
+    """Nothing stubbed: validate, then render under --strict (a lint error would stop it), on the kit's own sample scene."""
+    from test_compose import small_scene
+    rt = small_scene()
+    _neon_render_run(tmp_path, rt["total"])
+    (tmp_path / "scene.resolved.json").write_text(json.dumps(rt))
+    assert main(["render", str(tmp_path)]) == 0
+    assert abs(probe(tmp_path / "visuals.mp4").duration - rt["total"]) < 1 / 30
+    assert abs(probe(tmp_path / "final.mp4").duration - (rt["total"] + probe(OUTRO).duration)) < 0.1
+    assert [c["name"] for c in json.loads((tmp_path / "sfx.json").read_text())] == ["whoosh", "glitch"]
+    assert frame_at(tmp_path / "final.mp4", 4.0)[400:1000].max() > 150  # the diagram is drawn (the nodes, the red one, the dot)
+
 
 def test_status_lists_every_step_in_order(tmp_path, capsys):
     Run(tmp_path).mark("tts")

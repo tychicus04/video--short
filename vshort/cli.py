@@ -11,12 +11,13 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from vshort import auto, cms, cover, publish, retime, sound
+from vshort import auto, cms, cover, hf, publish, retime, sound
 from vshort.captions import Fragment, detect_fragments, write_sheets
+from vshort.compose import write_composition
 from vshort.fit import Placement, build_narration, phrase_times, sequence, total
 from vshort.media import frame_at, probe
 from vshort.plates import clean, scene_changes, scene_cuts
-from vshort.render import OUTRO, build_ass, export_outro, export_title, render_pieces
+from vshort.render import OUTRO, build_ass, export_outro, export_title, render_neon, render_pieces
 from vshort.run import Run, config
 from vshort.scene import SceneError, check, load_scene, phrase_table, resolve
 from vshort.script import (Sentence, check_brief, check_neon, check_numbers, check_script, check_style,
@@ -336,8 +337,10 @@ def cmd_timeline(a) -> int:
 def cmd_render(a) -> int:
     """final.mp4: NotebookLM's own video (clean.mp4) retimed line by line to the Vietnamese voice, patched stills over the
     lines with a wrong text, the spoken title typed into the magazine's bar, its logo, subtitles, three accents on the biggest
-    changes of scene, the outro."""
+    changes of scene, the outro. A neon run goes to _render_neon."""
     run = Run(a.run)
+    if style_of(run) == "neon":
+        return _render_neon(run)
     clean = run.file("clean.mp4")
     if not clean.exists():
         _err("thiếu clean.mp4 (chạy `vshort clean`)")
@@ -383,6 +386,44 @@ def cmd_render(a) -> int:
     render_pieces(ps, clean, stills, ass, run.file("mix.wav"), fitted["total"], run.file("final.mp4"), title=title)
     run.mark("render")
     print(run.file("final.mp4"))
+    return OK
+
+
+def _render_neon(run: Run) -> int:
+    """final.mp4 of a neon run: scene.resolved.json drawn by HyperFrames into visuals.mp4 (silent, as long as the voice), then the
+    voice with the three accents the scene names, BT.709 and the outro, in one ffmpeg run. Last round's visuals.mp4, final.mp4
+    and "render" mark go first, so a failed round (a fix round) never leaves what looks like this round's result."""
+    visuals, final = run.file("visuals.mp4"), run.file("final.mp4")
+    visuals.unlink(missing_ok=True)
+    final.unlink(missing_ok=True)
+    run.unmark("render")
+    if gone := [f for f in ("scene.resolved.json", "narration.wav") if not run.file(f).exists()]:
+        _err("thiếu " + ", ".join(gone) + " (chạy `vshort scene`, và các bước giọng đọc trước nó)")
+        return BAD_INPUT
+    rt = run.read("scene.resolved.json")
+    comp = run.file("neon")
+    try:
+        write_composition(rt, comp)
+        if bad := hf.validate(comp):
+            _err("HyperFrames lỗi: trang hình không qua kiểm tra, không dựng:\n" + "\n".join(bad))
+            return FAILED
+        hf.render(comp, visuals)
+    except hf.HFError as e:
+        _err(f"HyperFrames lỗi: {e}")
+        return FAILED
+    got = probe(visuals).duration  # HyperFrames renders ceil(total x 30) frames and ffmpeg prints centiseconds: a frame and 10 ms of slack
+    if abs(got - rt["total"]) >= 1 / hf.FPS + 0.01:
+        visuals.unlink()
+        _err(f"visuals.mp4 dài {got:.2f} s, mà lời dài {rt['total']:.2f} s: HyperFrames dựng sai độ dài, không ghép")
+        return FAILED
+    fx = sound.scene_cues(rt)
+    run.write("sfx.json", [asdict(c) for c in fx])
+    sound.master(run.file("narration.wav"), fx, rt["total"], run.file("mix.wav"))
+    if not OUTRO.exists():
+        export_outro()
+    render_neon(visuals, run.file("mix.wav"), rt["total"], final)
+    run.mark("render")
+    print(final)
     return OK
 
 

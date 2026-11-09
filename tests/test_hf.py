@@ -62,3 +62,21 @@ def test_timeout_is_hferror_and_leaves_nothing(tmp_path):
     assert [p.name for p in tmp_path.iterdir()] == ["gate"]
     lines = str(e.value).splitlines()  # the header, then what HyperFrames had printed (where it stalled), without escapes
     assert len(lines) > 2 and "\x1b" not in str(e.value)
+
+
+def test_validate_catches_a_missing_script(tmp_path):
+    gate = copy_gate(tmp_path)
+    (gate / "gsap.min.js").unlink()  # the page still asks for it: a 404, then a throwing build script
+    errors = hf.validate(gate)
+    assert any("gsap.min.js" in e for e in errors) and any("timeline" in e for e in errors)
+
+
+def test_a_lint_error_blocks_the_render(tmp_path):
+    gate = copy_gate(tmp_path)
+    page = gate / "index.html"
+    html = page.read_text()
+    assert 'ease: "power2.inOut" }, 0.5);' in html
+    page.write_text(html.replace('ease: "power2.inOut" }, 0.5);', 'ease: "power2.inOut", repeat: -1 }, 0.5);'))  # infinite repeat
+    with pytest.raises(hf.HFError, match="gsap_infinite_repeat"):
+        hf.render(gate, tmp_path / "x.mp4", timeout=120)
+    assert [p.name for p in tmp_path.iterdir()] == ["gate"]

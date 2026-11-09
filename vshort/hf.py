@@ -5,6 +5,8 @@ a newer release. hyperframes 0.8.206, from `hyperframes --version`. What `hyperf
 
     hyperframes render [DIR] -o <out.mp4> -f/--fps 30 [-q looks|draft|delivery] [-w auto|N] [--quiet] [--strict]
         DIR defaults to the cwd and must hold index.html; --format mp4 and -q looks (CRF 16) are the defaults.
+        We pass --strict: a lint error (infinite repeat, Math.random...) then stops the render, and its text is printed on
+        stdout, not stderr. Never --strict-all: warnings are left to pass.
         Size comes from the root's data-width/data-height (720x1280 stays 720x1280), length from data-duration.
     hyperframes validate [DIR] --json [--timeout ms]
         Loads the page in headless Chrome: {"ok", "errors": [{"level", "text", "url"}], "warnings", "contrast"}.
@@ -66,11 +68,12 @@ def _tail(text: str) -> str:
 
 
 def render(comp_dir: Path, out: Path, timeout: int = 600) -> None:
-    """Render comp_dir/index.html to out (silent H.264 MP4, FPS). It renders in a scratch folder next to `out` and moves
-    the file into place, so a failure or a timeout leaves neither `out` nor HyperFrames' half-done work files behind."""
+    """Render comp_dir/index.html to out (silent H.264 MP4, FPS; a lint error is a failure, --strict). It renders in a scratch
+    folder next to `out` and moves the file into place, so a failure or a timeout leaves neither `out` nor HyperFrames'
+    half-done work files behind."""
     with tempfile.TemporaryDirectory(dir=out.parent, prefix=f".{out.stem}.") as scratch:
         tmp = Path(scratch) / "render.mp4"
-        cp = _run(["render", "-o", str(tmp), "--fps", str(FPS)], comp_dir, timeout)
+        cp = _run(["render", "-o", str(tmp), "--fps", str(FPS), "--strict"], comp_dir, timeout)
         if cp.returncode != 0 or not tmp.exists():
             raise HFError(f"HyperFrames render lỗi (mã {cp.returncode}):\n{_tail(cp.stderr or cp.stdout)}")
         os.replace(tmp, out)

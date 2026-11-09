@@ -318,3 +318,29 @@ def render_pieces(ps, clean: Path, stills: list[tuple[Path, float, float]], ass:
     except BaseException:
         tmp.unlink(missing_ok=True)
         raise
+
+
+def render_neon(visuals: Path, audio: Path, total: float, out: Path, outro: Path | None = OUTRO) -> None:
+    """final.mp4 of the neon style: the diagram HyperFrames rendered (`visuals`, silent, `total` s), the voice with its accents
+    (`audio`), in BT.709, then the `outro` clip faded in from the last frame. One ffmpeg run."""
+    ins = ["-i", str(visuals.resolve()), "-i", str(audio.resolve())]
+    extra = probe(outro).duration if outro else 0.0
+    g = [f"[0:v]fps={FPS},scale={W}:{H},{COLOR}[m]"]
+    if outro:
+        g.append(f"[m]tpad=stop_mode=clone:stop_duration={XF},fps={FPS},settb=AVTB[mx];"  # xfade wants a set frame rate
+                 f"[2:v]fps={FPS},scale={W}:{H},format=rgb24,{COLOR},settb=AVTB[o];"
+                 f"[mx][o]xfade=transition=fade:duration={XF}:offset={total:.4f}[v]")
+        ins += ["-i", str(outro.resolve())]
+    else:
+        g.append("[m]null[v]")
+    g.append("[1:a]apad[a]")
+    tmp = out.resolve().with_name(f"{out.stem}.tmp{out.suffix}")  # a failed render must not replace a good `out`
+    cmd = [FF, "-loglevel", "error", "-y", *ins, "-filter_complex", ";".join(g), "-map", "[v]", "-map", "[a]",
+           "-t", f"{total + extra:.4f}", "-c:v", "libx264", "-crf", "18", "-preset", "medium", "-pix_fmt", "yuv420p",
+           "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(tmp)]
+    try:
+        subprocess.run(cmd, check=True)
+        os.replace(tmp, out)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise

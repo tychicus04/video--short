@@ -42,6 +42,26 @@ def cues(changes: list[tuple[float, float]], ps) -> list[Cue]:
     return [Cue(name, at) for name, at in zip(NAMES, sorted(picked))]
 
 
+def scene_cues(rt: dict) -> list[Cue]:
+    """The neon style's accents, from the resolved scene (runtime-contract.md) and not from the picture: a whoosh at the first
+    action after the title bar has left, a glitch where red first arrives (a `tone` to risk, or the first showing of an element
+    that starts red: `resolve` folds a `state` before the element is shown into its starting tone), a pop where the hero is
+    first drawn. In time order, none within SPACE of the one before it."""
+    acts = rt["actions"]
+    left = rt["title"]["out"] if rt.get("title") else 0.0
+    heroes = {e["id"] for e in rt["elements"] if e["kind"] == "hero"}
+    red = {e["id"] for e in rt["elements"] if e.get("tone") == "risk"}
+    arrives = lambda a: (a["do"] == "tone" and a.get("to") == "risk") or (a["do"] in ("on", "draw", "type") and red & set(a["ids"]))
+    found = [("whoosh", next((a["t"] for a in acts if a["t"] >= left), None)),
+             ("glitch", next((a["t"] for a in acts if arrives(a)), None)),
+             ("pop", next((a["t"] for a in acts if a["do"] in ("on", "draw") and heroes & set(a["ids"])), None))]
+    out: list[Cue] = []
+    for name, at in sorted((f for f in found if f[1] is not None), key=lambda f: f[1]):
+        if not out or at - out[-1].at >= SPACE:
+            out.append(Cue(name, at))
+    return out
+
+
 def _decode(path: Path) -> np.ndarray:
     raw = subprocess.run([FF, "-loglevel", "error", "-i", str(path), "-ac", "1", "-ar", str(RATE), "-f", "f32le", "-"],
                          capture_output=True, check=True).stdout

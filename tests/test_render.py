@@ -1,3 +1,4 @@
+import copy
 import subprocess
 
 import numpy as np
@@ -5,11 +6,14 @@ import pytest
 from conftest import write_silence
 from PIL import Image, ImageFont
 
+from vshort import hf
+from vshort.compose import write_composition
 from vshort.media import FF, frame_at, probe
 from vshort.textfit import FONTS
-from vshort.render import (BAR, H, OUTRO_S, STRIPE, TEAL, TEXT_L, TEXT_R, TITLE_XY, W, YELLOW, build_ass,
-                           export_outro, export_title, render_pieces, title_card, title_fit, title_times)
+from vshort.render import (BAR, H, OUTRO, OUTRO_S, STRIPE, TEAL, TEXT_L, TEXT_R, TITLE_XY, W, YELLOW, build_ass,
+                           export_outro, export_title, render_neon, render_pieces, title_card, title_fit, title_times)
 from vshort.retime import Piece
+from vshort.scene import load_scene, resolve
 
 
 def test_build_ass_layout():
@@ -198,3 +202,60 @@ def test_the_reviewer_quotes_the_subtitle_place_the_render_uses():
     for agent in ('"visuals"', '"translator"', '"none"'):  # the agents auto.read_review accepts, and no other
         assert agent in md
     assert '"motion"' not in md and '"shots"' not in md
+
+
+# ---- the neon style: the rendered diagram, the voice and the outro in one pass ----
+
+def _visuals(tmp_path, rgb="2BE3FF", seconds=4):
+    """A flat silent clip tagged the way HyperFrames tags what it renders: BT.709, limited range."""
+    out = tmp_path / "visuals.mp4"
+    subprocess.run([FF, "-loglevel", "error", "-f", "lavfi", "-i", f"color=c=0x{rgb}:s={W}x{H}:r=30:d={seconds}", "-vf",
+                    "scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,"
+                    "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv", "-c:v", "libx264", str(out)], check=True)
+    return out
+
+
+def test_render_neon_lengths(tmp_path):
+    visuals = _visuals(tmp_path)
+    write_silence(tmp_path / "mix.wav", 4.0)
+    out = tmp_path / "final.mp4"
+    render_neon(visuals, tmp_path / "mix.wav", 4.0, out)
+    info = probe(out)
+    assert abs(info.duration - (4.0 + probe(OUTRO).duration)) < 0.05 and (info.width, info.height) == (W, H)
+    err = subprocess.run([FF, "-hide_banner", "-i", str(out)], capture_output=True, text=True).stderr
+    assert "Audio:" in err and "bt709" in err
+
+
+def test_render_neon_keeps_the_colours_and_ends_on_the_outro(tmp_path):
+    visuals = _visuals(tmp_path)
+    write_silence(tmp_path / "mix.wav", 4.0)
+    out = tmp_path / "final.mp4"
+    render_neon(visuals, tmp_path / "mix.wav", 4.0, out, outro=None)
+    assert abs(probe(out).duration - 4.0) < 0.05
+    assert np.abs(frame_at(out, 2.0)[640, 360].astype(int) - (0x2B, 0xE3, 0xFF)).max() < 8  # no 601/709 shift of the neon hues
+    render_neon(visuals, tmp_path / "mix.wav", 4.0, out)
+    assert np.abs(frame_at(out, 2.0)[640, 360].astype(int) - frame_at(visuals, 2.0)[640, 360].astype(int)).max() < 4  # the diagram
+    assert np.abs(frame_at(out, probe(out).duration - 0.1)[640, 360].astype(int) - frame_at(OUTRO, 2.4)[640, 360].astype(int)).max() < 30
+
+
+def test_render_neon_failure_keeps_the_previous_video(tmp_path):
+    out = tmp_path / "final.mp4"
+    out.write_bytes(b"previous good video")
+    with pytest.raises(subprocess.CalledProcessError):  # no voice to read
+        render_neon(_visuals(tmp_path), tmp_path / "nope.wav", 4.0, out)
+    assert out.read_bytes() == b"previous good video" and not (tmp_path / "final.tmp.mp4").exists()
+
+
+@pytest.mark.skipif(not hf.available(), reason="chưa cài vshort/neon (npm ci)")
+def test_a_resolved_scene_loads_in_the_kit_without_an_error(tmp_path):
+    """scene.resolve and the kit were written against the runtime contract at the same time: here they meet. Every verb and
+    kind of element in one scene (a quote in a third section), through the real composition, loaded in headless Chrome."""
+    from test_scene import ALL, TWO
+
+    data = copy.deepcopy(TWO)
+    data["sections"].append({"id": "s3", "label": "", "tone": "claim", "layout": "none", "keep": [], "nodes": [], "links": [],
+                             "beats": [{"at": 14, "do": "quote", "text": "Mỗi máy chỉ thấy một phần", "who": "kỹ sư", "tone": "claim"}]})
+    rt = resolve(load_scene(data), ALL, "Tiêu đề của video", 46.0, (0.2, 2.8))
+    assert {"hero", "quote", "tile", "chip", "statement", "badge", "link", "icon"} <= {e["kind"] for e in rt["elements"]}
+    assert {"on", "draw", "type", "off", "tone", "flow", "move", "swap"} <= {a["do"] for a in rt["actions"]}
+    assert hf.validate(write_composition(rt, tmp_path / "neon")) == []
