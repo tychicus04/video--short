@@ -15,9 +15,16 @@ VERBS = {"show": {"ids"}, "draw": {"ids"}, "state": {"ids", "to"}, "flow": {"lin
          "swap": {"node", "icon"}, "split": {"node", "to"}, "merge": {"from", "into"}, "chip": {"text"},
          "quote": {"text", "who"}, "statement": {"text"}, "hero": {"icon"}, "dim": {"ids"}, "hide": {"ids"}}
 ICONS = Path(__file__).parent / "neon" / "icons.json"
-# Args that name something the section declared (or keeps). A list of ids is always a list once loaded: `split`'s `to` and
-# `merge`'s `from` may be written as one id. `state`'s `to` is a tone, not an id.
-ONE_ID, MANY_IDS = ("link", "node", "into", "near"), ("ids", "from")
+# Args that name something the section declared (or keeps) and what each must name: "node", "link", or either (None). A list of
+# ids is always a list once loaded: `split`'s `to` and `merge`'s `from` may be written as one id. `state`'s `to` is a tone.
+REFS = {"ids": None, "link": "link", "node": "node", "into": "node", "near": "node", "from": "node", "to": "node"}
+MANY_IDS = ("ids", "from", "to")
+KIND_NAME = {"node": "nút", "link": "đường nối"}
+# The only keys scene.json has: no coordinate, no colour, nothing a typo could turn into a silent default.
+SECTION_KEYS = {"id", "label", "tone", "layout", "nodes", "links", "beats", "keep"}
+NODE_KEYS, LINK_KEYS = {"id", "icon", "label", "slot"}, {"id", "a", "b", "style"}
+BEAT_KEYS = {"at", "do", "delay"}  # plus the verb's own (VERBS) and these optional ones
+OPTIONAL = {"chip": {"near", "tone"}, "quote": {"tone"}, "hero": {"label", "tone"}, "flow": {"repeat"}}
 
 
 @dataclass(frozen=True)
@@ -101,6 +108,9 @@ def load_scene(data: dict) -> Scene:
         raise SceneError("scene.json cần khóa sections, một danh sách các mục")
     known_icons, problems = icons(), []
     declared: dict[str, str] = {}  # id of a node or link -> its section; ids are unique across the scene
+    kinds: dict[str, str] = {}  # id -> "node" or "link"
+    coords: dict[str, tuple[float, float]] = {}  # node id -> the spot of the slot it was declared on
+    ends: dict[str, tuple[str, str]] = {}  # link id -> its two nodes
     alive: set[str] = set()  # on screen at the end of the section before: all that `keep` can carry on
     sections: list[Section] = []
 
@@ -129,6 +139,9 @@ def load_scene(data: dict) -> Scene:
         if isinstance(value, str) and value not in known_icons:
             problems.append(f"{where}: icon lạ {value!r} (tên có trong vshort/neon/icons.json)")
 
+    def extra(d: dict, allowed: set[str], where: str) -> None:
+        problems.extend(f"{where}: khóa lạ {k!r} (chỉ có: {', '.join(sorted(allowed))})" for k in d if k not in allowed)
+
     for k, raw in enumerate(data["sections"]):
         if not isinstance(raw, dict):
             problems.append(f"mục #{k}: phải là một đối tượng, không phải {raw!r}")
@@ -136,6 +149,7 @@ def load_scene(data: dict) -> Scene:
         sid = raw["id"] if isinstance(raw.get("id"), str) and raw["id"] else f"#{k}"
         where = f"mục {sid}"
         need(raw, ["id"], where)
+        extra(raw, SECTION_KEYS, where)
         if sid in [s.id for s in sections]:
             problems.append(f"{where}: trùng id mục")
         tone, lay = raw.get("tone", "normal"), raw.get("layout", "none")
@@ -143,8 +157,9 @@ def load_scene(data: dict) -> Scene:
         one_of(lay, LAYOUTS, "layout", where)
         slots = layout.SLOTS.get(lay) if isinstance(lay, str) else None  # a layout that does not exist is already reported
         own: set[str] = set()
+        taken: dict[str, str] = {}  # slot of this section -> the node that stands on it
 
-        def declare(i, w: str) -> None:
+        def declare(i, w: str, kind: str) -> None:
             if not isinstance(i, str) or not i:
                 return
             if i in own:
@@ -152,30 +167,62 @@ def load_scene(data: dict) -> Scene:
             elif i in declared:
                 problems.append(f"{w}: id {i!r} đã dùng ở mục {declared[i]}")
             own.add(i)
+            kinds.setdefault(i, kind)
 
+        def take(slot: str, i: str, w: str) -> None:
+            if slot in taken:
+                problems.append(f"{w}: slot {slot!r} đã có nút {taken[slot]!r}")
+            else:
+                taken[slot] = i
+
+        keep = [x for _, x in entries(raw, "keep", where, str)]
+        for i in keep:
+            if i not in alive:
+                problems.append(f"{where}: keep nhắc tới {i!r}, mà mục trước không còn {i!r} (chưa khai báo hoặc không được giữ)")
+            elif kinds[i] == "link" and (gone := [e for e in ends[i] if e not in keep]):
+                problems.append(f"{where}: giữ nối {i!r} mà không giữ {', '.join(map(repr, gone))}, đầu của nó")
+            elif kinds[i] == "node" and i in coords and slots is not None:
+                # a node does not move: it stays where it stood, so the new layout needs a slot at exactly that spot
+                at = next((s for s, xy in slots.items() if all(abs(a - b) < 0.5 for a, b in zip(xy, coords[i]))), None)
+                if at is None:
+                    problems.append(f"{where}: giữ {i!r} ({coords[i][0]:.0f}, {coords[i][1]:.0f}) nhưng bố cục {lay} không có ô ở đó")
+                else:
+                    take(at, i, f"{where}, giữ {i}")
         nodes = []
         for _, n in entries(raw, "nodes", where, dict):
             w = f"{where}, nút {n.get('id')}"
             need(n, ["id", "icon", "slot"], w)
-            declare(n.get("id"), w)
+            extra(n, NODE_KEYS, w)
+            declare(n.get("id"), w, "node")
             icon(n.get("icon"), w)
-            if slots is not None and isinstance(n.get("slot"), str) and n["slot"] not in slots:
-                problems.append(f"{w}: slot {n['slot']!r} không có trong bố cục {lay} (có: {', '.join(slots) or 'không có slot nào'})")
+            slot = n.get("slot")
+            if slots is not None and isinstance(slot, str):
+                if slot not in slots:
+                    problems.append(f"{w}: slot {slot!r} không có trong bố cục {lay} (có: {', '.join(slots) or 'không có slot nào'})")
+                else:
+                    take(slot, n.get("id"), w)
+                    if isinstance(n.get("id"), str):
+                        coords.setdefault(n["id"], slots[slot])
             nodes.append(Node(n.get("id", ""), n.get("icon", ""), text(n, "label", w), n.get("slot", "")))
-        keep = [x for _, x in entries(raw, "keep", where, str)]
-        problems.extend(f"{where}: keep nhắc tới {i!r}, mà mục trước không còn {i!r} (chưa khai báo hoặc không được giữ)"
-                        for i in keep if i not in alive)
+        def ref(w: str, key: str, x: str, want: str | None) -> None:
+            if x not in own and x not in keep:
+                problems.append(f"{w}: {key} nhắc tới {x!r}, mục {sid} chưa khai báo (cũng không có trong keep)")
+            elif want and kinds[x] != want:
+                problems.append(f"{w}: {key} nhắc tới {x!r}, là {KIND_NAME[kinds[x]]}, mà ở đây cần {KIND_NAME[want]}")
+
         links = []
         for _, ln in entries(raw, "links", where, dict):
             w = f"{where}, nối {ln.get('id')}"
             need(ln, ["id", "a", "b"], w)
-            declare(ln.get("id"), w)
+            extra(ln, LINK_KEYS, w)
+            declare(ln.get("id"), w, "link")
             one_of(ln.get("style", "solid"), LINK_STYLES, "style", w)
             for end in ("a", "b"):
-                if isinstance(ln.get(end), str) and ln[end] not in {n.id for n in nodes} | set(keep):
-                    problems.append(f"{w}: {end} là {ln[end]!r}, mục {sid} chưa khai báo nút đó (cũng không có trong keep)")
+                if isinstance(ln.get(end), str):
+                    ref(w, end, ln[end], "node")
+            if isinstance(ln.get("a"), str) and isinstance(ln.get("b"), str):
+                ends.setdefault(ln.get("id"), (ln["a"], ln["b"]))
             links.append(Link(ln.get("id", ""), ln.get("a", ""), ln.get("b", ""), ln.get("style", "solid")))
-        known = own | set(keep)
         beats = []
         for j, b in entries(raw, "beats", where, dict):
             w = f"{where}, nhịp {j}"
@@ -194,21 +241,24 @@ def load_scene(data: dict) -> Scene:
             if do not in VERBS:
                 problems.append(f"{w}: động từ lạ {do!r} (có: {', '.join(VERBS)})")
                 continue
+            extra(b, BEAT_KEYS | VERBS[do] | OPTIONAL.get(do, set()), w)
             args = {key: v for key, v in b.items() if key not in ("at", "do", "delay")}
             if lack := sorted(VERBS[do] - args.keys()):
                 problems.append(f"{w}: {do} thiếu {', '.join(lack)}")
-            for key in (*ONE_ID, *MANY_IDS, *(("to",) if do == "split" else ())):
-                if key not in args:
+            need(args, [key for key in ("text", "who", "icon") if key in args], w)
+            if "label" in args:
+                text(args, "label", w)
+            for key, want in REFS.items():
+                if key not in args or (key == "to" and do != "split"):
                     continue
-                many = key in MANY_IDS or key == "to"
-                if many and isinstance(args[key], str):
+                if key in MANY_IDS and isinstance(args[key], str):
                     args[key] = [args[key]]
-                names = args[key] if many else [args[key]]
+                names = args[key] if key in MANY_IDS else [args[key]]
                 if not isinstance(names, list) or not all(isinstance(x, str) for x in names):
-                    problems.append(f"{w}: {key} phải là {'danh sách id' if many else 'một id'}, không phải {args[key]!r}")
+                    problems.append(f"{w}: {key} phải là {'danh sách id' if key in MANY_IDS else 'một id'}, không phải {args[key]!r}")
                     continue
-                problems.extend(f"{w}: {key} nhắc tới {x!r}, mục {sid} chưa khai báo (cũng không có trong keep)"
-                                for x in names if x not in known)
+                for x in names:
+                    ref(w, key, x, want)
             if do == "state" and "to" in args:
                 one_of(args["to"], TONES, "to", w)
             if "tone" in args:
@@ -223,7 +273,8 @@ def load_scene(data: dict) -> Scene:
                     problems.append(f"{w}: repeat phải là số lần hữu hạn từ 1, không phải {rep!r}")
             if isinstance(at, int) and isinstance(delay, (int, float)):
                 beats.append(Beat(at, do, args, float(delay)))
-        declared.update(dict.fromkeys(own, sid))
+        for i in own:
+            declared.setdefault(i, sid)
         alive = own | set(keep)
         sections.append(Section(sid, text(raw, "label", where), tone if tone in TONES else "normal",
                                 lay if lay in LAYOUTS else "none", tuple(nodes), tuple(links), tuple(beats), tuple(keep)))

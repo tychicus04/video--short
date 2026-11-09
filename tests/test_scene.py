@@ -100,7 +100,7 @@ def test_ids_a_beat_names_must_be_declared_or_kept():
     d = {"sections": [
         section("s1", [("a", "hub")], beats=[{"at": 1, "do": "show", "ids": ["a", "ghost"]},
                                              {"at": 2, "do": "merge", "from": ["a", "x"], "into": "y"}]),
-        section("s2", [("b", "hub")], keep=["a", "nope"], beats=[{"at": 3, "do": "show", "ids": ["a", "b"]}])]}
+        section("s2", [("b", "r0")], keep=["a", "nope"], beats=[{"at": 3, "do": "show", "ids": ["a", "b"]}])]}
     ps = problems(d)
     assert len(ps) == 4
     assert any("s1" in p and "nhịp 0" in p and "'ghost'" in p for p in ps)
@@ -111,8 +111,8 @@ def test_ids_a_beat_names_must_be_declared_or_kept():
 
 def test_keep_needs_the_id_alive_at_the_end_of_the_section_before():
     ok = [("a", "hub"), ("b", "r0")]
-    d = {"sections": [section("s1", ok), section("s2", [("c", "hub")], keep=["a"]),
-                      section("s3", [("d", "hub")], keep=["a", "b"])]}
+    d = {"sections": [section("s1", ok), section("s2", [("c", "r1")], keep=["a"]),
+                      section("s3", [("d", "r2")], keep=["a", "b"])]}
     ps = problems(d)
     assert len(ps) == 1 and "s3" in ps[0] and "keep" in ps[0] and "'b'" in ps[0]
     assert "'x'" in problems({"sections": [section("s1", ok, keep=["x"])]})[0]
@@ -127,9 +127,131 @@ def test_ids_are_unique_across_the_scene_and_nodes_share_them_with_links():
     assert "'dc'" in problems(d)[0]
     d = {"sections": [section("s1", [("a", "hub")]), section("s1", [("b", "hub")])]}
     assert "s1" in problems(d)[0] and "trùng" in problems(d)[0]
-    d = {"sections": [section("s1", [("a", "hub")]), section("s2", [("b", "hub")], keep=["a"])]}
+    d = {"sections": [section("s1", [("a", "hub")]), section("s2", [("b", "r1")], keep=["a"])]}
     d["sections"][1]["nodes"].append({"id": "a", "icon": "user", "label": "", "slot": "r0"})
     assert any("'a'" in p and "s2" in p for p in problems(d))
+
+
+def beat_on(**beat):
+    return lambda s: s["beats"].append({"at": 10, **beat})
+
+
+@pytest.mark.parametrize("edit, expect", [
+    (beat_on(do="chip", text="x", neer="dc"), "'neer'"),  # a typo for `near` would silently lose the anchor
+    (beat_on(do="flow", link="l1", dir="a-b", repeats=3), "'repeats'"),
+    (beat_on(do="chip", text="x", color="#f00"), "'color'"),
+    (beat_on(do="statement", text="x", tone="risk"), "'tone'"),  # a statement is white
+    (beat_on(do="state", ids=["dc"], to="risk", tone="safe"), "'tone'"),
+    (beat_on(do="hero", icon="shield", x=5), "'x'"),
+    (lambda s: s["nodes"][1].update(x=10), "'x'"),
+    (lambda s: s["links"][0].update(curve=1), "'curve'"),
+    (lambda s: s.update(background="black"), "'background'"),
+])
+def test_a_key_the_vocabulary_does_not_have_is_a_problem(edit, expect):
+    d = copy.deepcopy(GOOD)
+    edit(d["sections"][0])
+    ps = problems(d)
+    assert len(ps) == 1 and "khóa lạ" in ps[0] and expect in ps[0] and "s1" in ps[0], ps
+
+
+def test_coordinates_and_colours_are_each_a_problem_naming_the_beat():
+    d = copy.deepcopy(GOOD)
+    beat_on(do="chip", text="x", x=100, y=200, color="#f00")(d["sections"][0])
+    ps = problems(d)
+    assert len(ps) == 3 and all("nhịp 5" in p for p in ps)
+
+
+def test_the_optional_keys_of_a_verb_are_allowed():
+    d = copy.deepcopy(GOOD)
+    for edit in (beat_on(do="hero", icon="shield", label="KHIÊN", tone="safe"),
+                 beat_on(do="quote", text="x", who="công ty", tone="claim"),
+                 beat_on(do="chip", text="x", near="dc", tone="risk", delay=1.0),
+                 beat_on(do="flow", link="l1", dir="b-a", repeat=1)):
+        edit(d["sections"][0])
+    assert len(load_scene(d).sections[0].beats) == 9
+
+
+@pytest.mark.parametrize("edit, expect", [
+    (beat_on(do="flow", link="dc", dir="a-b"), "đường nối"),
+    (beat_on(do="badge", node="l1", icon="lock"), "nút"),
+    (beat_on(do="chip", text="x", near="l1"), "nút"),
+    (beat_on(do="merge", **{"from": ["u1", "l1"]}, into="dc"), "'l1'"),
+    (beat_on(do="merge", **{"from": ["u1"]}, into="l1"), "'l1'"),
+    (beat_on(do="split", node="dc", to=["l1"]), "'l1'"),
+    (beat_on(do="split", node="l1", to=["u1"]), "'l1'"),
+    (lambda s: s["links"][0].update(a="l1"), "'l1'"),
+])
+def test_a_reference_must_name_the_right_kind_of_thing(edit, expect):
+    d = copy.deepcopy(GOOD)
+    edit(d["sections"][0])
+    ps = problems(d)
+    assert len(ps) == 1 and expect in ps[0] and "s1" in ps[0] and ("là nút" in ps[0] or "là đường nối" in ps[0]), ps
+
+
+@pytest.mark.parametrize("beat, key", [
+    (dict(do="hero", icon=None), "icon"),
+    (dict(do="badge", node="dc", icon=5), "icon"),
+    (dict(do="chip", text=42), "text"),
+    (dict(do="quote", text="x", who=None), "who"),
+    (dict(do="statement", text=""), "text"),
+    (dict(do="hero", icon="shield", label=3), "label"),
+])
+def test_a_text_or_icon_arg_must_be_a_non_empty_string(beat, key):
+    d = copy.deepcopy(GOOD)
+    beat_on(**beat)(d["sections"][0])
+    ps = problems(d)
+    assert len(ps) == 1 and key in ps[0] and "nhịp 5" in ps[0], ps
+
+
+def test_a_slot_holds_one_node():
+    d = copy.deepcopy(GOOD)
+    d["sections"][0]["nodes"].append({"id": "u2", "icon": "user", "label": "", "slot": "hub"})
+    ps = problems(d)
+    assert len(ps) == 1 and "'hub'" in ps[0] and "'dc'" in ps[0] and "u2" in ps[0]
+
+
+def two(layout, keep, nodes=(), links=()):
+    """GOOD (a ring: hub dc, u1 at r0, link l1) and a second section."""
+    d = copy.deepcopy(GOOD)
+    d["sections"].append({"id": "s2", "label": "", "tone": "normal", "layout": layout, "keep": keep, "links": list(links),
+                          "nodes": [{"id": n, "icon": "user", "label": "", "slot": s} for n, s in nodes], "beats": []})
+    return d
+
+
+def test_a_hub_is_kept_from_a_ring_into_a_pair_and_a_ring_continues():
+    s2 = load_scene(two("pair", ["dc"], [("x", "left")])).sections[1]
+    assert s2.keep == ("dc",)
+    s2 = load_scene(two("ring", ["dc", "u1", "l1"], [("u2", "r1")])).sections[1]
+    assert s2.keep == ("dc", "u1", "l1")
+
+
+def test_a_kept_node_holds_its_slot():
+    ps = problems(two("pair", ["dc"], [("x", "hub")]))
+    assert len(ps) == 1 and "s2" in ps[0] and "'hub'" in ps[0] and "'dc'" in ps[0] and "x" in ps[0]
+    ps = problems(two("ring", ["dc", "u1"], [("u2", "r0")]))
+    assert len(ps) == 1 and "'r0'" in ps[0] and "'u1'" in ps[0]
+
+
+def test_a_kept_node_keeps_its_spot_so_the_new_layout_needs_a_slot_there():
+    ps = problems(two("pair", ["u1"], [("x", "left")]))  # u1 stood at the ring's r0 (558, 560)
+    assert len(ps) == 1 and "s2" in ps[0] and "'u1'" in ps[0] and "(558, 560)" in ps[0] and "pair" in ps[0]
+    assert "(330, 560)" in problems(two("grid", ["dc"], [("x", "g0")]))[0]  # a grid has no centre
+    assert "'u1'" in problems(two("none", ["u1"]))[0]
+
+
+def test_a_kept_link_needs_both_its_nodes_kept():
+    ps = problems(two("pair", ["l1"], [("x", "left")]))
+    assert len(ps) == 1 and "s2" in ps[0] and "'l1'" in ps[0] and "'u1'" in ps[0] and "'dc'" in ps[0]
+    ps = problems(two("ring", ["dc", "l1"], [("x", "r1")]))
+    assert len(ps) == 1 and "'u1'" in ps[0] and "'dc'" not in ps[0]
+
+
+def test_a_link_ends_at_a_kept_node_not_at_a_kept_link():
+    d = two("ring", ["dc", "u1", "l1"], [("x", "r1")], links=[{"id": "l9", "a": "x", "b": "l1"}])
+    ps = problems(d)
+    assert len(ps) == 1 and "s2" in ps[0] and "'l1'" in ps[0] and "là đường nối" in ps[0]
+    d["sections"][1]["links"][0]["b"] = "dc"
+    assert load_scene(d).sections[1].links[0].b == "dc"
 
 
 def test_wrong_shape_is_a_problem_not_a_crash():
