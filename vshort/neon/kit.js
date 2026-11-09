@@ -187,14 +187,17 @@ const DO = {
       tl.to(r.root, { opacity: 1, duration: FADE }, a.t);
     }
   },
-  flow(a) {   // a dot runs the link n times, then fades: drawn inside the link's own layer, so it has the link's colour, dims and fades with it
+  flow(a) {   // a dot runs the link n times, then fades: one dot in each colour layer of the link, so it has the link's colour (a tone change cross-fades it with the line), dims and fades with it
     for (const r of of(a)) {
       const e = r.e, [sx, sy, ex, ey] = a.dir === "b-a" ? [e.x2, e.y2, e.x1, e.y1] : a.dir === "a-b" ? [e.x1, e.y1, e.x2, e.y2] : fail(`flow dir ${a.dir}`);
-      const dot = V("circle", { cx: sx, cy: sy, r: 5, fill: PALE[r.cur] }, V("g", { class: "g-" + r.cur }, svgIn(r.layers[r.cur])));   // r.cur: the colour the link has now
-      dot.style.opacity = 0;
-      tl.to(dot, { opacity: 1, duration: 0.05 }, a.t);
-      tl.to(dot, { attr: { cx: ex, cy: ey }, duration: a.d, repeat: a.repeat - 1, ease: "none" }, a.t);
-      tl.to(dot, { opacity: 0, duration: 0.1 }, a.t + a.repeat * a.d);
+      const dots = r.tones.map(key => {
+        const dot = V("circle", { cx: sx, cy: sy, r: 5, fill: PALE[key] }, V("g", { class: "g-" + key }, svgIn(r.layers[key])));
+        dot.style.opacity = 0;
+        return dot;
+      });
+      tl.to(dots, { opacity: 1, duration: 0.05 }, a.t);
+      tl.to(dots, { attr: { cx: ex, cy: ey }, duration: a.d, repeat: a.repeat - 1, ease: "none" }, a.t);
+      tl.to(dots, { opacity: 0, duration: 0.1 }, a.t + a.repeat * a.d);
     }
   },
   move(a) {   // the tile appears at its `from` and flies to where it rests

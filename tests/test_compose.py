@@ -105,6 +105,15 @@ def red_flow_scene():
                         {"t": 1.6, "do": "off", "ids": ["a", "b", "ab"], "d": 0.35}]}
 
 
+def recolour_flow_scene():
+    """A cyan link, a dot running along it from 0.8 s (3 passes of 0.8 s), the link turning red at 1.4 s: the dot goes on, red."""
+    return {"total": 3.4, "title": None, "captions": [],
+            "elements": [icon("a", "server", 180, 560), icon("b", "user", 480, 560), link("ab", "a", "b", 226, 560, 434, 560)],
+            "actions": [{"t": 0.2, "do": "on", "ids": ["a", "b", "ab"]},
+                        {"t": 0.8, "do": "flow", "ids": ["ab"], "dir": "a-b", "repeat": 3, "d": 0.8},
+                        {"t": 1.4, "do": "tone", "ids": ["ab"], "to": "risk"}]}
+
+
 def full_scene():
     """Every kind and every action once. The kit throws on what it does not know, so validate reaching the end means it knows them."""
     els = [
@@ -259,6 +268,20 @@ def test_a_flow_dot_takes_its_links_colour_and_goes_with_it(tmp_path):  # it use
     assert count(mid, along, lambda r, g, b: (r > 240) & (g > 120) & (b > 120)) > 20  # the dot is there, a pale red
     assert count(mid, along, cyan) < 5  # and the red link has not gained a colour
     assert count(frame_at(out, 2.6), along, lit) < 5  # the link has faded (2.0 s): the dot, still running, went with it
+
+
+@needs_hf
+def test_a_flow_dot_goes_on_running_when_its_link_changes_colour(tmp_path):
+    comp = compose.write_composition(recolour_flow_scene(), tmp_path / "comp")
+    out = tmp_path / "recolour.mp4"
+    hf.render(comp, out)
+    along = (226, 530, 434, 590)
+    cyan = lambda r, g, b: (b > 150) & (g > 150) & (r < g - 40)
+    pale_red = lambda r, g, b: (r > 240) & (g > 120) & (b > 120)
+    before, after = frame_at(out, 1.2), frame_at(out, 2.4)  # the colour changes at 1.4 s, the cross-fade is over by 1.75 s
+    assert count(before, along, cyan) > 20 and count(before, along, pale_red) < 5  # still cyan
+    assert count(after, along, pale_red) > 20  # the dot is still there, now pale red
+    assert count(after, along, cyan) < 5  # and the link has only the one colour
 
 
 @needs_hf
