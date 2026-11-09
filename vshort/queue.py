@@ -23,6 +23,11 @@ STEPS = [("research", "Tìm hiểu"), ("approve_brief", "Chờ duyệt brief"), 
          ("translate", "Dịch"), ("approve_script", "Chờ duyệt bản dịch"), ("clean", "Xóa phụ đề cũ"),
          ("stills", "Ảnh tĩnh"), ("tts", "Đọc giọng"), ("visuals", "Vá chữ sai"), ("timeline", "Dòng thời gian"),
          ("render", "Dựng video"), ("review0", "Soát")]
+# the same for the neon style (auto._flow_neon): no NotebookLM, the narration is written and approved before the voice
+STEPS_NEON = [("research", "Tìm hiểu"), ("approve_brief", "Chờ duyệt brief"), ("write", "Viết lời"),
+              ("approve_script", "Chờ duyệt lời"), ("tts", "Đọc giọng"), ("timeline", "Dòng thời gian"),
+              ("scene", "Kịch bản hình"), ("render", "Dựng video"), ("review0", "Soát")]
+FLOW_STEPS = {"old": STEPS, "neon": STEPS_NEON}
 # the order of the list: what needs Tai first, finished and untouched last
 ORDER = {s: i for i, s in enumerate(["wait_brief", "wait_script", "error", "dead", "running", "queued", "done", "idle"])}
 KNOWN = {"running", "wait_brief", "wait_script", "error", "done"}  # what auto.py writes; anything else shows as error
@@ -136,12 +141,13 @@ def _read(run: Run, name: str) -> dict:
     return data if isinstance(data, dict) else {}
 
 
-def _step(run: Run, auto_mode: bool) -> str | None:
+def _step(run: Run, auto_mode: bool, style: str = "old") -> str | None:
     """The label of the first step `run.done` says is not done; an automatic run never marks approve_brief."""
+    steps = FLOW_STEPS[style]
     try:
-        return next((label for step, label in STEPS if not (auto_mode and step == "approve_brief") and not run.done(step)), None)
+        return next((label for step, label in steps if not (auto_mode and step == "approve_brief") and not run.done(step)), None)
     except BAD_FILE:  # state.json is not JSON, or not an object: nothing is known to be done
-        return STEPS[0][1]
+        return steps[0][1]
 
 
 def done_steps(run: Run) -> set[str]:
@@ -153,24 +159,26 @@ def done_steps(run: Run) -> set[str]:
     return {k for k, v in st.items() if v == "done"} if isinstance(st, dict) else set()
 
 
-def typical() -> dict[str, float]:
-    return stages.typical(stages.history(runs_dir()))
+def typical() -> dict[str, dict[str, float]]:
+    """stages.typical of each style, from the finished runs of that style: {"old": {stage: seconds}, "neon": {…}}."""
+    return {style: stages.typical(stages.history(runs_dir(), style), style) for style in stages.FLOWS}
 
 
-def view(run: Run, state: str, auto_mode: bool, typ: dict[str, float], now: float) -> dict:
-    """stages.view of one run folder, from its state.json, times.json and auto.json's fix round."""
+def view(run: Run, state: str, auto_mode: bool, typ: dict[str, dict[str, float]], now: float) -> dict:
+    """stages.view of one run folder, from its state.json, times.json, auto.json's fix round and run.json's style."""
     r = _read(run, "auto.json").get("round")
-    return stages.view(state, auto_mode, done_steps(run), timing.read(run.path), typ, now,
-                       r if type(r) is int and r > 0 else 0)
+    style = stages.style_of(_read(run, "run.json"))
+    return stages.view(state, auto_mode, done_steps(run), timing.read(run.path), typ[style], now,
+                       r if type(r) is int and r > 0 else 0, style)
 
 
 PROGRESS = {"running", "wait_brief", "wait_script", "error", "dead"}  # the rows whose card shows a stage
 
 
-def status(run: Run, queued: bool, typ: dict[str, float] | None = None, env: str | None = None) -> dict:
+def status(run: Run, queued: bool, typ: dict[str, dict[str, float]] | None = None, env: str | None = None) -> dict:
     """The Row for one run folder. Never raises on a missing or broken file. `relogin` is read from auto.json even for a
     queued row: once Tai has queued the runs that stopped for the login, the queue must start again. `typ`: the
-    typical stage times (stages.typical), worked out once by the caller for every row. `env`: the CMS in use (dev or
+    typical stage times of each style (typical()), worked out once by the caller for every row. `env`: the CMS in use (dev or
     prod), for `posted`."""
     meta = _read(run, "run.json")
     try:
@@ -212,7 +220,7 @@ def status(run: Run, queued: bool, typ: dict[str, float] | None = None, env: str
             "title": str(_read(run, "cover/cover.json").get("title") or ""),
             "state": "queued" if queued else state,
             "message": "\n".join(ln for ln in message.splitlines() if not ln.startswith("Chép về Mac")),
-            "step": _step(run, bool(meta.get("auto"))),
+            "step": _step(run, bool(meta.get("auto")), stages.style_of(meta)),
             "since": stamped.stat().st_mtime if stamped else None,
             "cost": cost, "verdict": _read(run, "review.json").get("verdict"), "seconds": seconds,
             "relogin": relogin, "removable": False, "progress": progress,
@@ -229,7 +237,7 @@ class _Folder(Run):
         self.path, self._state_file, self.state = Path(path), Path(path) / "state.json", {}
 
 
-def rows(q: Queue, typ: dict[str, float] | None = None) -> list[dict]:
+def rows(q: Queue, typ: dict[str, dict[str, float]] | None = None) -> list[dict]:
     """Every run folder and every topic waiting to start, in the order the panel lists them."""
     root = runs_dir()
     typ = typical() if typ is None else typ

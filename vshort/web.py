@@ -26,7 +26,7 @@ from starlette.responses import FileResponse, JSONResponse, Response
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from vshort import auto, cms, cover, publish, queue
+from vshort import auto, cms, cover, publish, queue, stages
 from vshort.run import config
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -107,10 +107,16 @@ def _json(slug: str, name: str):
         return None
 
 
+def _neon(slug: str) -> bool:
+    """A neon run: its narration is written from the brief, so there is no English brief, nor English sentences, to show."""
+    return stages.style_of(_json(slug, "run.json")) == "neon"
+
+
 def _translation(slug: str) -> list[dict] | None:
-    """The English sentences next to the Vietnamese phrases of the same id; None when either file is missing or odd."""
+    """The English sentences next to the Vietnamese phrases of the same id; None when either file is missing or odd.
+    A neon run has none: its sentences come with "en": "" and the page leaves the English column empty."""
     try:
-        en = {s["id"]: s["en"] for s in _json(slug, "sentences.en.json")}
+        en = {} if _neon(slug) else {s["id"]: s["en"] for s in _json(slug, "sentences.en.json")}
         return [{"id": r["id"], "en": en.get(r["id"], ""), "phrases": r["phrases"], "note": r.get("note", "")}
                 for r in _json(slug, "script.vi.json")]
     except queue.BAD_FILE:  # a file is missing (None), or was edited by hand into another shape
@@ -125,7 +131,10 @@ def _proposed(slug: str) -> list[dict] | None:
 
 
 def _stale(slug: str) -> bool:
-    """brief.vi.md changed after brief.en.md: NotebookLM would make the video from the old English one (as cmd_approve)."""
+    """brief.vi.md changed after brief.en.md: NotebookLM would make the video from the old English one (as cmd_approve).
+    A neon run makes no video from an English brief."""
+    if _neon(slug):
+        return False
     vi, en = queue.safe_file(slug, "brief.vi.md"), queue.safe_file(slug, "brief.en.md")
     return bool(vi and en and vi.stat().st_mtime > en.stat().st_mtime)
 
@@ -362,19 +371,20 @@ def resume_queue(body: dict) -> Response:
 
 
 def save_brief(slug: str, body: dict) -> Response:
-    """Save the Vietnamese brief; a cheap agent brings the English one in line with what changed."""
+    """Save the Vietnamese brief; a cheap agent brings the English one in line with what changed (a neon run has none)."""
     vi = body.get("vi")
     if not isinstance(vi, str):
         return _error(BAD_BODY, 400)
     old = _text(slug, "brief.vi.md") or ""
     if vi != old:  # unchanged is not written: a newer brief.vi.md would make brief.en.md look stale
         _put(slug, "brief.vi.md", vi)
-        run = queue._Folder(queue.run_path(slug))
-        diff = "\n".join(difflib.unified_diff(old.splitlines(), vi.splitlines(), "brief.vi.md (cũ)", "brief.vi.md (mới)", lineterm=""))
-        try:
-            auto.run_claude(run, "brief_sync", "vs-researcher", BRIEF_SYNC.format(run=run.path, diff=diff), 600)
-        except auto.AgentError as e:
-            return _error(f"Đã lưu bản tiếng Việt, nhưng chưa sửa được bản tiếng Anh: {e}", 502)
+        if not _neon(slug):
+            run = queue._Folder(queue.run_path(slug))
+            diff = "\n".join(difflib.unified_diff(old.splitlines(), vi.splitlines(), "brief.vi.md (cũ)", "brief.vi.md (mới)", lineterm=""))
+            try:
+                auto.run_claude(run, "brief_sync", "vs-researcher", BRIEF_SYNC.format(run=run.path, diff=diff), 600)
+            except auto.AgentError as e:
+                return _error(f"Đã lưu bản tiếng Việt, nhưng chưa sửa được bản tiếng Anh: {e}", 502)
     return JSONResponse({"brief_en": _text(slug, "brief.en.md"), "brief_en_stale": _stale(slug)})
 
 

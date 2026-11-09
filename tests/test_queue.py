@@ -242,3 +242,39 @@ def test_progress_reads_the_round_from_auto_json(tmp_runs, tmp_path):
              times={"render": {"start": time.time() - 5}})
     row = {r["slug"]: r for r in queue.rows(queue.Queue([], []))}
     assert row["fx"]["progress"]["label"] == "Soát và sửa"
+
+
+NEON_RUN = {"auto": True, "style": "neon"}
+
+
+def test_neon_row_shows_its_own_steps_and_stages(tmp_runs, tmp_path):
+    done = {s: "done" for s in ("research", "brief_check", "write")}
+    make_run(tmp_path, "nw", auto={"state": "wait_script"}, run=NEON_RUN, state=done)
+    make_run(tmp_path, "ow", auto={"state": "wait_script"}, run={"auto": True},
+             state={s: "done" for s, _ in queue.STEPS[:queue.STEPS.index(("approve_script", "Chờ duyệt bản dịch"))]})
+    row = {r["slug"]: r for r in queue.rows(queue.Queue([], []))}
+    assert row["nw"]["step"] == "Chờ duyệt lời" and row["ow"]["step"] == "Chờ duyệt bản dịch"
+    p = row["nw"]["progress"]
+    assert p["n"] == 4 and p["label"] == "Duyệt lời" and p["status"] == "you" and p["eta"]["stop"] == "Duyệt lời"
+    assert row["ow"]["progress"]["n"] == 6 and row["ow"]["progress"]["label"] == "Duyệt bản dịch"
+    assert queue.STEPS[0] == queue.STEPS_NEON[0]  # a queued topic's first step is the same in both
+
+
+def test_neon_running_row_and_fix_round(tmp_runs, tmp_path):
+    import time
+    done = {s: "done" for s in ("research", "brief_check", "write", "approve_script", "tts", "timeline", "scene", "render", "review0")}
+    make_run(tmp_path, "nf", auto={"state": "running", "pid": os.getpid(), "round": 1}, run=NEON_RUN, state=done,
+             times={"fix1_scene": {"start": time.time() - 5}})
+    make_run(tmp_path, "ns", auto={"state": "running", "pid": os.getpid()}, run=NEON_RUN, state={"research": "done", "brief_check": "done"},
+             times={"write": {"start": time.time() - 5}})
+    row = {r["slug"]: r for r in queue.rows(queue.Queue([], []))}
+    assert row["nf"]["progress"]["label"] == "Soát và sửa" and row["nf"]["progress"]["n"] == 8
+    assert row["ns"]["progress"]["label"] == "Viết lời" and row["ns"]["progress"]["n"] == 3
+
+
+def test_typical_is_kept_per_style(tmp_runs, tmp_path):
+    make_run(tmp_path, "od", auto={"state": "done"}, run={}, times={"source": {"start": 0, "end": 100}, "fetch": {"start": 100, "end": 200}})
+    make_run(tmp_path, "nd", auto={"state": "done"}, run=NEON_RUN, times={"scene": {"start": 0, "end": 333}})
+    t = queue.typical()
+    assert t["old"]["notebooklm"] == 200 and t["old"]["review"] == 720
+    assert t["neon"]["scene"] == 333 and t["neon"]["render"] == 600 and "notebooklm" not in t["neon"]

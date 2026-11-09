@@ -643,3 +643,36 @@ def test_row_posted_follows_the_current_env(client_anon, run_s, monkeypatch):
     assert client_anon.get("/api/state").json()["rows"][0]["posted"] is True
     _cms_settings(monkeypatch, "prod")
     assert client_anon.get("/api/state").json()["rows"][0]["posted"] is False
+
+
+@pytest.fixture
+def run_neon(run_s, tmp_path):
+    """A neon run waiting for the narration: no sentences.en.json, a brief.en.md older than brief.vi.md that nothing will mend."""
+    run = make_run(tmp_path, "nn", "wait_script", {"run.json": {"style": "neon", "topic": "t", "auto": False}, "brief.vi.md": "VI cũ",
+                                                    "brief.en.md": "EN cũ", "script.vi.json": SCRIPT})
+    os.utime(run.file("brief.en.md"), (1000, 1000))
+    os.utime(run.file("brief.vi.md"), (3000, 3000))
+    return run
+
+
+def test_neon_run_detail_shows_the_script_without_english(client, run_neon):
+    j = client.get("/api/runs/nn").json()
+    assert j["translation"] == [{"id": 1, "en": "", "phrases": "Xin | chào", "note": ""},
+                                {"id": 2, "en": "", "phrases": "Tạm | biệt", "note": "n"}]
+    assert j["brief_en_stale"] is False  # the same files in an old run make it True
+    assert j["progress"]["stages"][3]["label"] == "Duyệt lời" and len(j["progress"]["stages"]) == 9
+    assert j["row"]["progress"]["label"] == "Duyệt lời"
+
+
+def test_old_run_detail_still_pairs_the_english(client, run_s):
+    os.utime(run_s.file("brief.vi.md"), (3000, 3000))
+    j = client.get("/api/runs/s").json()
+    assert j["brief_en_stale"] is True and j["translation"][1]["en"] == "Bye." and len(j["progress"]["stages"]) == 10
+
+
+def test_neon_save_brief_calls_no_agent(client, run_neon, monkeypatch):
+    monkeypatch.setattr(auto, "run_claude", lambda *a: pytest.fail("neon has no English brief to bring in line"))
+    r = client.post("/api/runs/nn/brief", json={"vi": "VI mới"})
+    assert r.status_code == 200 and r.json()["brief_en_stale"] is False
+    assert run_neon.file("brief.vi.md").read_text(encoding="utf-8") == "VI mới"
+    assert run_neon.file("brief.en.md").read_text(encoding="utf-8") == "EN cũ"

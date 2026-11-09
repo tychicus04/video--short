@@ -191,3 +191,13 @@ def test_vs_visuals_quotes_the_subtitle_band_the_code_checks():
     from vshort.visuals import SUBTITLE
     md = (Path(__file__).resolve().parent.parent / "claude" / "agents" / "vs-visuals.md").read_text(encoding="utf-8")
     assert f"vùng phụ đề y {SUBTITLE[1]}–{SUBTITLE[3]}" in md and '"kind": "patch"' in md and "svg" not in md
+
+
+def test_agents_quote_neon_limits():
+    from pathlib import Path
+
+    from vshort.script import SYL_MAX, SYL_MIN
+    agents = Path(__file__).resolve().parent.parent / "claude" / "agents"
+    writer = (agents / "vs-writer.md").read_text(encoding="utf-8")
+    assert all(name in writer for name in ("MAX_TEXT_W", "SYL_MIN", "SYL_MAX")) and f"{SYL_MIN}–{SYL_MAX}" in writer
+    # vs-scene.md (MAX_GAP, MAX_TONES) joins with Task 9, which writes the agent

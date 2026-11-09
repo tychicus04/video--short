@@ -163,3 +163,111 @@ def test_the_render_stage_says_what_it_does_now():
     assert [stages.stage_of(s) for s in ("timeline", "render")] == ["render"] * 2
     assert "Co giãn" in next(what for k, _, what in stages.STAGES if k == "render")
     assert "xóa phụ đề Anh" in next(what for k, _, what in stages.STAGES if k == "build")
+
+
+# --- the neon style: nine stages, the voice and the scene in place of NotebookLM -----------------------------------
+
+NEON = stages.FLOWS["neon"]
+NT = dict(NEON.default_seconds)
+NEON_KEYS = ["research", "brief", "write", "approve", "voice", "scene", "render", "review", "cover"]
+NEON_DONE = {"research", "brief_check", "write", "approve_script", "tts", "timeline", "scene", "render", "review0"}
+
+
+def nview(*args, **kw):
+    return stages.view(*args, **kw, style="neon")
+
+
+def test_neon_stage_list_and_steps():
+    assert [k for k, _, _ in NEON.stages] == NEON_KEYS
+    assert [label for _, label, _ in NEON.stages] == ["Tìm hiểu", "Duyệt brief", "Viết lời", "Duyệt lời", "Giọng đọc",
+                                                     "Kịch bản hình", "Dựng video", "Soát và sửa", "Ảnh bìa và xuất"]
+    assert set(NEON.default_seconds) == set(NEON_KEYS) and NEON.default_seconds["scene"] == 900 and NEON.default_seconds["render"] == 600
+    for step, key in [("write", "write"), ("approve_script", "approve"), ("tts", "voice"), ("timeline", "voice"), ("scene", "scene"),
+                      ("render", "render"), ("review0", "review"), ("fix1_scene", "review"), ("fix2_writer", "review"),
+                      ("fixed1", "review"), ("cover", "cover"), ("brief_check", "brief")]:
+        assert stages.stage_of(step, "neon") == key, step
+    # the old flow's names mean what they meant
+    assert stages.stage_of("tts") == "build" and stages.stage_of("timeline") == "render"
+    assert stages.stage_of("write") is None and stages.stage_of("scene") is None and stages.stage_of("fix1_scene") == "review"
+    assert stages.stage_of("fetch", "neon") is None  # NotebookLM's steps are not part of a neon run
+
+
+def test_old_runs_unchanged():
+    assert stages.FLOWS["old"] == (stages.STAGES, stages.STEPS_OF, stages.DEFAULT_SECONDS) and len(stages.STAGES) == 10
+    args = ("running", True, {"research", "brief_check"}, {"source": {"start": 0}, "fetch": {"start": 10}}, TYP, 700)
+    assert stages.view(*args) == stages.view(*args, style="old")
+    assert stages.typical([]) == stages.typical([], "old") == TYP
+
+
+def test_neon_waiting_script_shows_duyet_loi():
+    v = nview("wait_script", True, {"research", "brief_check", "write"}, {}, NT, now=0)
+    st = by_key(v)
+    assert st["approve"]["label"] == "Duyệt lời" and st["approve"]["status"] == "you"
+    assert [s["status"] for s in v["stages"]] == ["done"] * 3 + ["you"] + ["next"] * 5 and v["current"] == 3
+    assert v["eta"] == {"stop": "Duyệt lời", "until_stop": 0,
+                        "after_stop": sum(NT[k] for k in ("voice", "scene", "render", "review", "cover"))}
+
+
+def test_neon_brief_stop_and_running_voice():
+    v = nview("wait_brief", False, {"research"}, {}, NT, now=0)
+    assert v["current"] == 1 and by_key(v)["brief"]["status"] == "you" and v["eta"]["stop"] == "Duyệt brief"
+    # tts and timeline are one stage, the voice; the steps shown are the two
+    done = {"research", "brief_check", "write", "approve_script", "tts"}
+    times = {"tts": {"start": 0, "end": 100}, "timeline": {"start": 105}}
+    v = nview("running", True, done, times, NT, now=110)
+    st = by_key(v)
+    assert v["current"] == 4 and st["voice"]["status"] == "running" and st["voice"]["seconds"] == 105
+    assert [(s["step"], s["status"]) for s in st["voice"]["steps"]] == [("tts", "done"), ("timeline", "running")]
+    assert st["scene"]["status"] == "next"
+
+
+def test_neon_scene_and_render_each_have_their_own_stage():
+    done = {"research", "brief_check", "write", "approve_script", "tts", "timeline"}
+    v = nview("running", True, done, {"scene": {"start": 0}}, NT, now=300)
+    st = by_key(v)
+    assert st["scene"]["status"] == "running" and st["scene"]["seconds"] == 300 and st["voice"]["status"] == "done"
+    assert st["render"]["status"] == "next"
+    v = nview("running", True, done | {"scene"}, {"scene": {"start": 0, "end": 800}, "render": {"start": 810}}, NT, now=900)
+    assert by_key(v)["render"]["status"] == "running" and by_key(v)["scene"]["seconds"] == 800
+
+
+def test_neon_fix_round_reads_as_review_with_what_is_fixed():
+    done = NEON_DONE - {"render"}
+    times = {"review0": {"start": 0, "end": 100}, "fix1_scene": {"start": 110, "end": 200}, "scene": {"start": 210}}
+    v = nview("running", True, done | {"fix1_scene"}, times, NT, now=300)
+    st = by_key(v)
+    assert st["review"]["status"] == "running" and st["render"]["status"] == "done" and st["scene"]["status"] == "done"
+    assert [(s["step"], s["label"]) for s in st["review"]["steps"]] == [("review0", "Soát"), ("fix1_scene", "Sửa vòng 1: kịch bản hình")]
+    # the writer's fix: the voice and the picture are made again, still shown as the review until fixed1
+    v = nview("running", True, NEON_DONE - {"tts"}, {"fix1_writer": {"start": 0, "end": 5}, "tts": {"start": 9}}, NT, now=20, fix_round=1)
+    assert by_key(v)["review"]["status"] == "running"
+    assert stages._label("fix2_writer", "neon") == "Sửa vòng 2: lời"
+
+
+def test_neon_without_times_is_read_from_state_and_a_finished_run_is_all_done():
+    v = nview("running", True, {"research", "brief_check", "write", "approve_script"}, {}, NT, now=0)
+    assert v["current"] == 4  # the voice: the first step not done is tts
+    v = nview("done", True, NEON_DONE | {"cover"}, {}, NT, now=0)
+    assert {s["status"] for s in v["stages"]} == {"done"} and v["percent"] == 100 and len(v["stages"]) == 9
+    # queued again: what state.json says is done
+    v = nview("idle", True, {"research", "brief_check", "write"}, {}, NT, now=0)
+    assert [s["status"] for s in v["stages"]] == ["done"] * 3 + ["next"] * 6
+
+
+def test_typical_and_history_are_per_style(tmp_path):
+    assert stages.typical([], "neon")["scene"] == 900 and stages.typical([], "neon")["render"] == 600
+    assert stages.typical([{"scene": {"start": 0, "end": 300}}] * 3, "neon")["scene"] == 300
+    assert "notebooklm" not in stages.typical([], "neon") and "scene" not in stages.typical([])
+
+    def run(name, style, mtime):
+        d = tmp_path / name
+        d.mkdir()
+        (d / "auto.json").write_text(json.dumps({"state": "done"}))
+        os.utime(d / "auto.json", (mtime, mtime))
+        (d / "times.json").write_text(json.dumps({"research": {"start": 0, "end": mtime}}))
+        if style:
+            (d / "run.json").write_text(json.dumps({"style": style}))
+    run("o1", None, 1); run("n1", "neon", 2); run("o2", None, 3); run("n2", "neon", 4)
+    run("odd", "old", 5); (tmp_path / "odd" / "run.json").write_text("[1]")
+    assert [h["research"]["end"] for h in stages.history(tmp_path, "neon")] == [4, 2]
+    assert [h["research"]["end"] for h in stages.history(tmp_path)] == [5, 3, 1]  # run.json not an object: the old flow

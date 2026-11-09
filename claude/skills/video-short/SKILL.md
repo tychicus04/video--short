@@ -35,3 +35,23 @@ Thiết kế: `~/video-pipeline/docs/superpowers/specs/2026-11-02-dieu-phoi-bang
      hạn mức Gemini và ZeroTTS không chạy được. Khi nguyên nhân đã xử lý xong, `vshort auto $RUN` chạy tiếp từ bước dở → bước 2.
 4. **Video dở** (Tai gọi lại `/video-short` cho một slug đã có): `vshort status $RUN`. Dòng `auto:` là `running` → bước 2; `wait_brief`
    / `wait_script` → bước 3 với mã 20 / 21; `error` → đưa Tai lời nhắn, xử lý xong thì `vshort auto $RUN`.
+
+## Kiểu neon (thử nghiệm)
+
+Kiểu riêng, không dùng NotebookLM: Claude viết lời Việt thẳng từ brief, hình là sơ đồ neon vẽ bằng code (HyperFrames) theo lời.
+Chỉ chạy khi Tai nói "kiểu neon". Thiết kế: `~/video-pipeline/docs/superpowers/specs/2026-11-09-kieu-neon-design.md`.
+
+- **Bắt đầu**: `vshort auto <slug> --topic "…" --style neon` (thêm `--auto` như bước 1). Lệnh ghi `"style": "neon"` vào `run.json`;
+  video không có cờ này chạy luồng NotebookLM như trên. Brief neon không có bản tiếng Anh (`brief.en.md`) nên `vshort approve $RUN brief`
+  không đòi nó, và không có câu tiếng Anh để đối chiếu.
+- **Hai điểm dừng**, vẫn theo mã thoát của `vshort wait` ở bước 3:
+  - **20 — duyệt brief**: như trên, chỉ sửa `brief.vi.md`. Brief phải có mục "Cơ chế từng bước" (bước 0 "Bình thường" và ít nhất 2 bước có nguồn),
+    thiếu thì script dừng ở đây báo lỗi.
+  - **21 — duyệt lời**: dán `$RUN/loi.md` (mỗi câu một hàng: lời, số âm tiết, giây ước tính, note; cuối bảng là tổng, cần 60–90 giây).
+    Tai sửa → sửa `$RUN/script.vi.json` (giữ dấu `|` chia cụm phụ đề). Rồi `vshort approve $RUN script` (mã 2 = `vshort check` trượt:
+    đưa Tai lỗi, sửa, duyệt lại) → `vshort auto $RUN` → bước 2.
+- **Các agent**: `vs-writer` (viết lời từ brief, chia cụm phụ đề, tự kiểm bằng `vshort check`), `vs-scene` (dựng `scene.json`: sơ đồ neon theo lời,
+  code xếp chỗ và kiểm bằng `vshort scene`), `vs-reviewer-neon` (xem khung `final.mp4`, ghi `review.md` / `review.json`; lỗi thì vòng sửa
+  chạy lại `vs-scene` hoặc `vs-writer`, tối đa 2 vòng). `vs-researcher` vẫn lo bước tìm hiểu.
+- Bảng điều khiển hiện 9 chặng thay vì 10 (Viết lời, Duyệt lời, Giọng đọc, Kịch bản hình thay cho chặng NotebookLM → Giọng đọc và hình);
+  cột tiếng Anh ở màn duyệt lời để trống.
