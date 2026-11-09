@@ -791,6 +791,18 @@ def test_a_refused_round_leaves_no_pass_behind(tmp_path, capsys):
     assert not (tmp_path / "scene.resolved.json").exists() and "scene" not in json.loads((tmp_path / "state.json").read_text())
 
 
+def test_scene_never_leaves_an_old_video_marked_as_done(tmp_path):   # a hand-run `vshort scene`, passing or refused
+    run = _scene_run(tmp_path, SCENE_OK)
+    state = lambda: json.loads((tmp_path / "state.json").read_text())
+    (tmp_path / "state.json").write_text(json.dumps({"render": "done"}))
+    assert main(["scene", run]) == 0 and state()["scene"] == "done" and "render" not in state()
+    (tmp_path / "state.json").write_text(json.dumps({"render": "done", "scene": "done"}))
+    (tmp_path / "scene.json").write_text("{}")  # refused
+    assert main(["scene", run]) == 2 and "render" not in state() and "scene" not in state()
+    (tmp_path / "state.json").write_text(json.dumps({"render": "done"}))
+    assert main(["scene", run, "--table"]) == 0 and state()["render"] == "done"  # the table changes nothing
+
+
 def test_scene_names_a_missing_scene_json(tmp_path, capsys):
     assert main(["scene", _run(tmp_path)]) == 2
     assert "scene.json" in capsys.readouterr().err and not (tmp_path / "scene.resolved.json").exists()

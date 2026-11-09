@@ -245,12 +245,14 @@ def test_vs_reviewer_neon_writes_the_review_vshort_auto_reads():
     assert "visuals" not in md and "translator" not in md  # the old reviewer's agents do not exist here
 
 
-def test_vs_reviewer_neon_contact_sheet_code_runs(tmp_path):
+def _contact_sheets(tmp_path, action_times, total=12.0):
+    """Run the contact-sheet code of vs-reviewer-neon.md on a generated 14 s video with actions at `action_times`: the frame times
+    on each sheet it makes (it prints them), and the sheets' files."""
+    import contextlib
+    import io
     import json
     import re
     import subprocess
-
-    from PIL import Image
 
     from vshort.media import FF
     run, sheets = tmp_path / "run", tmp_path / "sheets"
@@ -258,9 +260,26 @@ def test_vs_reviewer_neon_contact_sheet_code_runs(tmp_path):
     sheets.mkdir()
     subprocess.run([FF, "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=size=720x1280:rate=30:duration=14", "-pix_fmt", "yuv420p",
                     str(run / "final.mp4")], check=True)
-    acts = [{"t": t, "do": "on", "ids": ["a"]} for t in (4.0, 4.3, 6.0, 7.5, 8.0, 9.0, 10.0, 11.0, 12.0)]
-    (run / "scene.resolved.json").write_text(json.dumps({"total": 12.0, "title": {"t0": 0.5, "t1": 3.4, "out": 3.9}, "actions": acts}))
+    acts = [{"t": t, "do": "on", "ids": ["a"]} for t in action_times]
+    (run / "scene.resolved.json").write_text(json.dumps({"total": total, "title": {"t0": 0.5, "t1": 3.4, "out": 3.9}, "actions": acts}))
     [code] = re.findall(r"<<'EOF'\n(.*?)\nEOF", _agent_md("vs-reviewer-neon"), re.S)
-    exec(code.replace('Path("RUN")', f"Path({str(run)!r})").replace("/tmp/vs_review/", f"{sheets}/"), {})
-    made = sorted(sheets.glob("sheet*.png"))
-    assert len(made) == 2 and Image.open(made[0]).size == (4 * 360, 2 * 664)  # 8 + 4 frames: the title's two, the clusters, the ends
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        exec(code.replace('Path("RUN")', f"Path({str(run)!r})").replace("/tmp/vs_review/", f"{sheets}/"), {})
+    return [json.loads(line.split(" ", 1)[1]) for line in out.getvalue().splitlines()], sorted(sheets.glob("sheet*.png"))
+
+
+def test_vs_reviewer_neon_contact_sheet_code_runs(tmp_path):
+    from PIL import Image
+    times, made = _contact_sheets(tmp_path, (4.0, 4.3, 6.0, 7.5, 8.0, 9.0, 10.0, 11.0, 12.0))
+    assert len(made) == 2 and Image.open(made[0]).size == (4 * 360, 2 * 664)
+    # 4.0 and 4.3 are one frame (4.7), 7.5 and 8.0 one (8.4), the others stand alone (6.4, 9.4, 10.4, 11.4, 12.4); then the title bar
+    # typed (3.4) and gone (4.9), the end of the diagram (11.7), the outro (13.0)
+    assert times == [[3.4, 4.7, 4.9, 6.4, 8.4, 9.4, 10.4, 11.4], [11.7, 12.4, 13.0]]
+
+
+def test_vs_reviewer_neon_contact_sheet_keeps_a_frame_for_every_half_second_of_beats(tmp_path):
+    # two beats a phrase, 0.5 s apart, a new phrase every 1 s: a cluster must not grow while each gap is under 0.8 s
+    times, _ = _contact_sheets(tmp_path, [4.0 + 0.5 * k for k in range(9)])
+    frames = [t for sheet in times for t in sheet]
+    assert len([t for t in frames if 4.4 <= t <= 8.4]) >= 4

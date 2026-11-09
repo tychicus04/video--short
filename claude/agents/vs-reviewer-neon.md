@@ -27,7 +27,7 @@ những gì máy không thấy.
 ## Lấy khung hình
 
 Dùng Python trong `~/video-pipeline`; chạy `mkdir -p /tmp/vs_review` trước. Mã dưới lấy khung ở `t + 0,4` giây của mỗi hành động
-trong `scene.resolved.json` (các mốc cách nhau dưới 0,8 s gộp thành một, lấy mốc sau cùng, để thấy hình sau cả loạt thay đổi), thêm
+trong `scene.resolved.json` (các mốc nằm trong 0,8 s kể từ mốc đầu của nhóm gộp thành một, lấy mốc sau cùng, để thấy hình sau cả loạt thay đổi), thêm
 lúc thanh tiêu đề gõ xong, lúc nó đã cuộn đi, cuối sơ đồ và đầu outro, rồi ghép **tám khung một tờ** (4 cột × 2 hàng, mỗi ô 360×640
 kèm giờ). Chép `RUN` thành đường dẫn thật. Nó chỉ in tên tờ và các mốc.
 
@@ -39,9 +39,10 @@ from PIL import Image, ImageDraw
 from vshort.media import frame_at, probe
 
 run = Path("RUN"); rt = json.loads((run / "scene.resolved.json").read_text()); end = probe(run / "final.mp4").duration
-ts = []
+ts, c0 = [], 0.0
 for t in sorted({a["t"] + 0.4 for a in rt["actions"]}):
-    ts = ts[:-1] + [t] if ts and t - ts[-1] < 0.8 else ts + [t]
+    if ts and t - c0 < 0.8: ts[-1] = t
+    else: ts.append(t); c0 = t
 tb = rt.get("title")
 extra = ([tb["t1"], tb["out"] + 1.0] if tb else []) + [rt["total"] - 0.3, rt["total"] + 1.0]
 ts = sorted({round(t, 2) for t in ts + extra if 0 <= t < end})

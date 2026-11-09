@@ -859,3 +859,37 @@ def test_neon_a_scene_that_is_made_again_is_rendered_again(neon_flow):
     assert auto.run_auto(run) == OK
     assert fk.agents["vs-scene"] == 1 and fk.cmds.count("render") == 1
     assert fk.order.index("scene") < fk.order.index("render")
+
+
+def test_neon_recheck_after_a_writer_round_asks_for_the_whole_video(neon_flow):   # Ruling 32a
+    run, fk = neon_flow
+    fk.reviews = [{"verdict": "Cần sửa", "findings": [{"agent": "scene", "ids": [2], "what": "chip đè", "fix": "dời"},
+                                                      {"agent": "writer", "ids": [3], "what": "nói quá", "fix": "bỏ"}]}]
+    approve_all(run, fk)
+    assert auto.run_auto(run) == WAIT_SCRIPT
+    run.file("script.proposed.json").replace(run.file("script.vi.json"))
+    run.mark("approve_script")
+    assert auto.run_auto(run) == OK
+    again = fk.prompts["vs-reviewer-neon"][1]
+    assert again.startswith("Soát lại") and "cả video" in again and "chỉ các phần đã sửa" not in again
+    assert "nói quá" in again and "chip đè" in again and str(run.path) in again  # what was fixed is listed all the same
+
+
+def test_neon_recheck_after_a_scene_round_stays_on_the_fixed_parts(neon_flow):
+    run, fk = neon_flow
+    fk.reviews = [_scene_finding()]
+    approve_all(run, fk)
+    assert auto.run_auto(run) == OK
+    again = fk.prompts["vs-reviewer-neon"][1]
+    assert again.startswith("Soát lại: chỉ các phần đã sửa") and "cả video" not in again
+
+
+def test_old_recheck_prompt_is_unchanged(flow):
+    run, fk = flow
+    _approved(run)
+    fk.reviews = [_needs("translator", "câu 1 nói quá")]
+    auto.run_auto(run)
+    run.file("script.proposed.json").replace(run.file("script.vi.json"))
+    run.mark("approve_script")
+    auto.run_auto(run)
+    assert fk.prompts["vs-reviewer"][1].startswith("Soát lại: chỉ các phần đã sửa.\n\nRUN=")

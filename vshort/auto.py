@@ -202,6 +202,9 @@ REVIEW_NEON = ("RUN={run}. final.mp4 đã render (kiểu neon). Soát video cu�
                "mỗi lỗi nặng kèm cách sửa cụ thể trong `fix`.")
 RECHECK = ("Soát lại: chỉ các phần đã sửa.\n\nRUN={run}. review.md cũ: {run}/review.md. Đã sửa (lỗi, agent, câu, thời điểm):\n"
            "{fixed}\nGhi kết quả vào cuối review.md và ghi lại review.json cho lần soát này.")
+RECHECK_ALL = ("Soát lại: lời đã đổi nên giọng, hình và mọi mốc giờ đều dựng lại — soát cả video như lần đầu.\n\nRUN={run}. "
+               "review.md cũ: {run}/review.md. Đã sửa (lỗi, agent, câu, thời điểm):\n{fixed}\n"
+               "Ghi kết quả vào cuối review.md và ghi lại review.json cho lần soát này.")
 FIX = ("RUN={run}\n\nSửa theo {run}/review.json, các lỗi agent={agent}:\n{items}\n{how}")
 FIX_HOW = {
     "visuals": "Sửa visuals.json rồi tự chạy `vshort visuals` tới khi mã 0.",
@@ -490,8 +493,9 @@ def _review(run: Run) -> None:
         if _fixing(run):  # died during round r's fixes: finish them first
             _fix(run, r, run.read(f"fix{r}.json"))
         if not run.done(f"review{r}"):
-            prompt = (REVIEW_NEON if neon else REVIEW).format(run=p) if r == 0 \
-                else RECHECK.format(run=p, fixed=_items(run.read(f"fix{r}.json")))
+            fixed = run.read(f"fix{r}.json") if r else []
+            recheck = RECHECK_ALL if neon and any(f["agent"] == "writer" for f in fixed) else RECHECK  # the words changed: all redone
+            prompt = (REVIEW_NEON if neon else REVIEW).format(run=p) if r == 0 else recheck.format(run=p, fixed=_items(fixed))
             run.file("review.json").unlink(missing_ok=True)  # never act on the previous reviewer's findings
             run_claude(run, f"review{r}", agent, prompt, TIMEOUT[agent])
             read_review(run, kinds)  # a bad file is not marked done: a rerun asks a reviewer again

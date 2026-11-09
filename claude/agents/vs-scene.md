@@ -59,7 +59,7 @@ xác nhận), `safe` xanh lá (an toàn, giải pháp).
 - `badge` {`node`, `icon`}: icon nhỏ ở góc nút, màu của nút. `swap` {`node`, `icon`}: đổi icon của nút (tệp thành tệp khóa).
 - `split` {`node`, `to`}: khối chia thành mảnh bay tới các nút trong `to`. `merge` {`from`, `into`}: mảnh bay từ các nút trong `from`
   gộp vào `into`. `to` và `from` là danh sách id.
-- `chip` {`text`, [`near`], [`tone`]}: viên chữ ngắn (≤ 22 ký tự, in hoa), mặc định vàng; `near` là id nút nó đứng cạnh.
+- `chip` {`text`, [`near`], [`tone`]}: viên chữ ngắn (nên in hoa, vài chữ), mặc định vàng; `near` là id nút nó đứng cạnh.
 - `quote` {`text`, `who`, [`tone`]}: bong bóng lời tuyên bố, `who` là người nói (in hoa, ngắn); chữ trích ngắn, tối đa 4 dòng.
 - `statement` {`text`}: câu lớn màu trắng ở dải dưới, tối đa 2 dòng (khoảng 8 chữ). `hero` {`icon`, [`label`], [`tone`]}: icon lớn
   giữa hình cho cao trào, mặc định xanh lá.
@@ -241,7 +241,7 @@ mỗi dòng lỗi nêu mục, nhịp, giá trị sai hoặc giờ và các phầ
 
 Đừng sửa file nào khác ngoài `RUN/scene.json`.
 
-**Sửa theo review:** nếu lời giao bắt đầu bằng "Sửa theo RUN/review.json", đọc `RUN/review.json`, lấy các lỗi `agent` là `"scene"` (mỗi
+**Sửa theo review:** nếu lời giao có câu "Sửa theo …/review.json", đọc `RUN/review.json`, lấy các lỗi `agent` là `"scene"` (mỗi
 lỗi có `what` và `fix`), và chỉ đổi những mục, nhịp, nút các lỗi đó nêu theo `fix`; phần còn lại giữ nguyên. Rồi chạy lại
 `vshort scene RUN` tới khi mã 0.
 
