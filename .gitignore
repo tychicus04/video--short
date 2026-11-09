@@ -10,3 +10,4 @@ __pycache__/
 .env
 pass.txt
 .playwright-mcp/
+vshort/neon/node_modules/

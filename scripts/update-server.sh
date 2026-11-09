@@ -21,6 +21,7 @@ main() {
   while busy; do echo "đang có video chạy, đợi 5 phút"; sleep 300; done
   old=$(git rev-parse HEAD)
   git pull -q --ff-only && uv sync -q || exit 1
+  { [ -d vshort/neon/node_modules ] && git diff --quiet "$old" HEAD -- vshort/neon/package.json vshort/neon/package-lock.json; } || (cd vshort/neon && npm ci --silent) || exit 1
   mkdir -p "$HOME/.claude/agents"  # the vs-* agents `vshort auto` calls by name: a deploy links every one, new ones too
   for f in "$PWD/claude/agents/"*.md; do ln -sf "$f" "$HOME/.claude/agents/$(basename "$f")"; done
   find "$HOME/.claude/agents" -maxdepth 1 -name 'vs-*.md' -xtype l -delete  # agents gone from the repo: no dangling links

@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=720, height=1280">
+<script src="gsap.min.js"></script>
+<style>
+  @font-face { font-family: "Be Vietnam Pro"; font-weight: 700; src: url("BeVietnamPro-Bold.ttf"); }
+  @font-face { font-family: "IBM Plex Mono"; font-weight: 600; src: url("IBMPlexMono-SemiBold.ttf"); }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 720px; height: 1280px; overflow: hidden; background: #04060c; }
+  #scene { position: absolute; inset: 0; background:
+      radial-gradient(ellipse at 50% 42%, rgba(30,60,110,.28), rgba(0,0,0,0) 62%),
+      radial-gradient(circle, rgba(140,175,255,.16) 1.5px, rgba(0,0,0,0) 2px) 0 0 / 36px 36px,
+      #04060c; }
+  .glow { filter: drop-shadow(0 0 3px rgba(43,227,255,.85)) drop-shadow(0 0 11px rgba(43,227,255,.42)); }
+  .say { position: absolute; left: 0; width: 720px; top: 1056px; text-align: center; opacity: 0;
+         font: 700 40px/48px "Be Vietnam Pro", sans-serif; color: #fff; }
+  .lbl { position: absolute; left: 0; width: 720px; top: 300px; text-align: center; opacity: 0;
+         font: 600 26px/32px "IBM Plex Mono", monospace; letter-spacing: 2px; color: #FFC53D; text-shadow: 0 0 8px rgba(255,197,61,.7); }
+</style>
+</head>
+<body>
+<div id="root" data-composition-id="main" data-start="0" data-width="720" data-height="1280">
+  <div id="scene" class="clip" data-start="0" data-track-index="1"></div>
+</div>
+<script>
+// Everything inside #scene is built from this object at load, the way vshort/neon/kit.js builds a scene from JSON.
+window.GATE = {"duration": 3, "circle": {"cx": 360, "cy": 640, "r": 60}, "say": "Tác vụ AI chạy đúng", "label": "KIỂM CHỨNG · ĐỀ XUẤT"};
+
+const G = window.GATE, NS = "http://www.w3.org/2000/svg";
+const root = document.getElementById("root"), scene = document.getElementById("scene");
+root.dataset.duration = scene.dataset.duration = G.duration;
+
+const svg = document.createElementNS(NS, "svg");
+svg.setAttribute("width", 720); svg.setAttribute("height", 1280);
+svg.style.cssText = "position:absolute;left:0;top:0";
+const ring = document.createElementNS(NS, "circle");
+for (const [k, v] of Object.entries({cx: G.circle.cx, cy: G.circle.cy, r: G.circle.r, fill: "none", stroke: "#2BE3FF",
+                                     "stroke-width": 6, class: "glow"})) ring.setAttribute(k, v);
+svg.appendChild(ring);
+scene.appendChild(svg);
+const say = Object.assign(document.createElement("div"), {className: "say", textContent: G.say});
+const lbl = Object.assign(document.createElement("div"), {className: "lbl", textContent: G.label});
+scene.append(say, lbl);
+
+const len = ring.getTotalLength();
+ring.style.strokeDasharray = len; ring.style.strokeDashoffset = len;
+
+const tl = gsap.timeline({ paused: true });
+tl.to(ring, { strokeDashoffset: 0, duration: 1, ease: "power2.inOut" }, 0.5);
+tl.to([say, lbl], { opacity: 1, duration: 0.3 }, 1.0);
+tl.to({}, { duration: G.duration }, 0);   // the timeline is as long as the clip
+window.__timelines = window.__timelines || {};
+window.__timelines["main"] = tl;
+</script>
+</body>
+</html>
