@@ -318,11 +318,11 @@ def test_beat_time_leads_the_phrase():
 def test_slots_match_the_layouts():
     s = layout.SLOTS
     assert set(s) == set(LAYOUTS) and s["none"] == {} and s["center"] == {"hub": layout.C} and layout.C == (330.0, 560.0)
-    assert s["pair"] == {"hub": (330, 560), "left": (150, 560), "right": (510, 560), "above": (330, 380), "below": (330, 760)}
+    assert s["pair"] == {"hub": (330, 560), "left": (150, 560), "right": (510, 560), "above": (330, 380), "below": (330, 780)}
     assert list(s["ring"]) == ["hub", *(f"r{k}" for k in range(6))]
     assert s["ring"]["r0"] == pytest.approx((558, 560)) and s["ring"]["r4"] == pytest.approx((183.4, 385.3), abs=0.1)
     assert s["chain"] == {f"c{k}": (330, 330 + 150 * k) for k in range(4)}
-    assert s["grid"]["g0"] == (162, 480) and s["grid"]["g2"] == (498, 480) and s["grid"]["g5"] == (498, 650) and len(s["grid"]) == 6
+    assert s["grid"]["g0"] == (162, 460) and s["grid"]["g2"] == (498, 460) and s["grid"]["g5"] == (498, 660) and len(s["grid"]) == 6
 
 
 NAMES = ("user user-x users server hard-drive monitor smartphone cpu cloud globe building-2 file file-lock mail lock lock-open "
