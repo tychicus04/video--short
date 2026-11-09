@@ -391,16 +391,22 @@ def cmd_render(a) -> int:
 
 def _render_neon(run: Run) -> int:
     """final.mp4 of a neon run: scene.resolved.json drawn by HyperFrames into visuals.mp4 (silent, as long as the voice), then the
-    voice with the three accents the scene names, BT.709 and the outro, in one ffmpeg run. Last round's visuals.mp4, final.mp4
-    and "render" mark go first, so a failed round (a fix round) never leaves what looks like this round's result."""
+    voice with the three accents the scene names, BT.709 and the outro, in one ffmpeg run. The inputs are read first: with one
+    missing or unreadable nothing is touched, since a finished video whose inputs are gone cannot be made again. Once they are
+    read, last round's visuals.mp4, final.mp4 and "render" mark go, so a failed round (a fix round) never leaves what looks like
+    this round's result."""
+    if gone := [f for f in ("scene.resolved.json", "narration.wav") if not run.file(f).exists()]:
+        _err("thiếu " + ", ".join(gone) + " (chạy `vshort scene`, và các bước giọng đọc trước nó)")
+        return BAD_INPUT
+    try:
+        rt = run.read("scene.resolved.json")
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
+        _err(f"scene.resolved.json không đọc được: {e} (chạy lại `vshort scene`)")
+        return BAD_INPUT
     visuals, final = run.file("visuals.mp4"), run.file("final.mp4")
     visuals.unlink(missing_ok=True)
     final.unlink(missing_ok=True)
     run.unmark("render")
-    if gone := [f for f in ("scene.resolved.json", "narration.wav") if not run.file(f).exists()]:
-        _err("thiếu " + ", ".join(gone) + " (chạy `vshort scene`, và các bước giọng đọc trước nó)")
-        return BAD_INPUT
-    rt = run.read("scene.resolved.json")
     comp = run.file("neon")
     try:
         write_composition(rt, comp)

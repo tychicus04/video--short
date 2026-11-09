@@ -449,12 +449,21 @@ def test_render_cmd_neon_refuses_visuals_of_the_wrong_length(tmp_path, make_vide
     assert not (tmp_path / "visuals.mp4").exists() and not (tmp_path / "final.mp4").exists() and not Run(tmp_path).done("render")
 
 
-@pytest.mark.parametrize("gone", ["scene.resolved.json", "narration.wav"])
-def test_render_cmd_neon_names_what_is_missing(tmp_path, hyperframes, capsys, gone):
+@pytest.mark.parametrize("damage", ["scene.resolved.json", "narration.wav", "unreadable"])
+def test_render_cmd_neon_names_what_is_missing_and_keeps_the_finished_video(tmp_path, hyperframes, capsys, damage):
+    """The inputs are checked before anything is deleted: a finished video whose inputs are gone cannot be made again."""
     _neon_render_run(tmp_path)
-    (tmp_path / gone).unlink()
+    for done in ("final.mp4", "visuals.mp4"):
+        (tmp_path / done).write_bytes(b"good")
+    Run(tmp_path).mark("render")
+    if damage == "unreadable":
+        (tmp_path / "scene.resolved.json").write_text('{"total": ', encoding="utf-8")
+    else:
+        (tmp_path / damage).unlink()
     assert main(["render", str(tmp_path)]) == 2
-    assert gone in capsys.readouterr().err and not (tmp_path / "final.mp4").exists()
+    assert ("scene.resolved.json" if damage == "unreadable" else damage) in capsys.readouterr().err
+    assert (tmp_path / "final.mp4").read_bytes() == b"good" and (tmp_path / "visuals.mp4").read_bytes() == b"good"
+    assert Run(tmp_path).done("render") and hyperframes["written"] == []
 
 
 @pytest.mark.skipif(not hf.available(), reason="chưa cài vshort/neon (npm ci)")

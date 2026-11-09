@@ -80,3 +80,41 @@ def test_a_lint_error_blocks_the_render(tmp_path):
     with pytest.raises(hf.HFError, match="gsap_infinite_repeat"):
         hf.render(gate, tmp_path / "x.mp4", timeout=120)
     assert [p.name for p in tmp_path.iterdir()] == ["gate"]
+
+
+# ---- what HyperFrames says reaches the error, from both streams: `--strict` prints its reason on stdout, and any noise on stderr
+# (a Node deprecation warning on pve2) must not hide it. Faked with a script that says the same on each.
+
+NOISE, REASON = "(node:1) [DEP0040] DeprecationWarning: noise-on-stderr", "x gsap_infinite_repeat: reason-on-stdout"
+
+
+def fake_cli(tmp_path, monkeypatch, tail: str) -> Path:
+    script = tmp_path / "hyperframes"
+    script.write_text(f"#!/bin/sh\necho '{NOISE}' >&2\necho '{REASON}'\n{tail}\n")
+    script.chmod(0o755)
+    monkeypatch.setattr(hf, "_BIN", script)
+    comp = tmp_path / "comp"
+    comp.mkdir()
+    return comp
+
+
+def test_a_failed_render_shows_stdout_and_stderr(tmp_path, monkeypatch):
+    comp = fake_cli(tmp_path, monkeypatch, "exit 1")
+    with pytest.raises(hf.HFError) as e:
+        hf.render(comp, tmp_path / "x.mp4")
+    assert REASON in str(e.value) and NOISE in str(e.value)
+    assert str(e.value).index(REASON) < str(e.value).index(NOISE)  # stdout's tail, then stderr's
+
+
+def test_a_validate_that_prints_no_json_shows_stdout_and_stderr(tmp_path, monkeypatch):
+    comp = fake_cli(tmp_path, monkeypatch, "exit 1")
+    with pytest.raises(hf.HFError) as e:
+        hf.validate(comp)
+    assert REASON in str(e.value) and NOISE in str(e.value)
+
+
+def test_a_timeout_shows_what_both_streams_had_said(tmp_path, monkeypatch):
+    comp = fake_cli(tmp_path, monkeypatch, "exec sleep 30")  # exec: the shell is the one killed, nothing keeps the pipes open
+    with pytest.raises(hf.HFError, match="quá 2 giây") as e:
+        hf.render(comp, tmp_path / "x.mp4", timeout=2)
+    assert REASON in str(e.value) and NOISE in str(e.value)

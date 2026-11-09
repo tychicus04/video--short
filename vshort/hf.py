@@ -6,7 +6,7 @@ a newer release. hyperframes 0.8.206, from `hyperframes --version`. What `hyperf
     hyperframes render [DIR] -o <out.mp4> -f/--fps 30 [-q looks|draft|delivery] [-w auto|N] [--quiet] [--strict]
         DIR defaults to the cwd and must hold index.html; --format mp4 and -q looks (CRF 16) are the defaults.
         We pass --strict: a lint error (infinite repeat, Math.random...) then stops the render, and its text is printed on
-        stdout, not stderr. Never --strict-all: warnings are left to pass.
+        stdout, not stderr; the errors we raise carry the tail of both streams. Never --strict-all: warnings are left to pass.
         Size comes from the root's data-width/data-height (720x1280 stays 720x1280), length from data-duration.
     hyperframes validate [DIR] --json [--timeout ms]
         Loads the page in headless Chrome: {"ok", "errors": [{"level", "text", "url"}], "warnings", "contrast"}.
@@ -56,8 +56,7 @@ def _run(args: list[str], comp_dir: Path, timeout: int) -> subprocess.CompletedP
         return subprocess.run([str(_BIN), *args], cwd=comp_dir, env={**os.environ, **_ENV}, capture_output=True, text=True,
                               timeout=timeout)
     except subprocess.TimeoutExpired as e:  # what it printed before the kill says where it stalled; it arrives as bytes even with text=True
-        seen = (e.stderr or e.stdout or b"").decode(errors="replace")
-        raise HFError(f"HyperFrames chạy quá {timeout} giây ({args[0]} {comp_dir}):\n{_tail(seen)}") from None
+        raise HFError(f"HyperFrames chạy quá {timeout} giây ({args[0]} {comp_dir}):\n{_said(e.stdout, e.stderr)}") from None
     except OSError as e:
         raise HFError(f"Không chạy được HyperFrames: {e}") from e
 
@@ -65,6 +64,13 @@ def _run(args: list[str], comp_dir: Path, timeout: int) -> subprocess.CompletedP
 def _tail(text: str) -> str:
     """The last 20 lines, with terminal escape sequences (colours, cursor show/hide) removed."""
     return "\n".join(re.sub(r"\x1b\[[0-9;?]*[A-Za-z]", "", text).strip().splitlines()[-20:])
+
+
+def _said(stdout: str | bytes | None, stderr: str | bytes | None) -> str:
+    """What the CLI printed: the tail of stdout, where `--strict` puts its reason, then the tail of stderr. Both, so noise on one
+    (a Node deprecation warning) never hides the other; either may be bytes (after a timeout) or None."""
+    parts = (_tail(x.decode(errors="replace") if isinstance(x, bytes) else x or "") for x in (stdout, stderr))
+    return "\n".join(p for p in parts if p)
 
 
 def render(comp_dir: Path, out: Path, timeout: int = 600) -> None:
@@ -75,7 +81,7 @@ def render(comp_dir: Path, out: Path, timeout: int = 600) -> None:
         tmp = Path(scratch) / "render.mp4"
         cp = _run(["render", "-o", str(tmp), "--fps", str(FPS), "--strict"], comp_dir, timeout)
         if cp.returncode != 0 or not tmp.exists():
-            raise HFError(f"HyperFrames render lỗi (mã {cp.returncode}):\n{_tail(cp.stderr or cp.stdout)}")
+            raise HFError(f"HyperFrames render lỗi (mã {cp.returncode}):\n{_said(cp.stdout, cp.stderr)}")
         os.replace(tmp, out)
 
 
@@ -85,4 +91,5 @@ def validate(comp_dir: Path, timeout: int = 120) -> list[str]:
     try:
         return [e["text"] for e in json.loads(cp.stdout)["errors"]]
     except (json.JSONDecodeError, KeyError, TypeError):
-        raise HFError(f"HyperFrames validate không trả kết quả đọc được (mã {cp.returncode}):\n{_tail(cp.stderr or cp.stdout)}") from None
+        raise HFError(f"HyperFrames validate không trả kết quả đọc được (mã {cp.returncode}):\n"
+                      f"{_said(cp.stdout, cp.stderr)}") from None
