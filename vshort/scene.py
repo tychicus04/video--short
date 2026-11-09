@@ -369,7 +369,8 @@ class _Screen:
                     self.tone[i] = a["to"]
                     self.dim.discard(i)
             self._show(ids, t)
-        elif do != "flow":  # on, draw, type, move
+        elif do != "flow":  # on, draw, type, move: each ends at opacity 1, so a dimmed element is whole again
+            self.dim.difference_update(ids)
             self._show(ids, t)
 
     def _show(self, ids: list[str], t: float) -> None:
@@ -470,7 +471,7 @@ def resolve(sc: Scene, table: list[Phrase], title: str, total: float, said: tupl
         t0, t1, out = render.title_times(*said)
         bar = {"lines": fit[1], "size": fit[0], "t0": t0, "t1": t1, "out": out}
     return {"total": total, "title": bar,
-            "captions": [[p.start, p.end, p.text] for p in (table[1:] if bar else table)],
+            "captions": [[p.start, p.end, p.text.replace("*", "")] for p in (table[1:] if bar else table)],  # plain: the kit writes them as is
             "elements": reel.els, "actions": sorted(reel.actions, key=lambda a: a["t"])}  # stable: same-time actions keep their order
 
 
@@ -582,7 +583,8 @@ def check(rt: dict, brief: str) -> list[str]:
         if len(lit) > MAX_TONES:
             who = "; ".join(f"{TONE_VI[k]} ({', '.join(map(repr, v[:3]))})" for k, v in lit.items())
             report(frozenset(lit), f"{_s(t)}: {len(lit)} màu neon cùng lúc, tối đa {MAX_TONES}: {who}")
-    start = rt["title"]["out"] if rt.get("title") else 0.0
+    # with no bar the title is a caption, which holds the line until the spoken title ends: beats start after it
+    start = rt["title"]["out"] if rt.get("title") else rt["captions"][0][1] if rt.get("captions") else 0.0
     marks = [start] + sorted({a["t"] for a in acts if start < a["t"] < rt["total"]}) + [rt["total"]]
     for x, y in zip(marks, marks[1:]):
         if y - x > MAX_GAP + EPS:

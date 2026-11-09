@@ -440,6 +440,17 @@ def test_check_safe_zone():
     assert "'c1'" in got[0] and "618" in got[0] and "'c2'" in got[1] and "141" in got[1] and "'c3'" in got[2] and "1000" in got[2]
 
 
+def test_check_a_dimmed_element_shown_again_is_whole_again():
+    node = el("dc", "icon", [500, 300, 580, 380], "risk")
+    claim = chip("s1.1", "CHƯA XÁC NHẬN", [60, 300, 300, 340], "claim")
+    ok = el("k1", "icon", [100, 600, 180, 680], "safe")
+    acts = [act(1, "on", "dc"), act(2, "tone", "dc", to="dim"), act(3, "on", "s1.1"), act(4, "on", "k1")]
+    assert check(rt_of([node, claim, ok], acts, 8), "") == []  # dim, so two colours
+    for again in (act(5, "on", "dc"), act(5, "draw", "dc", d=0.6), act(5, "type", "dc", d=0.5), act(5, "move", "dc", **{"from": [[0, 0]]})):
+        got = check(rt_of([node, claim, ok], acts + [again], 8), "")
+        assert len(got) == 1 and got[0].startswith("5,0 s") and "3 màu" in got[0], (again, got)
+
+
 def test_check_three_tones():
     claim = chip("s1.1", "CHƯA XÁC NHẬN", [60, 300, 300, 340], "claim")
     node = el("dc", "icon", [500, 300, 580, 380], "risk")
@@ -470,6 +481,16 @@ def test_check_gap(acts, total, title, times):
         assert len(got) == 1 and "5 giây" in got[0] and all(t in got[0] for t in times)
 
 
+def test_a_title_without_a_bar_is_a_caption_and_the_gap_clock_starts_when_it_has_been_said():
+    d = one_section([{"at": 1, "do": "draw", "ids": ["dc"]}, {"at": 2, "do": "chip", "text": "PHẢI TIN?", "near": "dc"}])
+    long_title = [{"id": 1, "start": 0.2, "dur": 6.0}, {"id": 2, "start": 6.7, "dur": 1.5}, {"id": 3, "start": 8.4, "dur": 1.0}]
+    table = phrase_table({"total": 10.0, "placements": long_title}, SCRIPT)
+    rt = resolved(d, table, 10.0, (0.2, 6.2), "CHỮ " * 80)
+    assert rt["title"] is None and rt["captions"][0][1] == pytest.approx(6.7) and check(rt, "") == []
+    rt["captions"] = []  # nothing to say when it ended: from 0
+    assert "0,0 s đến" in check(rt, "")[0]
+
+
 def test_check_an_action_outside_the_video():
     c = chip("c", "VỪA", [60, 300, 200, 340])
     got = check(rt_of([c], [act(2, "on", "c"), act(5, "type", "c", d=1), act(11, "off", "c")], 8), "")
@@ -490,10 +511,12 @@ def test_check_numbers_in_a_quote_a_statement_a_hero_label_and_a_section_label()
     q = el("s1.1", "quote", [60, 380, 600, 750], "claim", text="giảm 40 %", who="CÔNG TY 77")
     s = el("s1.2", "statement", [60, 870, 600, 960], None, text="mất 12 giờ")
     h = hero("s1.3", "CẤP 3")
-    sec = el("s1.label", "section", [60, 190, 300, 220], "normal", text="MỤC 8")
-    got = check(rt_of([q, s, h, sec], [act(2, "on", "s1.label", "s1.1"), act(5, "on", "s1.2"), act(8, "on", "s1.3")], 11), "")
+    sec = el("s1.label", "section", [60, 190, 300, 220], "claim", text="MỤC 8")
+    acts = [act(2, "on", "s1.label", "s1.1"), act(4, "off", "s1.1"), act(5, "on", "s1.2"), act(7, "off", "s1.2"), act(8, "on", "s1.3")]
+    got = check(rt_of([q, s, h, sec], acts, 11), "")  # at most two colours at once and nothing overlaps: only the numbers are wrong
+    assert len(got) == 5
     for who, num in (("s1.1", "40"), ("s1.1", "77"), ("s1.2", "12"), ("s1.3", "3"), ("s1.label", "8")):
-        assert any(who in p and f"số {num}" in p or (who in p and num in p) for p in got), (who, num, got)
+        assert any(f"'{who}'" in p and f"số {num} không có trong brief" in p for p in got), (who, num, got)
 
 
 def test_check_names_are_checked_unless_all_capitals_or_a_section_label():
@@ -546,6 +569,12 @@ def test_title_matches_cover():
 def test_no_bar_for_a_title_that_does_not_fit_and_the_caption_keeps_the_line():
     rt = resolved(one_section([{"at": 1, "do": "draw", "ids": ["dc"]}]), title="CHỮ " * 80)
     assert rt["title"] is None and rt["captions"][0] == [0.0, 2.7, "Tiêu đề của video"] and len(rt["captions"]) == 4
+
+
+def test_captions_are_plain_text():
+    script = [SCRIPT[0], {"id": 2, "phrases": "phần mềm *hợp lệ* | bốn năm sáu"}, SCRIPT[2]]
+    rt = resolved(one_section([{"at": 1, "do": "draw", "ids": ["dc"]}]), phrase_table(TIMELINE, script))
+    assert [c[2] for c in rt["captions"]] == ["phần mềm hợp lệ", "bốn năm sáu", "kết thúc"]
 
 
 def test_a_beat_is_timed_to_its_phrase():
@@ -742,6 +771,26 @@ def test_scene_writes_the_resolved_file_and_marks_the_step(tmp_path, capsys):
     assert "scene.resolved.json" in capsys.readouterr().out
 
 
+def test_a_refused_round_leaves_no_pass_behind(tmp_path, capsys):
+    run = _scene_run(tmp_path, SCENE_OK)
+    assert main(["scene", run]) == 0
+    assert (tmp_path / "scene.resolved.json").exists() and json.loads((tmp_path / "state.json").read_text())["scene"] == "done"
+    for edit in (lambda d: d["sections"][0]["beats"][1].update(at=41),  # the script was re-voiced: a phrase is gone (place/phrase)
+                 lambda d: d["sections"][0]["beats"].append({"at": 2, "do": "teleport", "ids": ["dc"]}),  # load
+                 lambda d: d["sections"][0]["beats"][1].update(text="TĂNG 1000 LẦN")):  # check
+        assert main(["scene", run]) == 0  # a good round again
+        bad = copy.deepcopy(SCENE_OK)
+        edit(bad)
+        (tmp_path / "scene.json").write_text(json.dumps(bad))
+        assert main(["scene", run]) == 2
+        assert not (tmp_path / "scene.resolved.json").exists() and "scene" not in json.loads((tmp_path / "state.json").read_text())
+        (tmp_path / "scene.json").write_text(json.dumps(SCENE_OK))
+    assert main(["scene", run]) == 0
+    (tmp_path / "scene.json").unlink()  # a missing scene.json too
+    assert main(["scene", run]) == 2
+    assert not (tmp_path / "scene.resolved.json").exists() and "scene" not in json.loads((tmp_path / "state.json").read_text())
+
+
 def test_scene_names_a_missing_scene_json(tmp_path, capsys):
     assert main(["scene", _run(tmp_path)]) == 2
     assert "scene.json" in capsys.readouterr().err and not (tmp_path / "scene.resolved.json").exists()
@@ -753,7 +802,7 @@ def test_scene_prints_every_load_problem_one_per_line(tmp_path, capsys):
     assert main(["scene", _scene_run(tmp_path, bad)]) == 2
     err = capsys.readouterr().err.strip().splitlines()
     assert len(err) == 2 and "'teleport'" in err[0] and "'ghost'" in err[1]
-    assert not (tmp_path / "scene.resolved.json").exists() and not (tmp_path / "state.json").exists()
+    assert not (tmp_path / "scene.resolved.json").exists() and "scene" not in json.loads((tmp_path / "state.json").read_text())
 
 
 def test_scene_prints_place_and_phrase_problems(tmp_path, capsys):
