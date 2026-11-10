@@ -175,12 +175,15 @@ def test_poster_prompt_goes_with_the_covers_and_the_export(tmp_path):
     assert main(["cover", str(run)]) == 0
     prompt = (run / "cover" / "prompt.txt").read_text()
     assert "Story: a NAS is held to ransom." in prompt and '"CẢNH BÁO KHẨN"' in prompt
-    assert 'line 1, red, biggest: "NAS CHƯA VÁ"' in prompt and 'line 4, white, smaller: "Cập nhật ngay"' in prompt
+    assert "NAS CHƯA VÁ" not in prompt and "line 1" not in prompt  # no headline: the title is typed into the bar afterwards
+    assert "title bar" in prompt and "50-70 %" in prompt and "No headline" in prompt
     assert cover.WIDE not in prompt  # the 16:9 follow-up is pasted on its own, after the first picture
     saved = (run / "xuat" / "T" / "prompt-anh-bia.txt").read_text()
     assert saved.startswith(prompt) and cover.WIDE in saved
 
-    for bad in ({**poster, "lines": ["một dòng"]}, {**poster, "scene": " "}, {"scene": "x"}, "text"):
+    assert "title bar" in cover.WIDE and "headline text" not in cover.WIDE
+    assert cover.poster_prompt({"poster": {"scene": "x"}}).count('"CẢNH BÁO KHẨN"') == 1  # the badge defaults; no lines needed
+    for bad in ({**poster, "scene": " "}, {"badge": "B"}, {**poster, "badge": " "}, "text"):
         assert cover.poster_prompt({"poster": bad}) is None
     (run / "cover" / "pick.json").write_text(json.dumps({"n": None, "why": "", "title": "T"}))
     assert main(["cover", str(run)]) == 0  # no poster this time: no old prompt left beside the new pick
@@ -199,12 +202,40 @@ def _gif(w, h) -> bytes:
     return buf.getvalue()
 
 
-def test_save_gemini_converts_and_caps_size(tmp_path):
-    p = cover.save_gemini(tmp_path, "9x16", _png(3000, 5333))
-    assert p == tmp_path / "cover" / "gemini-9x16.jpg"
-    with Image.open(p) as im:
-        assert im.format == "JPEG" and max(im.size) == 2048 and abs(im.width / im.height - 3000 / 5333) < 0.01
-    assert cover.save_gemini(tmp_path, "16x9", _png(1900, 1080)).name == "gemini-16x9.jpg"  # 1 % off: fine
+def test_save_gemini_fits_the_frame_and_types_the_title_in_the_bar(tmp_path):
+    run = _run(tmp_path)
+    for shape, data in (("9x16", _png(3000, 5333)), ("16x9", _png(1900, 1080))):  # 1 % off 16:9: fine
+        p = cover.save_gemini(run, shape, data)
+        assert p == run / "cover" / f"gemini-{shape}.jpg"
+        (sx0, sy0, sx1, sy1), (x0, y0, x1, y1) = cover.BAR[shape]
+        with Image.open(p) as im:
+            assert im.format == "JPEG" and im.size == cover.SIZES[shape]
+            rgb = im.convert("RGB")
+        assert max(abs(c - t) for c, t in zip(rgb.getpixel((x1 - 5, y0 + 5)), cover.TEAL)) < 12, shape  # the box
+        assert max(abs(c - t) for c, t in zip(rgb.getpixel(((sx0 + sx1) // 2, (sy0 + sy1) // 2)), cover.YELLOW)) < 12, shape
+        assert rgb.getpixel((x1 // 2, 100))[0] > 190, shape  # the upload's red above the bar
+
+
+def test_save_gemini_16x9_takes_the_picks_thumb_and_refuses_a_title_that_does_not_fit(tmp_path, monkeypatch):
+    run, seen, real = _run(tmp_path), [], cover.headline
+    monkeypatch.setattr(cover, "headline", lambda img, text, shape: seen.append(text) or real(img, text, shape))
+    spoken = "Phần mềm *hợp lệ* vẫn chở mã độc"
+    (run / "cover" / "pick.json").write_text(json.dumps({"thumb": "*CVSS 10*: chiếm cụm"}))
+    cover.save_gemini(run, "16x9", _png(1920, 1080))
+    cover.save_gemini(run, "9x16", _png(1080, 1920))  # the 9:16 bar shows the spoken title, as the video's does
+    (run / "cover" / "pick.json").write_text(json.dumps({"thumb": "chữ " * 200}))
+    cover.save_gemini(run, "16x9", _png(1920, 1080))  # too long a thumb: the spoken title goes in
+    assert seen == ["*CVSS 10*: chiếm cụm", spoken, "chữ " * 200, spoken]
+
+    (run / "script.vi.json").write_text(json.dumps([{"id": 1, "phrases": "chữ " * 200}]))
+    for shape, size in cover.SIZES.items():
+        (run / "cover" / cover.GEMINI[shape]).unlink()
+        with pytest.raises(ValueError, match="Tiêu đề không vừa thanh tiêu đề"):
+            cover.save_gemini(run, shape, _png(*size))
+    (run / "script.vi.json").unlink()
+    with pytest.raises(ValueError, match="Chưa có lời video"):
+        cover.save_gemini(run, "9x16", _png(1080, 1920))
+    assert not list(run.rglob("*gemini*"))  # nothing written, not even a temp file
 
 
 def test_save_gemini_refuses_wrong_ratio_bad_shape_non_image_and_huge(tmp_path):
@@ -233,6 +264,6 @@ def test_package_prefers_gemini(tmp_path):
     cover.package(run)
     [folder] = (run / "xuat").iterdir()
     with Image.open(folder / "thumb-doc-9x16.jpg") as im:
-        r, g, b = im.convert("RGB").getpixel((540, 960))
+        r, g, b = im.convert("RGB").getpixel((540, 100))  # above the bar: the upload's red
     assert r > 200 and g < 60 and b < 60
     assert (folder / "thumb-ngang-16x9.jpg").read_bytes() == (run / "cover" / "thumb-16x9.jpg").read_bytes()  # no Gemini one
