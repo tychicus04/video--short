@@ -1,6 +1,7 @@
 """`vshort <command> <run_dir>`: every pipeline step as a command that can be re-run."""
 import argparse
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -278,7 +279,15 @@ def cmd_visuals(a) -> int:
 
 
 def _tts_lines(run: Run) -> list[tuple[int, str]]:
-    return [(row["id"], _speech(row["phrases"])) for row in run.read("script.vi.json") if row["phrases"].strip()]
+    """What the voice is given to read. A name it reads wrong is spelled the way it sounds in config.toml's [say] (whole words
+    only); the subtitles and the diagram are made from script.vi.json and keep the name as it is written."""
+    say = config().get("say", {})
+
+    def spell(text: str) -> str:
+        for word, sound in say.items():
+            text = re.sub(rf"(?<![\w-]){re.escape(word)}(?![\w-])", lambda _: sound, text)
+        return text
+    return [(row["id"], spell(_speech(row["phrases"]))) for row in run.read("script.vi.json") if row["phrases"].strip()]
 
 
 def _tts_tag(cfg: dict) -> str:

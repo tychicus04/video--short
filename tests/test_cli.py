@@ -651,3 +651,12 @@ def test_clean_cmd_writes_clean_mp4_and_its_summary(make_video, tmp_path):
     assert (tmp_path / "clean.mp4").exists() and Run(tmp_path).done("clean")
     assert json.loads((tmp_path / "clean.json").read_text())["boxes"] == []
 
+
+
+def test_the_voice_reads_a_name_as_config_say_spells_it_and_the_subtitles_keep_it(tmp_path, monkeypatch):
+    cfg = cli.config()
+    monkeypatch.setattr(cli, "config", lambda: cfg | {"say": {"N-able": "Enable", "AI": "ây ai"}})
+    (tmp_path / "script.vi.json").write_text(json.dumps(
+        [{"id": 1, "phrases": "Theo N-able, | hãng tự tắt."}, {"id": 2, "phrases": "N-able-X và MAIL | không đổi, AI thì đổi."}]))
+    assert cli._tts_lines(Run(tmp_path)) == [(1, "Theo Enable, hãng tự tắt."), (2, "N-able-X và MAIL không đổi, ây ai thì đổi.")]
+    assert "N-able" in json.loads((tmp_path / "script.vi.json").read_text())[0]["phrases"]  # what the subtitles are made from
