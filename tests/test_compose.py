@@ -4,10 +4,10 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from PIL import Image
 
-from vshort import compose, hf
+from vshort import compose, hf, media
 from vshort.layout import TUNNEL_HALF
-from vshort.media import frame_at
 from vshort.render import BAR, STRIPE, TEAL, YELLOW
 from vshort.textfit import _font
 
@@ -177,6 +177,8 @@ def test_write_composition_has_everything(tmp_path):
         assert (out / name).is_file(), name
     html = (out / "index.html").read_text(encoding="utf-8")
     assert 'data-duration="6.0"' in html and 'data-composition-id="main"' in html
+    # laid out on 720 x 1280 (every number of layout.py), drawn 1.5 times as large: text and 3 px strokes stay sharp on a phone
+    assert 'data-width="1080"' in html and 'data-height="1920"' in html and "scale(1.5)" in (out / "kit.css").read_text()
     assert embedded(html) == rt
     assert html.count("</script>") == html.count("<script")  # nothing the scene says ends a script early
     assert "cdn" not in html and "http" not in html  # nothing comes from the network
@@ -191,6 +193,11 @@ def small_render(tmp_path_factory):
     out = d / "small.mp4"
     hf.render(comp, out)
     return comp, out
+
+
+def frame_at(path, t):
+    """The frame in layout pixels: the kit draws its 720 x 1280 picture 1.5 times as large, and the boxes below are layout.py's."""
+    return np.asarray(Image.fromarray(media.frame_at(path, t)).resize((720, 1280), Image.LANCZOS))
 
 
 def count(frame, box, ok):

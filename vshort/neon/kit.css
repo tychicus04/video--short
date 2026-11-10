@@ -3,9 +3,11 @@
 @font-face { font-family: "Be Vietnam Pro"; font-weight: 800; src: url("BeVietnamPro-ExtraBold.ttf"); }
 @font-face { font-family: "IBM Plex Mono"; font-weight: 600; src: url("IBMPlexMono-SemiBold.ttf"); }
 * { margin: 0; padding: 0; box-sizing: border-box; }
-html, body { width: 720px; height: 1280px; overflow: hidden; background: #04060c; }
-#root { position: relative; width: 720px; height: 1280px; overflow: hidden; }
-#scene { position: absolute; inset: 0; background:
+/* The picture is laid out on 720 × 1280 (every number in layout.py, scene.py and kit.js is in those pixels) and drawn 1.5 times
+   as large, 1080 × 1920: phones show 1080 across, and a 720 video scaled up there blurs 22 px text and 3 px strokes. */
+html, body { width: 1080px; height: 1920px; overflow: hidden; background: #04060c; }
+#root { position: relative; width: 1080px; height: 1920px; overflow: hidden; }
+#scene { position: absolute; left: 0; top: 0; width: 720px; height: 1280px; transform: scale(1.5); transform-origin: 0 0; background:
     radial-gradient(ellipse at 50% 42%, rgba(30,60,110,.28), rgba(0,0,0,0) 62%),
     radial-gradient(circle, rgba(140,175,255,.16) 1.5px, rgba(0,0,0,0) 2px) 0 0 / 36px 36px,
     #04060c; }

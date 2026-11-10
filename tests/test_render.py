@@ -206,10 +206,10 @@ def test_the_reviewer_quotes_the_subtitle_place_the_render_uses():
 
 # ---- the neon style: the rendered diagram, the voice and the outro in one pass ----
 
-def _visuals(tmp_path, rgb="2BE3FF", seconds=4):
+def _visuals(tmp_path, rgb="2BE3FF", seconds=4, size=(W, H)):
     """A flat silent clip tagged the way HyperFrames tags what it renders: BT.709, limited range."""
     out = tmp_path / "visuals.mp4"
-    subprocess.run([FF, "-loglevel", "error", "-f", "lavfi", "-i", f"color=c=0x{rgb}:s={W}x{H}:r=30:d={seconds}", "-vf",
+    subprocess.run([FF, "-loglevel", "error", "-f", "lavfi", "-i", f"color=c=0x{rgb}:s={size[0]}x{size[1]}:r=30:d={seconds}", "-vf",
                     "scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,"
                     "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv", "-c:v", "libx264", str(out)], check=True)
     return out
@@ -236,6 +236,17 @@ def test_render_neon_keeps_the_colours_and_ends_on_the_outro(tmp_path):
     render_neon(visuals, tmp_path / "mix.wav", 4.0, out)
     assert np.abs(frame_at(out, 2.0)[640, 360].astype(int) - frame_at(visuals, 2.0)[640, 360].astype(int)).max() < 4  # the diagram
     assert np.abs(frame_at(out, probe(out).duration - 0.1)[640, 360].astype(int) - frame_at(OUTRO, 2.4)[640, 360].astype(int)).max() < 30
+
+
+def test_render_neon_is_as_large_as_the_diagram_was_drawn_and_the_outro_is_scaled_to_it(tmp_path):
+    visuals = _visuals(tmp_path, size=(1080, 1920))
+    write_silence(tmp_path / "mix.wav", 4.0)
+    out = tmp_path / "final.mp4"
+    render_neon(visuals, tmp_path / "mix.wav", 4.0, out)
+    info = probe(out)
+    assert (info.width, info.height) == (1080, 1920)
+    last, outro = frame_at(out, info.duration - 0.1), frame_at(OUTRO, 2.4)  # the same picture, 1.5 times as large
+    assert np.abs(last[960, 540].astype(int) - outro[640, 360].astype(int)).max() < 30
 
 
 def test_render_neon_failure_keeps_the_previous_video(tmp_path):

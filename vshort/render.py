@@ -325,10 +325,11 @@ def render_neon(visuals: Path, audio: Path, total: float, out: Path, outro: Path
     (`audio`), in BT.709, then the `outro` clip faded in from the last frame. One ffmpeg run."""
     ins = ["-i", str(visuals.resolve()), "-i", str(audio.resolve())]
     extra = probe(outro).duration if outro else 0.0
-    g = [f"[0:v]fps={FPS},scale={W}:{H},{COLOR}[m]"]
+    size = probe(visuals)  # the size the kit drew at (1080 x 1920): the 720 x 1280 outro is scaled up to it, never the diagram down
+    g = [f"[0:v]fps={FPS},{COLOR}[m]"]
     if outro:
         g.append(f"[m]tpad=stop_mode=clone:stop_duration={XF},fps={FPS},settb=AVTB[mx];"  # xfade wants a set frame rate
-                 f"[2:v]fps={FPS},scale={W}:{H},format=rgb24,{COLOR},settb=AVTB[o];"
+                 f"[2:v]fps={FPS},scale={size.width}:{size.height}:flags=lanczos,format=rgb24,{COLOR},settb=AVTB[o];"
                  f"[mx][o]xfade=transition=fade:duration={XF}:offset={total:.4f}[v]")
         ins += ["-i", str(outro.resolve())]
     else:
