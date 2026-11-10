@@ -13,7 +13,8 @@ không viết tọa độ, không chọn màu ngoài bốn nghĩa.
 - Đọc `RUN/brief.vi.md` — mục "Cơ chế từng bước" (hình vẽ theo đúng các bước này) và "Lưu ý độ chính xác" (cái không được nói) —
   và `RUN/script.vi.json` (lời đã duyệt: mỗi câu một mục, các cụm phụ đề cách nhau `|`).
 - Chạy `cd ~/video-pipeline && uv run vshort scene RUN --table`: nó in **số thứ tự của từng cụm** (từ 0), giờ cụm bắt đầu, chữ của
-  cụm, rồi các bước cơ chế. Cụm 0 là câu tiêu đề: thanh tiêu đề của tạp chí lo, nó không nhận nhịp hình; nhịp đầu đặt từ cụm 1.
+  cụm, rồi các bước cơ chế. Cụm 0 là câu tiêu đề, thanh tiêu đề của tạp chí gõ nó ra. Ở cụm 0 chỉ có một thứ, **icon mở đầu**
+  (xem "Mở đầu" trong phần Luật); mọi nhịp khác đặt từ cụm 1.
 - Nếu `RUN/scene.json` đã có (lời vừa đổi nên bảng cụm đổi): đọc nó, so với bảng mới, giữ chỗ còn đúng, sửa số cụm `at` cho khớp
   lời mới.
 
@@ -69,6 +70,14 @@ Không có tọa độ, không có "clear": sang mục mới thì mọi thứ kh
 
 ## Luật
 
+**Mở đầu.** Ba giây đầu quyết định người xem ở lại hay lướt: thanh tiêu đề không được đứng một mình trên nền trống.
+- Mục đầu tiên của scene là một mục `none`, không nhãn, có đúng một nhịp: `{"at": 0, "do": "hero", "icon": …, "tone": …}`, **không
+  `label`** (nhãn sẽ đè lên thanh tiêu đề). Icon lớn này vẽ dần phía trên thanh tiêu đề ngay từ khung đầu, trong lúc tiêu đề được đọc,
+  rồi tắt khi mục sau mở.
+- `icon` là chủ thể của video (máy chủ, tệp, con chip, điện thoại…), `tone` theo nghĩa câu tiêu đề: `risk` cho một vụ tấn công,
+  `normal` cho một công nghệ, `claim` cho một lời tuyên bố chưa ai kiểm. Luôn ghi `tone`: bỏ trống là xanh lá.
+- Mục sau đó bắt đầu ngay ở cụm 1, để icon không đứng một mình sau khi thanh tiêu đề đã cuộn đi.
+
 **Cơ chế.**
 - Mỗi bước cơ chế là một thay đổi nhìn thấy được của sơ đồ, đặt ở **đúng cụm** nói tới nó. Bước 0 "Bình thường" dựng sơ đồ yên ổn
   (`normal`); các bước sau bẻ nó (`state` sang `risk`, `badge`, `flow`, `swap`…). Không đảo thứ tự, không gộp bước.
@@ -86,21 +95,43 @@ Không có tọa độ, không có "clear": sang mục mới thì mọi thứ kh
   kiểm "bình thường" khi nút đã bị chiếm) thì đừng giữ nút đó: khai báo lại nút ở mục sau bằng một id mới (ví dụ SharePoint).
 
 **Ngoài phần cơ chế** (khoảng 40 % video: chi tiết mở màn, ý chính, cái giá, điều chưa xác nhận, câu chốt, lời kêu gọi).
-- Giữ sơ đồ, đừng làm mỗi câu một thẻ. `dim` sơ đồ rồi mỗi ý là một `chip` hay `quote`: chip gắn `near` đúng nút nó nói về; con số
-  `claim` (vàng), điều chưa xác nhận một chip vàng "CHƯA XÁC NHẬN", cái giá hay rủi ro `risk` (đỏ).
+- Giữ sơ đồ, đừng làm mỗi câu một thẻ. `dim` sơ đồ rồi mỗi ý là một `chip` hay `quote`; con số `claim` (vàng), điều chưa xác nhận
+  một chip vàng "CHƯA XÁC NHẬN", cái giá hay rủi ro `risk` (đỏ).
+- **`near` chỉ khi chip nói về chính nút đó** ("CHƯA VÁ" cạnh máy chủ, "ÍT NHẤT 33 MÁY" cạnh các máy). Chip về nguồn, ngày, tên nhóm,
+  hay "CHƯA KIỂM CHỨNG" thì **không `near`**: chúng xếp thành một cột bên trái và đọc liền nhau như một câu. Gắn "NHÓM STORM-2603"
+  cạnh một máy nạn nhân là bảo máy đó là nhóm đó.
 - `quote` chiếm khung cố định giữa hình (y 380–750), nên nó chỉ đứng ở mục không có nút hiện (mục `none`, như chi tiết mở màn),
   không đứng trên sơ đồ. Mục có `quote` chứa tối đa 2 chip không có `near`; nhiều hơn thì chúng chồng vào quote.
 - **Câu chốt** là một `statement` trên sơ đồ đã `dim`. **Lời kêu gọi** là một `statement` kèm một icon nhỏ: một `badge` (icon của việc
-  nên làm: `shield-check`, `lock`…) trên nút còn lại, thường sau `state` sang `safe`. `statement` ngắn như một cú đấm, không chép cả
-  câu.
+  nên làm) trên nút còn lại. Lời kêu gọi là một việc làm cho nút đó an toàn (vá, cập nhật, đổi khóa) thì `state` sang `safe` và badge
+  `shield-check` hay `lock`. Lời kêu gọi là "hãy hỏi", "hãy kiểm tra", "đừng vội tin" thì nút **giữ màu cũ** và badge là `eye`: xanh
+  lá ở đó là bảo thứ đang bị nghi ngờ đã đáng tin. `statement` ngắn như một cú đấm, không chép cả câu.
+- **Chữ trong hình không nói mạnh hơn lời.** Lời nói "có mô tả rõ" thì hình không viết "CƠ CHẾ THÌ RÕ"; lời nói "tới 33 máy" thì hình
+  không viết "KHÓA 33 MÁY". Chip nêu một mốc ngày thì nói luôn mốc của việc gì ("BỊ KHAI THÁC TỪ 1/7/2026", không chỉ "TỪ 1/7/2026").
+- **Nhãn mục** nói nội dung của đoạn ("MỘT VỤ TẤN CÔNG", "LAN RA MẠNG", "VÁ CHƯA ĐỦ"), không phải tên phần của video: người xem không
+  cần thấy "MỞ MÀN", "CƠ CHẾ", "Ý CHÍNH", "CÂU CHỐT". Không có gì để nói thì để `""`.
 - Con số, tên riêng trong chip, quote, statement, nhãn: chỉ lấy từ brief. Code đối chiếu từng số và tên (chữ in hoa chỉ được kiểm
   số, vẫn không thêm tên ngoài brief: người soát đọc).
 
 **Màu.** Tối đa `MAX_TONES` (2 màu) neon cùng lúc; phần tử mờ (`dim`) không tính, statement trắng không tính.
+- **Màu là nghĩa, và một nhân vật giữ một màu suốt video.** Kẻ tấn công đỏ ngay từ khi hiện (một `state` sang `risk` ở cùng cụm với
+  `show` của nó), không xanh dương ở mục này rồi đỏ ở mục sau. Con số và lời của một công ty là `claim` (vàng), kể cả khi cả mục
+  đang xanh dương.
+- **`safe` (xanh lá) và dấu kiểm** (`badge-check`, `check`, `shield-check`) chỉ dành cho thứ brief nói là đã an toàn, đã vá, đã được
+  xác minh. Một lời tuyên bố chưa kiểm chứng, một thông cáo, "nơi buộc phải tin" không bao giờ xanh lá, không mang dấu kiểm.
 - Nhãn mục, nút, nối, badge lấy màu của mục; chip và quote mặc định vàng; hero xanh lá. Sơ đồ xanh dương, một nút đã đỏ, và một chip
   vàng là ba màu: cho chip `tone` trùng màu có sẵn, hoặc `dim` sơ đồ trước.
 
 **Nhịp.**
+- **Hình không đi trước lời.** Chip, quote, statement, nhãn nút hiện ở cụm đọc tới chữ của nó, không sớm hơn: quote đặt ở cụm bắt
+  đầu đọc câu được trích (không ở cụm "Theo …" đứng trước); nút có nhãn "người đóng góp" hiện ở cụm nói "người đóng góp". Muốn có hình
+  sớm hơn thì cho nút hiện không nhãn, hoặc một chip khác đúng với cụm đó.
+- **Chữ phải kịp đọc.** Chip, statement, quote đứng trọn vẹn ít nhất 1 giây trước khi mục của nó tắt (mục tắt 0,35 s trước nhịp đầu
+  của mục sau); code kiểm. Chip quan trọng nhất của một mục ("CHƯA KIỂM CHỨNG") đừng đặt ở cụm cuối kèm `delay`.
+- **Badge chỉ phụ họa.** Một badge rộng 34 px, trên điện thoại gần như không đọc ra. Ý nào lời nói thành chữ ("vượt lớp xác thực",
+  "phải tin nơi đó", "không tính toán nặng") thì hình nói bằng một `chip`, không chỉ bằng một badge. Mỗi thứ chỉ vẽ một lần: mảnh đã
+  bay tới máy thì không thêm badge "mảnh" lên máy đó. Badge đứng ở góc nút; góc nào có nét nối đi qua thì code tự đổi góc, hết góc
+  (nút giữa của `ring` đủ nối) thì báo lỗi.
 - Mỗi câu của lời (mỗi mục của `script.vi.json`) có ít nhất một nhịp ở một cụm của nó, trừ câu tiêu đề.
 - Không quá `MAX_GAP` (5 giây) liền không có nhịp nào, từ hết câu tiêu đề tới hết video, cả đoạn cuối.
 
@@ -111,12 +142,13 @@ không mã, không lệnh, không payload, không thêm ý ngoài brief; điều
 
 Mỗi ví dụ là một scene đầy đủ, qua `vshort scene`; số cụm `at` là của một video giả định.
 
-**SharePoint.** (1) máy chủ ở `center` kèm dấu kiểm: bình thường; (2) kẻ tấn công ở `pair`, `flow` một yêu cầu tới máy chủ; (3) máy
-chủ `state` rủi ro, `chip` "chạy mã lạ"; (4) `badge` chìa ở kẻ tấn công, `badge` cửa ở máy chủ; (5) `ring` các máy nội bộ, đỏ lan dọc
-nối; (6) `swap` tệp thành tệp khóa trên từng máy.
+**SharePoint.** (0) icon mở đầu: máy chủ đỏ; (1) máy chủ ở `center` kèm dấu kiểm: bình thường; (2) kẻ tấn công (đỏ từ đầu) ở `pair`,
+`flow` một yêu cầu tới máy chủ; (3) máy chủ `state` rủi ro, `chip` "chạy mã lạ"; (4) `badge` chìa ở kẻ tấn công, `chip` "vượt xác
+thực" (lời nói ý đó thành chữ, nên là chip); (5) `ring` các máy nội bộ, đỏ lan dọc nối; (6) `swap` tệp thành tệp khóa trên từng máy.
 
 ```json
 {"sections": [
+ {"id": "mo-dau", "label": "", "tone": "risk", "layout": "none", "beats": [{"at": 0, "do": "hero", "icon": "server", "tone": "risk"}]},
  {"id": "binh-thuong", "label": "THÔNG THƯỜNG", "tone": "normal", "layout": "center",
   "nodes": [{"id": "may-chu", "icon": "server", "label": "máy chủ", "slot": "hub"}],
   "beats": [{"at": 3, "do": "draw", "ids": ["may-chu"]}, {"at": 4, "do": "badge", "node": "may-chu", "icon": "badge-check"}]},
@@ -124,12 +156,13 @@ nối; (6) `swap` tệp thành tệp khóa trên từng máy.
   "nodes": [{"id": "may-chu-2", "icon": "server", "label": "máy chủ", "slot": "hub"},
             {"id": "ke-xau", "icon": "user-x", "label": "kẻ tấn công", "slot": "left"}],
   "links": [{"id": "yeu-cau", "a": "ke-xau", "b": "may-chu-2"}],
-  "beats": [{"at": 6, "do": "show", "ids": ["may-chu-2", "ke-xau", "yeu-cau"]},
+  "beats": [{"at": 6, "do": "state", "ids": ["ke-xau"], "to": "risk"},
+            {"at": 6, "do": "show", "ids": ["may-chu-2", "ke-xau", "yeu-cau"]},
             {"at": 6, "do": "flow", "link": "yeu-cau", "dir": "a-b", "delay": 0.5},
             {"at": 7, "do": "state", "ids": ["may-chu-2"], "to": "risk"},
             {"at": 7, "do": "chip", "text": "CHẠY MÃ LẠ", "near": "may-chu-2", "tone": "risk"},
             {"at": 8, "do": "badge", "node": "ke-xau", "icon": "key-round"},
-            {"at": 9, "do": "badge", "node": "may-chu-2", "icon": "door-open"}]},
+            {"at": 9, "do": "chip", "text": "VƯỢT XÁC THỰC", "tone": "risk"}]},
  {"id": "lan-ra", "label": "LAN RA", "tone": "normal", "layout": "ring",
   "nodes": [{"id": "may-chu-3", "icon": "server", "label": "máy chủ", "slot": "hub"},
             {"id": "pc1", "icon": "monitor", "label": "", "slot": "r0"}, {"id": "pc2", "icon": "monitor", "label": "", "slot": "r2"},
@@ -145,11 +178,12 @@ nối; (6) `swap` tệp thành tệp khóa trên từng máy.
 ]}
 ```
 
-**Synology.** (1) NAS kèm `chip` "DSM cũ"; (2) `badge` khiên; (3) NAS chuyển đỏ; (4) `grid` các tệp, `swap` sang tệp khóa; (5) thư
+**Synology.** (0) icon mở đầu: ổ lưu trữ đỏ; (1) NAS kèm `chip` "DSM cũ"; (2) `badge` khiên; (3) NAS chuyển đỏ; (4) `grid` các tệp, `swap` sang tệp khóa; (5) thư
 đòi tiền.
 
 ```json
 {"sections": [
+ {"id": "mo-dau", "label": "", "tone": "risk", "layout": "none", "beats": [{"at": 0, "do": "hero", "icon": "hard-drive", "tone": "risk"}]},
  {"id": "nas-cu", "label": "NAS CHƯA VÁ", "tone": "normal", "layout": "center",
   "nodes": [{"id": "nas", "icon": "hard-drive", "label": "NAS", "slot": "hub"}],
   "beats": [{"at": 3, "do": "draw", "ids": ["nas"]}, {"at": 3, "do": "chip", "text": "DSM CŨ", "near": "nas", "tone": "risk", "delay": 0.5},
@@ -169,12 +203,13 @@ nối; (6) `swap` tệp thành tệp khóa trên từng máy.
 ]}
 ```
 
-**VPN hậu lượng tử.** (1) `pair` chi nhánh và trụ sở nối bằng `tunnel`, `flow` gói dữ liệu; (2) kẻ nghe lén ở `hub` (trên đường
+**VPN hậu lượng tử.** (0) icon mở đầu: khóa xanh dương; (1) `pair` chi nhánh và trụ sở nối bằng `tunnel`, `flow` gói dữ liệu; (2) kẻ nghe lén ở `hub` (trên đường
 nối), `flow` rẽ một bản sao vào kho lưu; (3) hai chìa (cổ điển, hậu lượng tử) `merge` thành một chìa; (4) `swap` chìa hậu lượng tử
 thành chìa khác, chìa cổ điển vẫn sáng.
 
 ```json
 {"sections": [
+ {"id": "mo-dau", "label": "", "tone": "normal", "layout": "none", "beats": [{"at": 0, "do": "hero", "icon": "lock", "tone": "normal"}]},
  {"id": "vpn", "label": "VPN HIỆN NAY", "tone": "normal", "layout": "pair",
   "nodes": [{"id": "chi-nhanh", "icon": "building-2", "label": "chi nhánh", "slot": "left"},
             {"id": "tru-so", "icon": "building-2", "label": "trụ sở", "slot": "right"}],
@@ -205,22 +240,23 @@ thành chìa khác, chìa cổ điển vẫn sáng.
 ]}
 ```
 
-**Ngoài phần cơ chế** (một scene đầy đủ khác): chi tiết mở màn là chip và quote trong mục `none`; ý chính là sơ đồ `dim` kèm chip gắn
-`near`; câu chốt là `statement`; lời kêu gọi là `statement` cùng một `badge`.
+**Ngoài phần cơ chế** (một scene đầy đủ khác): icon mở đầu; chi tiết mở màn là chip và quote trong mục `none`; ý chính là sơ đồ `dim`
+kèm chip (chỉ chip nói về một nút mới gắn `near`); câu chốt là `statement`; lời kêu gọi là `statement` cùng một `badge`.
 
 ```json
 {"sections": [
- {"id": "mo-man", "label": "MỞ MÀN", "tone": "normal", "layout": "none",
+ {"id": "mo-dau", "label": "", "tone": "claim", "layout": "none", "beats": [{"at": 0, "do": "hero", "icon": "server", "tone": "claim"}]},
+ {"id": "chi-tiet", "label": "", "tone": "normal", "layout": "none",
   "beats": [{"at": 1, "do": "chip", "text": "NGÀY 14 THÁNG 7", "tone": "claim"},
             {"at": 2, "do": "quote", "text": "Chúng tôi chưa thấy dấu hiệu bị lợi dụng", "who": "NHÀ CUNG CẤP"}]},
- {"id": "so-do", "label": "CƠ CHẾ", "tone": "normal", "layout": "pair",
+ {"id": "so-do", "label": "THÔNG THƯỜNG", "tone": "normal", "layout": "pair",
   "nodes": [{"id": "may", "icon": "server", "label": "máy chủ", "slot": "hub"},
             {"id": "khach", "icon": "user", "label": "người dùng", "slot": "left"}],
   "links": [{"id": "noi", "a": "khach", "b": "may"}],
   "beats": [{"at": 4, "do": "show", "ids": ["may", "khach", "noi"]}, {"at": 5, "do": "state", "ids": ["may", "noi"], "to": "risk"}]},
  {"id": "y-chinh", "label": "", "tone": "normal", "layout": "pair", "keep": ["may", "khach", "noi"],
   "beats": [{"at": 7, "do": "dim", "ids": ["may", "khach", "noi"]},
-            {"at": 7, "do": "chip", "text": "CHƯA XÁC NHẬN", "near": "may", "tone": "claim", "delay": 0.4},
+            {"at": 7, "do": "chip", "text": "CHƯA XÁC NHẬN", "tone": "claim", "delay": 0.4},
             {"at": 8, "do": "chip", "text": "CÁI GIÁ: MẤT DỮ LIỆU", "near": "khach", "tone": "risk"}]},
  {"id": "chot", "label": "", "tone": "normal", "layout": "pair", "keep": ["may", "khach", "noi"],
   "beats": [{"at": 10, "do": "dim", "ids": ["may", "khach", "noi"]},
@@ -237,6 +273,11 @@ Ghi `RUN/scene.json`, rồi chạy `cd ~/video-pipeline && uv run vshort scene R
 mỗi dòng lỗi nêu mục, nhịp, giá trị sai hoặc giờ và các phần tử vướng nhau; sửa đúng những dòng đó rồi chạy lại, tới khi mã 0. Gặp:
 - "khóa lạ", "icon lạ", "slot … không có", "động từ lạ": quay lại từ vựng ở trên;
 - "đè lên", "không còn chỗ trống", "nhãn … rộng": rút chữ, đổi slot hay nút `near`; chip hay quote không có chỗ thì bớt một ý;
+- "badge … đè lên nối", "badge của … góc nào … cũng có nét nối": bỏ badge đó, nói ý bằng một chip; badge theo nút được `keep` sang
+  mục có nối mới đi qua nó thì khai báo lại nút ở mục sau bằng id mới (không `keep`);
+- "chỉ hiện … rồi tắt …, không kịp đọc": đặt chữ đó ở cụm trước, bỏ `delay`, hoặc dời nhịp đầu của mục sau sang cụm kế;
+- "brief viết 'X', không phải 'x'": viết nhãn đúng hoa thường của brief; rộng quá 140 px thì đổi sang một danh từ chung ("công ty");
+- "chỉ có thanh tiêu đề trên nền trống": thêm mục mở đầu (luật "Mở đầu");
 - "màu neon cùng lúc": `dim` bớt, hoặc đổi `tone` của chip cho trùng một màu đang có;
 - "hơn 5 giây không có nhịp hình": thêm một nhịp (`state`, `flow`, `chip`…) ở cụm giữa quãng đó;
 - "số … không có trong brief", "tên … không có trong brief": bỏ chữ đó khỏi hình, đừng thêm vào brief;

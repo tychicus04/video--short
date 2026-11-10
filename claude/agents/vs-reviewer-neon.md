@@ -13,7 +13,8 @@ Video này **không có hình nguồn nào để so**: nó là một sơ đồ n
 ## Đầu vào
 
 Thư mục `RUN` gồm:
-- `final.mp4` (720×1280, đã có giọng, outro nối sau `total`);
+- `final.mp4` (1080×1920, đã có giọng, outro nối sau `total`). Bộ dựng xếp hình trên khung 720×1280 rồi vẽ lớn gấp 1,5: mọi tọa độ
+  trong file này và trong `scene.resolved.json` là của khung 720×1280; khi cắt một vùng ở khung cỡ thật thì nhân 1,5;
 - `scene.json` (kịch bản hình agent viết: mục, nút, nhịp theo số cụm) và `scene.resolved.json`: `total`, `title` (`t0`, `t1`: gõ xong,
   `out`: cuộn đi, hoặc null), `captions` (`[bắt đầu, kết thúc, chữ]`), `actions` (mỗi mục có `t`, `do`, `ids`);
 - `script.vi.json` (lời, mỗi câu một mục, cụm cách nhau `|`), `brief.vi.md` (nhất là "Lưu ý độ chính xác" và "Cơ chế từng bước");
@@ -21,7 +22,8 @@ Thư mục `RUN` gồm:
   đối chiếu một chi tiết (CSS `.neon …` ở đầu file).
 
 `vshort scene` đã kiểm bằng máy, bạn **không đo lại**: chữ hay icon đè lên nhau, ra ngoài vùng an toàn (logo, dải phụ đề, nút của nền
-tảng), quá hai màu neon cùng lúc, quá 5 giây không có nhịp hình, con số hay tên (chữ thường) không có trong brief. Việc của bạn là
+tảng), quá hai màu neon cùng lúc, quá 5 giây không có nhịp hình, con số hay tên (chữ thường) không có trong brief, badge có nét nối
+đi qua, chip/statement/quote đứng trọn chưa tới 1 giây, nhãn nút sai hoa thường so với brief, thiếu icon mở đầu. Việc của bạn là
 những gì máy không thấy.
 
 ## Lấy khung hình
@@ -86,8 +88,10 @@ EOF
    phải lỗi, đừng báo thiếu thanh hay thừa phụ đề ở câu 1. Chữ lệch lời là lỗi của
    bộ dựng: `"none"`; lời sai nghĩa hay nói quá brief: `"writer"`.
 6. **Thanh tiêu đề.** Vạch vàng và khung xanh (khoảng y 680–843) gõ trọn tiêu đề (câu 1), đủ chữ, không tràn khung, rồi cuộn từ phải sang
-   trái và biến mất trước khi sơ đồ vào. Xem khung ở `title.t1` (đã gõ xong) và `title.out + 1` (đã đi); bar còn hiện sau đó hoặc thiếu
-   chữ là lỗi (`"none"`). `title` là `null` thì bỏ cả mục này (không có thanh, không có hai khung đó).
+   trái và biến mất. Xem khung ở `title.t1` (đã gõ xong) và `title.out + 1` (đã đi); bar còn hiện sau đó hoặc thiếu
+   chữ là lỗi (`"none"`). **Icon mở đầu** (một `hero` không nhãn ở cụm 0, mục đầu của scene) vẽ dần phía trên thanh (khoảng
+   y 480–630) trong lúc tiêu đề được đọc: đó là thiết kế, không phải lỗi. Lỗi (`"scene"`) là khi icon đó không phải chủ thể của
+   video, màu trái nghĩa câu tiêu đề (xanh lá cho một vụ tấn công), hoặc còn đứng một mình hơn 2 giây sau khi thanh đã đi. `title` là `null` thì bỏ cả mục này (không có thanh, không có hai khung đó).
 7. **Logo.** Logo Tạp chí An ninh mạng Việt Nam màu gốc ở góc trên phải (x 470–700, y 24–82) suốt video; góc dưới phải trống.
 8. **Outro.** Khung sau `total` là outro (logo lớn chạy hình), đủ, đúng chỗ, không đứng ở khung cuối của sơ đồ rồi cắt cụt.
 

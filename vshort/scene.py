@@ -103,7 +103,7 @@ def phrase_table(timeline: dict, script: list[dict]) -> list[Phrase]:
 
 
 def beat_time(b: Beat, table: list[Phrase]) -> float:
-    return table[b.at].start - LEAD + b.delay
+    return max(0.0, table[b.at].start - LEAD + b.delay)  # phrase 0 starts with the video: the opening hero is drawn from frame 0
 
 
 def load_scene(data: dict) -> Scene:
@@ -236,8 +236,9 @@ def load_scene(data: dict) -> Scene:
             at, do, delay = b.get("at"), b.get("do"), b.get("delay", 0.0)
             if not isinstance(at, int) or isinstance(at, bool):
                 problems.append(f"{w}: 'at' phải là số cụm (số nguyên), không phải {at!r}")
-            elif at == 0:
-                problems.append(f"{w}: cụm 0 là câu tiêu đề, nhịp đặt từ cụm 1")
+            elif at == 0 and not (do == "hero" and "label" not in b):
+                problems.append(f"{w}: cụm 0 là câu tiêu đề: ở đó chỉ nhận một `hero` không nhãn (icon mở đầu, vẽ phía trên thanh "
+                                "tiêu đề); nhịp khác đặt từ cụm 1")
             elif at < 0:
                 problems.append(f"{w}: cụm {at} không có")
             if isinstance(delay, bool) or not isinstance(delay, (int, float)):
@@ -436,7 +437,7 @@ def resolve(sc: Scene, table: list[Phrase], title: str, total: float, said: tupl
 
     problems = [f"mục {s.id}: chưa có nhịp nào, không biết hiện lúc nào" for s in sc.sections if not s.beats]
     problems += [f"mục {s.id}, nhịp {j} ({b.do}): cụm {b.at} không có (bảng có cụm 1–{len(table) - 1})"
-                 for s in sc.sections for j, b in enumerate(s.beats) if not 0 < b.at < len(table)]
+                 for s in sc.sections for j, b in enumerate(s.beats) if not (b.do == "hero" and b.at == 0) and not 0 < b.at < len(table)]
     if problems:
         raise SceneError(problems)
     reel, alive, last, prev = _Reel(), [], 0.0, None  # alive: what the section before left on screen
@@ -585,6 +586,9 @@ def check(rt: dict, brief: str) -> list[str]:
         if len(lit) > MAX_TONES:
             who = "; ".join(f"{TONE_VI[k]} ({', '.join(map(repr, v[:3]))})" for k, v in lit.items())
             report(frozenset(lit), f"{_s(t)}: {len(lit)} màu neon cùng lúc, tối đa {MAX_TONES}: {who}")
+    if (bar := rt.get("title")) and not any(a["t"] < bar["t1"] for a in acts):  # the hook: 4.5 s of bar on an empty screen lose the viewer
+        out.append(f"0,0 s đến {_s(bar['t1'])}: chỉ có thanh tiêu đề trên nền trống: mở video bằng một mục `none` có nhịp "
+                   '{"at": 0, "do": "hero", "icon": …} (cụm 0, không nhãn): icon của chủ thể video, vẽ dần trong lúc đọc tiêu đề')
     # with no bar the title is a caption, which holds the line until the spoken title ends: beats start after it
     start = rt["title"]["out"] if rt.get("title") else rt["captions"][0][1] if rt.get("captions") else 0.0
     marks = [start] + sorted({a["t"] for a in acts if start < a["t"] < rt["total"]}) + [rt["total"]]

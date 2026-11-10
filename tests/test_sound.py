@@ -101,3 +101,11 @@ def test_scene_cues_glitch_also_where_an_element_that_starts_red_is_first_shown(
     assert sound.scene_cues(rt) == [sound.Cue("whoosh", 5.0), sound.Cue("glitch", 20.0)]
     rt = _rt((5.0, "on", ["n"], {}), (20.0, "off", ["r"], {}), (22.0, "tone", ["r"], {"to": "dim"}), title=TITLE, elements=[RED])
     assert sound.scene_cues(rt) == [sound.Cue("whoosh", 5.0)]  # shown only by on/draw/type: an off or a dim is not the red arriving
+
+
+def test_scene_cues_the_opening_hero_under_the_title_bar_takes_neither_the_pop_nor_the_glitch():
+    rt = _rt((0.0, "draw", ["h"], {"d": 0.7}), (5.0, "on", ["n"], {}), (30.0, "draw", ["h"], {"d": 0.7}), title=TITLE)
+    assert sound.scene_cues(rt) == [sound.Cue("whoosh", 5.0), sound.Cue("pop", 30.0)]
+    # a red opening icon is not the moment the attack lands: the glitch waits for the first red of the diagram
+    rt = _rt((0.0, "draw", ["r"], {"d": 0.7}), (5.0, "on", ["n"], {}), (20.0, "tone", ["n"], {"to": "risk"}), title=TITLE, elements=[RED])
+    assert sound.scene_cues(rt) == [sound.Cue("whoosh", 5.0), sound.Cue("glitch", 20.0)]

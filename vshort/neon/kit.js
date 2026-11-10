@@ -250,7 +250,7 @@ if (S.title) {   // render.title_card: stripe from its middle, box left → righ
 
 const logo = H("div", "logo", scene);
 H("img", null, logo).src = "anm-logo.png";
-tl.to(logo, { opacity: 1, duration: 0.3 }, 0);
+tl.set(logo, { opacity: 1 }, 0);   // there from frame 0: the first frame is what a platform shows before the video plays
 
 tl.to({}, { duration: S.total }, 0);   // the timeline is as long as the clip
 

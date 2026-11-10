@@ -25,6 +25,15 @@ GOOD = {"sections": [{"id": "s1", "label": "THÔNG THƯỜNG", "tone": "normal",
                   {"at": 9, "do": "chip", "text": "PHẢI TIN?", "near": "dc", "tone": "risk", "delay": 0.6}]}]}
 
 
+OPENING = {"id": "mo", "label": "", "tone": "risk", "layout": "none", "keep": [], "nodes": [], "links": [],
+           "beats": [{"at": 0, "do": "hero", "icon": "server", "tone": "risk"}]}
+
+
+def rest(rt) -> list[str]:
+    """`check`'s problems but the missing opening hero: for scenes that are about something else and start at phrase 1."""
+    return [p for p in check(rt, "") if "thanh tiêu đề" not in p]
+
+
 def section(sid, nodes=(), keep=(), beats=(), layout="ring"):
     return {"id": sid, "label": "", "tone": "normal", "layout": layout, "keep": list(keep),
             "nodes": [{"id": n, "icon": "user", "label": "", "slot": s} for n, s in nodes], "links": [], "beats": list(beats)}
@@ -469,9 +478,9 @@ def test_check_three_tones():
 @pytest.mark.parametrize("acts, total, title, times", [
     ([act(2, "on", "c"), act(8.5, "on", "c")], 10, None, ("2,0 s", "8,5 s")),  # between two actions
     ([act(2, "on", "c"), act(7, "on", "c")], 9, None, None),  # exactly 5 s is allowed
-    ([act(9, "on", "c")], 12, {"out": 3.86}, ("3,9 s", "9,0 s")),  # from the title leaving to the first action
+    ([act(0, "on", "c"), act(9, "on", "c")], 12, {"t1": 3.4, "out": 3.86}, ("3,9 s", "9,0 s")),  # from the title leaving to the first action
     ([act(1, "on", "c")], 6.5, None, ("1,0 s", "6,5 s")),  # from the last action to the end
-    ([act(1, "on", "c")], 6.0, {"out": 0.5}, None),
+    ([act(0, "on", "c"), act(1, "on", "c")], 6.0, {"t1": 0.4, "out": 0.5}, None),
 ])
 def test_check_gap(acts, total, title, times):
     got = check(rt_of([chip("c", "VỪA", [60, 300, 200, 340])], acts, total, title), "")
@@ -663,7 +672,7 @@ def assert_contract(rt):
 
 def test_two_sections_resolve_into_the_runtime_contract_and_pass_the_check():
     rt = resolved(TWO, ALL, 42.0, (0.2, 2.8))
-    assert check(rt, "") == []
+    assert rest(rt) == []
     assert_contract(rt)
     by = {e["id"]: e for e in rt["elements"]}
     assert set(by) >= {"dc", "dc.label", "u1", "l1", "s1.label", "s1.4", "s1.5", "s1.6", "s2.label", "k1", "k1.label", "s2.1.0",
@@ -715,7 +724,7 @@ def test_a_kept_node_goes_on_across_three_sections():
     rt = resolved(d)
     assert [e["id"] for e in rt["elements"]].count("dc") == 1
     off = [i for a in rt["actions"] if a["do"] == "off" for i in a["ids"]]
-    assert off == ["s2.0"] and check(rt, "") == []  # only the chip goes, at s3's start; the hub and its label never do
+    assert off == ["s2.0"] and rest(rt) == []  # only the chip goes, at s3's start; the hub and its label never do
 
 
 def test_a_hide_reaches_the_tiles_of_a_node_and_a_beat_that_does_nothing_is_no_crash():
@@ -736,7 +745,7 @@ def test_a_swap_in_a_later_section_starts_in_the_colour_its_kept_node_has_now():
     rt = resolved(d)
     new = next(e for e in rt["elements"] if e["id"] == "s2.0")
     assert new["tone"] == "risk" and next(a for a in rt["actions"] if a["do"] == "swap")["ids"] == ["dc", "s2.0"]
-    assert check(rt, "") == []
+    assert rest(rt) == []
     assert_contract(rt)
 
 
@@ -751,7 +760,7 @@ def test_a_dim_and_a_hide_reach_the_labels_and_swap_back_in_order():
 
 # ---- vshort scene RUN
 
-SCENE_OK = {"sections": [{"id": "s1", "label": "THÔNG THƯỜNG", "tone": "normal", "layout": "pair", "keep": [],
+SCENE_OK = {"sections": [OPENING, {"id": "s1", "label": "THÔNG THƯỜNG", "tone": "normal", "layout": "pair", "keep": [],
             "nodes": [{"id": "dc", "icon": "server", "label": "máy chủ", "slot": "hub"}], "links": [],
             "beats": [{"at": 1, "do": "draw", "ids": ["dc"]}, {"at": 2, "do": "chip", "text": "PHẢI TIN?", "near": "dc"},
                       {"at": 3, "do": "statement", "text": "Mỗi máy chỉ thấy một phần"}]}]}
@@ -777,9 +786,9 @@ def test_a_refused_round_leaves_no_pass_behind(tmp_path, capsys):
     run = _scene_run(tmp_path, SCENE_OK)
     assert main(["scene", run]) == 0
     assert (tmp_path / "scene.resolved.json").exists() and json.loads((tmp_path / "state.json").read_text())["scene"] == "done"
-    for edit in (lambda d: d["sections"][0]["beats"][1].update(at=41),  # the script was re-voiced: a phrase is gone (place/phrase)
-                 lambda d: d["sections"][0]["beats"].append({"at": 2, "do": "teleport", "ids": ["dc"]}),  # load
-                 lambda d: d["sections"][0]["beats"][1].update(text="TĂNG 1000 LẦN")):  # check
+    for edit in (lambda d: d["sections"][1]["beats"][1].update(at=41),  # the script was re-voiced: a phrase is gone (place/phrase)
+                 lambda d: d["sections"][1]["beats"].append({"at": 2, "do": "teleport", "ids": ["dc"]}),  # load
+                 lambda d: d["sections"][1]["beats"][1].update(text="TĂNG 1000 LẦN")):  # check
         assert main(["scene", run]) == 0  # a good round again
         bad = copy.deepcopy(SCENE_OK)
         edit(bad)
@@ -833,7 +842,7 @@ def test_scene_names_a_missing_scene_json(tmp_path, capsys):
 
 def test_scene_prints_every_load_problem_one_per_line(tmp_path, capsys):
     bad = copy.deepcopy(SCENE_OK)
-    bad["sections"][0]["beats"] += [{"at": 2, "do": "teleport", "ids": ["dc"]}, {"at": 3, "do": "show", "ids": ["ghost"]}]
+    bad["sections"][1]["beats"] += [{"at": 2, "do": "teleport", "ids": ["dc"]}, {"at": 3, "do": "show", "ids": ["ghost"]}]
     assert main(["scene", _scene_run(tmp_path, bad)]) == 2
     err = capsys.readouterr().err.strip().splitlines()
     assert len(err) == 2 and "'teleport'" in err[0] and "'ghost'" in err[1]
@@ -842,14 +851,14 @@ def test_scene_prints_every_load_problem_one_per_line(tmp_path, capsys):
 
 def test_scene_prints_place_and_phrase_problems(tmp_path, capsys):
     far = copy.deepcopy(SCENE_OK)
-    far["sections"][0]["beats"][1]["at"] = 41
+    far["sections"][1]["beats"][1]["at"] = 41
     assert main(["scene", _scene_run(tmp_path, far)]) == 2
     assert "cụm 41 không có" in capsys.readouterr().err
 
 
 def test_scene_prints_what_the_check_refuses_with_the_time(tmp_path, capsys):
     liar = copy.deepcopy(SCENE_OK)
-    liar["sections"][0]["beats"][1]["text"] = "TĂNG 1000 LẦN"
+    liar["sections"][1]["beats"][1]["text"] = "TĂNG 1000 LẦN"
     assert main(["scene", _scene_run(tmp_path, liar)]) == 2
     err = capsys.readouterr().err
     assert "1000" in err and "4,0 s" in err and not (tmp_path / "scene.resolved.json").exists()
@@ -889,3 +898,34 @@ def test_check_a_label_without_the_capitals_the_brief_gives_the_name(label, name
     lab = el("n.label", "label", [60, 300, 220, 330], text=label, of="n")
     got = check(rt_of([lab], [act(2, "type", "n.label", d=0.5)], 6), brief)
     assert (got == []) if name is None else (len(got) == 1 and repr(name) in got[0] and repr(label) in got[0])
+
+
+def test_the_title_phrase_takes_one_thing_an_opening_hero_without_a_label():
+    d = copy.deepcopy(GOOD)
+    d["sections"].insert(0, copy.deepcopy(OPENING))
+    load_scene(d)  # no problem
+    d["sections"][0]["beats"][0]["label"] = "MÁY CHỦ"  # it would stand at y 756, on the title bar (y 680-843)
+    ps = problems(d)
+    assert len(ps) == 1 and "cụm 0" in ps[0] and "hero" in ps[0] and "mo" in ps[0]
+
+
+def test_resolve_draws_the_opening_hero_from_the_first_frame_and_takes_it_off_for_the_next_section():
+    rt = resolved({"sections": [copy.deepcopy(OPENING)] + one_section([{"at": 1, "do": "draw", "ids": ["dc"]},
+                                                                        {"at": 3, "do": "state", "ids": ["dc"], "to": "risk"}])["sections"]})
+    first = rt["actions"][0]
+    assert (first["t"], first["do"], first["ids"]) == (0.0, "draw", ["mo.0"])  # phrase 0 starts at 0: not 0.15 s before the video
+    off = next(a for a in rt["actions"] if a["do"] == "off" and "mo.0" in a["ids"])
+    assert off["t"] == pytest.approx(TABLE[1].start - 0.15 - 0.35)
+    assert check(rt, "") == []
+
+
+BAR = {"lines": ["TIÊU ĐỀ"], "size": 44, "t0": 0.2, "t1": 2.2, "out": 2.85}
+
+
+def test_check_a_title_bar_alone_on_the_screen_while_the_title_is_said():
+    c = chip("c", "VỪA", [60, 300, 200, 340])
+    got = check(rt_of([c], [act(3, "on", "c")], 6, BAR), "")
+    assert len(got) == 1 and "hero" in got[0] and "cụm 0" in got[0] and "2,2 s" in got[0]
+    h = hero("mo.0", tone="risk")
+    assert check(rt_of([h, c], [act(0.0, "draw", "mo.0", d=0.7), act(2.65, "off", "mo.0", d=0.35), act(3, "on", "c")], 6, BAR), "") == []
+    assert check(rt_of([c], [act(3, "on", "c")], 6), "") == []  # no bar: the title is a caption, as before
