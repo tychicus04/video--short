@@ -255,7 +255,8 @@ def start(kind: str, slug: str, item: dict | None) -> None:
     appeared meanwhile: then the item is dropped and one line goes to web.log."""
     try:
         # --topic=...: as two arguments, a topic that begins with "-" is read by argparse as an option
-        args = (["auto", slug, f"--topic={item['topic']}", *(["--auto"] if item["auto"] else [])] if kind == "new"
+        # a new video from the panel is a neon one; the NotebookLM flow is still there from the command line (--style old)
+        args = (["auto", slug, f"--topic={item['topic']}", "--style=neon", *(["--auto"] if item["auto"] else [])] if kind == "new"
                 else ["auto", str(queue.run_path(slug))])
         cp = vshort(args)
         why = None if cp.returncode == 0 else (cp.stderr or cp.stdout)

@@ -263,7 +263,7 @@ def test_queue_add_then_tick_starts_up_to_the_limit(client, calls, monkeypatch):
     items = [{"slug": s, "topic": s.upper()} for s in ("a", "b", "c")]
     assert client.post("/api/queue", json={"items": items, "auto": True}).json() == {"errors": ["", "", ""]}
     web.tick()
-    assert calls == [["auto", "a", "--topic=A", "--auto"], ["auto", "b", "--topic=B", "--auto"]]
+    assert calls == [["auto", "a", "--topic=A", "--style=neon", "--auto"], ["auto", "b", "--topic=B", "--style=neon", "--auto"]]
     assert [i["slug"] for i in queue.load_queue().new] == ["c"]
 
 
@@ -463,7 +463,7 @@ def test_one_item_that_cannot_be_started_does_not_block_the_queue(client, monkey
 def test_a_topic_that_looks_like_an_option_is_passed_as_one_argument(client, calls, monkeypatch, capsys):
     client.post("/api/queue", json={"items": [{"slug": "g", "topic": "-gravity"}], "auto": False})
     web.tick()
-    assert calls == [["auto", "g", "--topic=-gravity"]] and queue.load_queue().new == []
+    assert calls == [["auto", "g", "--topic=-gravity", "--style=neon"]] and queue.load_queue().new == []
     got = []
     monkeypatch.setattr(cli, "cmd_auto", lambda a: got.append(a.topic) or 0)
     assert cli.main(calls[0]) == 0 and got == ["-gravity"]        # argparse reads it as the topic
