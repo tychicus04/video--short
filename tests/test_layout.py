@@ -38,7 +38,9 @@ def full_section(layout):
     else:  # grid: along the rows
         pairs = [(ids[i], ids[i + 1]) for i in range(len(ids) - 1) if i % 3 != 2]
     links = tuple(Link(f"l{i}", a, b, "solid") for i, (a, b) in enumerate(pairs))
-    beats = tuple(Beat(1, "badge", {"node": i, "icon": "lock"}) for i in ids) + (Beat(2, "split", {"node": ids[0], "to": ids}),)
+    # the hub of a full ring has a link through each corner, so no badge can stand by it (place refuses that one)
+    badged = [n.id for n in nodes if not (layout == "ring" and n.slot == "hub")]
+    beats = tuple(Beat(1, "badge", {"node": i, "icon": "lock"}) for i in badged) + (Beat(2, "split", {"node": ids[0], "to": ids}),)
     return Section("s1", "", "normal", layout, nodes, links, beats, ())
 
 
@@ -94,7 +96,7 @@ def test_full_layouts_have_no_overlap(layout):  # a full layout must not make mi
     els = place(full_section(layout))
     texts = [e for e in els if e["kind"] in ("label", "chip")]
     solid = [e for e in els if e["kind"] in ("icon", "badge", "tile")]
-    assert len(texts) == len(SLOTS[layout]) and len(solid) == 3 * len(SLOTS[layout])
+    assert len(texts) == len(SLOTS[layout]) and len(solid) == 3 * len(SLOTS[layout]) - (layout == "ring")  # no badge by a full ring's hub
     assert not any(boxes_overlap(a["box"], b["box"]) for a, b in itertools.combinations(texts + solid, 2))
     assert not any(segment_hits_box(link, t["box"]) for link in els if link["kind"] == "link" for t in texts)
     assert all(e["box"][2] <= 618 for e in els if e["box"][3] > 535)
@@ -269,3 +271,22 @@ def test_a_kept_hub_is_an_obstacle_and_a_link_to_it_is_cut_at_its_size():
     assert not any(segment_hits_box(link, lb["box"]) for lb in labels)
     # without that old label, u1's own would stand right under its icon: the kept one is what moved it
     assert by_id(place(sec, kept[:2]), "u1.label")["box"][1] == pytest.approx(604.75, abs=0.1)
+
+
+def test_a_badge_takes_the_first_corner_no_link_runs_through():
+    """u1 (r0) is right of the hub, its link leaves it sideways: the spike's corner (above, left) is free. u2 (r1) is below and to
+    the right, its link leaves up and to the left, through that corner: the badge goes above, right."""
+    sec = ring_section(links_to_hub=True, beats=[Beat(1, "badge", {"node": "u1", "icon": "lock"}),
+                                                 Beat(1, "badge", {"node": "u2", "icon": "lock"})])
+    els = place(sec)
+    u1, u2, b1, b2 = (by_id(els, i) for i in ("u1", "u2", "s1.0", "s1.1"))
+    assert (b1["x"], b1["y"]) == pytest.approx((u1["x"] - 50.4, u1["y"] - 62.16))
+    assert (b2["x"], b2["y"]) == pytest.approx((u2["x"] + 50.4, u2["y"] - 62.16))
+    assert not any(segment_hits_box(l, b["box"]) for l in els if l["kind"] == "link" for b in (b1, b2))
+
+
+def test_a_badge_with_a_link_through_every_corner_is_a_problem_that_names_the_node():
+    with pytest.raises(SceneError) as e:  # the hub of a full ring: r1, r2, r4 and r5 leave through its four corners
+        place(ring_section(links_to_hub=True, beats=[Beat(1, "badge", {"node": "dc", "icon": "lock"})]))
+    assert len(e.value.problems) == 1 and "badge" in e.value.problems[0] and "'dc'" in e.value.problems[0]
+    assert "chip" in e.value.problems[0]  # what to do instead

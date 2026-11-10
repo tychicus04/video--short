@@ -32,6 +32,7 @@ STROKE = {"icon": 3.5, "hub": 4, "badge": 2.5, "hero": 4.5, "tile": 2.5}  # px, 
 SHORT, SHORT_HUB = 46, 112  # a link stops this far from the centre of a normal / hub-sized node
 MIN_LINK = 48  # a link with less line than this showing between its two cut ends is refused: a flow dot would hop along a stub
 BADGE, TILE, HERO = 34, 30, 170  # sides of a badge, a split tile and the hero icon
+BADGE_CORNERS = ((-1, -1), (1, -1), (1, 1), (-1, 1))  # where a badge may stand by its node, in the order tried: left/right, above/below
 TUNNEL_HALF = 6  # a `tunnel` link is two rails this far either side of its line; the kit draws them there
 LABEL_FONT, LABEL_SIZE, LABEL_MAX = "BeVietnamPro-Bold.ttf", 22, 140  # a node's label; wider than 140 px is an error
 MONO, EXTRA = "IBMPlexMono-SemiBold.ttf", "BeVietnamPro-ExtraBold.ttf"
@@ -232,8 +233,13 @@ def place(section: Section, kept: list[dict] = ()) -> list[dict]:
         a, eid, where = bt.args, f"{sid}.{k}", f"mục {sid}, nhịp {k} ({bt.do})"
         if bt.do == "badge":
             n = node(a["node"], where)
-            put(_icon("badge", eid, a["icon"], n["x"] - 0.6 * n["size"], n["y"] - 0.74 * n["size"], BADGE, tone,
-                      of=a["node"], beat=k))
+            # the spike's corner (above, left) first, then round the node: a link through a 34 px icon hides it (3 of the first 4 videos)
+            spots = (_icon("badge", eid, a["icon"], n["x"] + sx * 0.6 * n["size"], n["y"] + sy * 0.74 * n["size"], BADGE, tone,
+                           of=a["node"], beat=k) for sx, sy in BADGE_CORNERS)
+            if (b := next((sp for sp in spots if not any(segment_hits_box(ln, sp["box"]) for ln in segs)), None)) is None:
+                problems.append(f"badge của {a['node']!r} ({where}): góc nào của nút cũng có nét nối đi qua; nói ý đó bằng một chip")
+            else:
+                put(b)
         elif bt.do == "swap":
             n = node(a["node"], where)
             put(_icon("icon", eid, a["icon"], n["x"], n["y"], n["size"], n["tone"], of=a["node"], beat=k), obstacle=False)

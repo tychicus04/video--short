@@ -859,3 +859,33 @@ def test_scene_that_is_not_json_is_a_problem_not_a_crash(tmp_path, capsys):
     run = _run(tmp_path)
     (tmp_path / "scene.json").write_text("{not json")
     assert main(["scene", run]) == 2 and "scene.json" in capsys.readouterr().err
+
+
+def test_check_a_badge_on_a_link_but_not_an_icon_or_a_tile():
+    link = el("l1", "link", [100, 400, 400, 400], x1=100, y1=400, x2=400, y2=400, style="solid")
+    badge = el("s1.2", "badge", [200, 385, 230, 415], of="dc")
+    got = check(rt_of([link, badge], [act(2, "on", "l1"), act(3, "on", "s1.2")], 8), "")
+    assert len(got) == 1 and got[0].startswith("3,0 s") and "badge 's1.2' đè lên nối 'l1'" in got[0]
+    for kind in ("icon", "tile"):  # a tile hangs over its node, where a link straight up starts: as in the spike
+        assert check(rt_of([link, el("x", kind, [200, 385, 230, 415])], [act(2, "on", "l1"), act(3, "on", "x")], 8), "") == []
+
+
+@pytest.mark.parametrize("acts, said", [
+    ([act(3, "on", "c"), act(3.6, "off", "c", d=0.35)], "0,6 s"),            # openmatter-neon-70s: MATTERCHAIN, 39.92 to 40.52 s
+    ([act(3, "type", "c", d=1.0), act(4.5, "off", "c", d=0.35)], "0,5 s"),  # typed: read from the last letter on
+    ([act(3, "on", "c"), act(4.0, "off", "c", d=0.35)], None),
+    ([act(3, "on", "c"), act(5, "tone", "c", to="dim"), act(5.5, "off", "c", d=0.35)], None),  # a dim is not a new showing
+    ([act(3, "on", "c")], None),                                           # stays to the end
+])
+def test_check_a_text_that_goes_before_it_can_be_read(acts, said):
+    got = check(rt_of([chip("c", "VỪA", [60, 300, 200, 340])], acts, 7), "")
+    assert (got == []) if said is None else (len(got) == 1 and got[0].startswith("3,0 s") and said in got[0] and "'c'" in got[0])
+
+
+@pytest.mark.parametrize("label, name", [("openmatter", "OpenMatter"), ("azure", "Azure"), ("OpenMatter", None), ("Azure", None),
+                                         ("dữ liệu", None), ("máy chủ", None)])
+def test_check_a_label_without_the_capitals_the_brief_gives_the_name(label, name):
+    brief = "Tiêu đề\nDữ liệu ở một nơi.\nTheo OpenMatter, tài nguyên do Azure cung cấp. Dữ liệu được chia."
+    lab = el("n.label", "label", [60, 300, 220, 330], text=label, of="n")
+    got = check(rt_of([lab], [act(2, "type", "n.label", d=0.5)], 6), brief)
+    assert (got == []) if name is None else (len(got) == 1 and repr(name) in got[0] and repr(label) in got[0])

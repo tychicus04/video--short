@@ -301,6 +301,7 @@ KIND_VI = {"icon": "nút", "badge": "badge", "tile": "mảnh", "link": "nối", 
            "chip": "chip", "statement": "câu lớn", "quote": "lời trích", "hero": "hero"}
 TONE_VI = {"normal": "xanh dương", "risk": "đỏ", "claim": "vàng", "safe": "xanh lá"}
 TEXTS = {"label", "section", "chip", "statement", "quote"}  # the rest but links (and a hero's label, below) are solid
+READ, MIN_READ = {"chip", "statement", "quote"}, 1.0  # these are read: whole on screen at least this long, s (0.6 and 0.8 s were not enough)
 CHECKED_TEXT = {"chip": ("text",), "statement": ("text",), "quote": ("text", "who"), "hero": ("label",), "section": ("text",)}
 
 
@@ -322,16 +323,17 @@ def _parts(e: dict) -> list[tuple[str, object]]:
     if e["kind"] == "hero":
         h = (layout.INK * e["size"] + layout.STROKE["hero"]) / 2
         return [("solid", [e["x"] - h, e["y"] - h, e["x"] + h, e["y"] + h])] + [("text", e["label_box"])] * bool(e["label"])
-    return [("text" if e["kind"] in TEXTS else "solid", e["box"])]
+    return [("text" if e["kind"] in TEXTS else "badge" if e["kind"] == "badge" else "solid", e["box"])]
 
 
 def _touch(p: tuple[str, object], q: tuple[str, object]) -> bool:
-    """Whether two parts come within 4 px: text on text, text on a solid, a solid on a solid, text on a link (not a solid on one)."""
+    """Whether two parts come within 4 px: text on text, text on a solid, a solid on a solid, text or a badge on a link (not an
+    icon or a tile on one: a tile hangs where a link straight up starts). A badge is a solid that a line through it hides."""
     from vshort import layout
 
     (ka, a), (kb, b) = p, q
     if kb == "link":
-        return ka == "text" and layout.segment_hits_box(b, a)
+        return ka in ("text", "badge") and layout.segment_hits_box(b, a)
     return ka != "link" and layout.boxes_overlap(a, b)
 
 
@@ -589,8 +591,25 @@ def check(rt: dict, brief: str) -> list[str]:
     for x, y in zip(marks, marks[1:]):
         if y - x > MAX_GAP + EPS:
             out.append(f"{_s(x)} đến {_s(y)}: hơn {MAX_GAP:g} giây không có nhịp hình")
+    ready, gone = {}, {}  # a chip, statement or quote: when it is whole (typed to its last letter), when its off starts
+    for a in acts:
+        for i in a["ids"]:
+            if els[i]["kind"] in READ and a["do"] == "off":
+                gone.setdefault(i, a["t"])
+            elif els[i]["kind"] in READ and a["do"] in ("on", "draw", "type") and i not in gone:
+                ready[i] = max(ready.get(i, 0.0), a["t"] + (a.get("d", 0.0) if a["do"] == "type" else 0.0))
+    for i, t in gone.items():
+        if i in ready and t - ready[i] < MIN_READ - EPS:
+            out.append(f"{_s(screen.first[i])}: {_name(els[i])} chỉ hiện {_s(max(t - ready[i], 0))} rồi tắt lúc {_s(t)}, không kịp đọc "
+                       f"(cần {MIN_READ:g} s): cho nó hiện ở cụm trước, bớt `delay`, hoặc để mục sau mở muộn hơn")
+    proper = {w.lower(): w for w in names(re.sub(r"\n+", ". ", brief))}  # a line of the brief starts a sentence
     for i, t in screen.first.items():
         e = els[i]
+        if e["kind"] == "label":  # "openmatter" beside "Azure": a name keeps the capitals the brief gives it
+            for w in re.findall(r"\w+", e["text"]):
+                name = proper.get(w.lower())
+                if name and w != name and not re.search(rf"(?<!\w){re.escape(w)}(?!\w)", brief):
+                    out.append(f"{_s(t)}: {_name(e)}: brief viết {name!r}, không phải {w!r}")
         for key in CHECKED_TEXT.get(e["kind"], ()):
             text = e.get(key) or ""
             if bad := unknown_numbers(text, brief):
