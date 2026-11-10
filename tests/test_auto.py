@@ -646,10 +646,10 @@ def test_neon_loi_md_has_a_row_per_sentence_and_the_estimated_length(neon_flow):
     auto.run_auto(run)
     rows = run.file("loi.md").read_text(encoding="utf-8").splitlines()
     assert rows[0].startswith("| id |") and "âm tiết" in rows[0] and "giây" in rows[0] and "note" in rows[0]
-    assert [c.strip() for c in rows[2].split("|")[1:-1]] == ["1", "Tiêu đề", "2", f"{2 / script.PACE:.1f}".replace(".", ","), ""]
+    assert [c.strip() for c in rows[2].split("|")[1:-1]] == ["1", "Tiêu đề", "2", f"{2 / script.NEON_PACE:.1f}".replace(".", ","), ""]
     cells = [c.strip() for c in rows[3].split("|")[1:-1]]
-    assert cells == ["2", "Bình thường máy chủ chạy đúng", "6", f"{6 / script.PACE:.1f}".replace(".", ","), "theo brief"]
-    assert "|" not in cells[1] and rows[-1] == f"Tổng: 8 âm tiết, ~{8 / script.PACE:.0f} giây"
+    assert cells == ["2", "Bình thường máy chủ chạy đúng", "6", f"{6 / script.NEON_PACE:.1f}".replace(".", ","), "theo brief"]
+    assert "|" not in cells[1] and rows[-1].startswith("Tổng: 8 âm tiết; video ~") and "(cần 60–70)" in rows[-1]
 
 
 def test_neon_goes_on_from_the_approved_script_to_the_voice_its_timeline_and_the_picture(neon_flow):

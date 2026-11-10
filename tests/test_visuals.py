@@ -196,10 +196,10 @@ def test_vs_visuals_quotes_the_subtitle_band_the_code_checks():
 def test_agents_quote_neon_limits():
     from pathlib import Path
 
-    from vshort.script import SYL_MAX, SYL_MIN
+    from vshort.script import VIDEO_MAX, VIDEO_MIN
     agents = Path(__file__).resolve().parent.parent / "claude" / "agents"
     writer = (agents / "vs-writer.md").read_text(encoding="utf-8")
-    assert all(name in writer for name in ("MAX_TEXT_W", "SYL_MIN", "SYL_MAX")) and f"{SYL_MIN}–{SYL_MAX}" in writer
+    assert all(name in writer for name in ("MAX_TEXT_W", "VIDEO_MIN", "VIDEO_MAX")) and f"({VIDEO_MIN}–{VIDEO_MAX} giây)" in writer
     from vshort.scene import MAX_GAP, MAX_TONES
     scene = (agents / "vs-scene.md").read_text(encoding="utf-8")
     assert f"`MAX_GAP` ({MAX_GAP:g} giây)" in scene and f"`MAX_TONES` ({MAX_TONES} màu)" in scene

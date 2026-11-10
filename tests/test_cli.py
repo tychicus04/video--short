@@ -566,16 +566,16 @@ def _neon_run(tmp_path, phrases):
 
 
 def test_check_neon_run_checks_the_script_against_the_brief_not_english(tmp_path, capsys):
-    _neon_run(tmp_path, ["Lời nói ngắn gọn thôi mà"] * 56 + ["Chia sẻ video."])
+    _neon_run(tmp_path, [" | ".join(["Lời nói ngắn gọn thôi mà"] * 3)] * 13 + ["Chia sẻ video."])
     assert main(["check", str(tmp_path)]) == 0
     (tmp_path / "script.vi.json").write_text(json.dumps([{"id": 1, "phrases": "Khác", "note": ""}]))
     assert main(["check", str(tmp_path)]) == 2
     err = capsys.readouterr().err
-    assert "tiêu đề của brief" in err and "âm tiết" in err
+    assert "tiêu đề của brief" in err and "giây" in err
 
 
 def test_check_neon_run_still_holds_the_end_to_the_briefs_call_to_action(tmp_path, capsys):
-    _neon_run(tmp_path, ["Lời nói ngắn gọn thôi mà"] * 57)
+    _neon_run(tmp_path, [" | ".join(["Lời nói ngắn gọn thôi mà"] * 3)] * 14)
     assert main(["check", str(tmp_path)]) == 2
     assert "lời kêu gọi" in capsys.readouterr().err
 

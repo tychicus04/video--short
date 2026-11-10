@@ -215,7 +215,18 @@ def check_brief(script: list[dict], brief: str) -> list[str]:
 
 
 # Neon style: Claude writes the Vietnamese narration from the approved brief, so it is checked against the brief
-SYL_MIN, SYL_MAX = 260, 390  # 60–90 s of narration at PACE
+NEON_PACE = 4.5  # syllables a second the neon voice really reads: 384 in 84.8 s, 387 in 84.4 s (10/11/2026)
+OUTRO = 2.5  # s: anm-outro.mp4, after the narration
+VIDEO_MIN, VIDEO_MAX = 60, 70  # s of final.mp4: Tai, 10/11/2026 ("1p-1p10s", so the viewer doesn't tire)
+
+
+def video_secs(script: list[dict]) -> float:
+    """How long final.mp4 runs: the speech, fit's breaths before, between and after the sentences, then the outro.
+    It put openmatter-neon at 99.0 s (98.5 measured) and storm-2603-neon at 98.2 s (96.6)."""
+    from vshort import fit  # fit imports this module
+    said = [r for r in script if r["phrases"].strip()]
+    speech = sum(syllables(r["phrases"]) for r in said) / NEON_PACE
+    return speech + fit.LEAD + fit.GAP * max(len(said) - 1, 0) + fit.TAIL + OUTRO
 
 
 def _after(brief: str, heading: str) -> list[str]:
@@ -296,7 +307,8 @@ def check_neon(script: list[dict], brief: str) -> list[str]:
         probs += [f"Câu {row['id']}: có tên '{w}' mà brief không có; dùng đúng tên trong brief, hoặc ghi note nhắc "
                   f"'{w}' và vì sao"
                   for w in sorted(names(text)) if not re.search(rf"(?<!\w){re.escape(w)}(?!\w)", ref, re.I)]
-    total = sum(syllables(row["phrases"]) for row in script)
-    if not SYL_MIN <= total <= SYL_MAX:
-        probs.append(f"Lời có {total} âm tiết (~{total / PACE:.0f} giây); cần {SYL_MIN}–{SYL_MAX} âm tiết (60–90 giây)")
+    secs = video_secs(script)
+    if not VIDEO_MIN <= secs <= VIDEO_MAX:
+        total = sum(syllables(row["phrases"]) for row in script)
+        probs.append(f"Video ~{secs:.0f} giây ({total} âm tiết, {len(script)} câu); cần {VIDEO_MIN}–{VIDEO_MAX} giây")
     return probs

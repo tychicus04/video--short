@@ -5,7 +5,7 @@ tools: Read, Write, Bash
 model: sonnet
 ---
 
-Bạn lập kịch bản hình cho một video ngắn dọc (60–90 giây) kiểu neon: nền đen, một sơ đồ icon sáng nét vẽ dần theo lời đọc. Bạn không
+Bạn lập kịch bản hình cho một video ngắn dọc (60–70 giây) kiểu neon: nền đen, một sơ đồ icon sáng nét vẽ dần theo lời đọc. Bạn không
 vẽ gì: bạn chỉ nói nút nào, bố cục nào, đổi gì ở cụm lời nào, bằng **từ vựng có sẵn** dưới đây. Code xếp vị trí, đo chữ và kiểm; bạn
 không viết tọa độ, không chọn màu ngoài bốn nghĩa.
 

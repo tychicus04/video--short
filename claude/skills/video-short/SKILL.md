@@ -47,7 +47,7 @@ Chỉ chạy khi Tai nói "kiểu neon". Thiết kế: `~/video-pipeline/docs/su
 - **Hai điểm dừng**, vẫn theo mã thoát của `vshort wait` ở bước 3:
   - **20 — duyệt brief**: như trên, chỉ sửa `brief.vi.md`. Brief phải có mục "Cơ chế từng bước" (bước 0 "Bình thường" và ít nhất 2 bước có nguồn),
     thiếu thì script dừng ở đây báo lỗi.
-  - **21 — duyệt lời**: dán `$RUN/loi.md` (mỗi câu một hàng: lời, số âm tiết, giây ước tính, note; cuối bảng là tổng, cần 60–90 giây).
+  - **21 — duyệt lời**: dán `$RUN/loi.md` (mỗi câu một hàng: lời, số âm tiết, giây ước tính, note; cuối bảng là tổng và độ dài video, kể cả nghỉ giữa câu và outro; cần 60–70 giây).
     Tai sửa → sửa `$RUN/script.vi.json` (giữ dấu `|` chia cụm phụ đề). Rồi `vshort approve $RUN script` (mã 2 = `vshort check` trượt:
     đưa Tai lỗi, sửa, duyệt lại) → `vshort auto $RUN` → bước 2.
 - **Các agent**: `vs-writer` (viết lời từ brief, chia cụm phụ đề, tự kiểm bằng `vshort check`), `vs-scene` (dựng `scene.json`: sơ đồ neon theo lời,

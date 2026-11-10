@@ -1,6 +1,6 @@
 from vshort.captions import Fragment
 from vshort.script import (Sentence, brief_title, check_brief, check_neon, check_numbers, check_script, check_style,
-                           group_sentences, ints, mechanism_steps, merge_text, merged, names, syllables, unknown_numbers)
+                           group_sentences, ints, mechanism_steps, merge_text, merged, names, syllables, unknown_numbers, video_secs)
 
 
 def test_merge_drops_ui_label_and_scene_cut_duplicate():
@@ -198,12 +198,21 @@ def test_check_neon_measures_captions_in_the_neon_font():
     assert not any("px" in p for p in check_neon([rows[0], dict(rows[1], phrases="Ngày 5 tháng 11 | năm 2026")], NEON_BRIEF))
 
 
-def test_check_neon_length_is_in_syllables():
+def test_check_neon_length_is_the_videos_with_its_pauses_and_outro():
     rows = [{"id": 1, "phrases": "OpenMatter hứa AI không cần data center", "note": ""}]
-    rows += [{"id": i, "phrases": "Lời nói ngắn gọn thôi mà", "note": ""} for i in range(2, 60)]
-    assert syllables(" ".join(r["phrases"] for r in rows)) > 260
-    assert not any("âm tiết" in p for p in check_neon(rows, NEON_BRIEF))
-    assert any("âm tiết" in p for p in check_neon(rows * 2, NEON_BRIEF))
+    rows += [{"id": i, "phrases": "Lời nói ngắn gọn thôi mà " * 3, "note": ""} for i in range(2, 15)]
+    assert not any("giây" in p for p in check_neon(rows, NEON_BRIEF))  # 247 âm tiết, 14 câu: ~65 s
+    assert any("giây" in p for p in check_neon(rows * 2, NEON_BRIEF))
+    # the same syllables in twice the sentences: the breaths between them push it past VIDEO_MAX
+    halves = rows[:1] + [dict(r, phrases="Lời nói ngắn gọn thôi mà " * k) for r in rows[1:] for k in (1, 2)]
+    assert any("giây" in p for p in check_neon(halves, NEON_BRIEF))
+
+
+def test_video_secs_matches_the_two_neon_videos_measured():
+    def script(per_row):
+        return [{"id": i, "phrases": "ba " * n} for i, n in enumerate(per_row, 1)]
+    assert abs(video_secs(script([17] * 12 + [18] * 10)) - 98.5) < 1  # openmatter-neon: 384 âm tiết, 22 câu
+    assert abs(video_secs(script([20] * 12 + [21] * 7)) - 96.6) < 2  # storm-2603-neon: 387 âm tiết, 19 câu
 
 
 def test_unknown_numbers_compare_decimals_whole_and_ignore_list_numbering():

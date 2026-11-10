@@ -145,7 +145,8 @@ RESEARCH_NEON = (
     "\n\nKiểu neon: video này không làm bằng NotebookLM nên KHÔNG viết {run}/brief.en.md. Mục \"Cơ chế từng bước\" của "
     "brief.vi.md là bắt buộc: bước 0 \"Bình thường: …\" rồi ít nhất 2 bước đánh số tiếp, mỗi bước đúng nguồn (ghi nguồn đó "
     "trong {run}/sources.md); không ghi \"Không có\". Không tìm được cơ chế có nguồn thì nói thẳng điều đó trong brief "
-    "(run sẽ dừng ở bước duyệt brief cho Tai quyết), đừng bịa bước cho đủ. Notebook và {run}/notebook.txt vẫn làm như trên.")
+    "(run sẽ dừng ở bước duyệt brief cho Tai quyết), đừng bịa bước cho đủ. Video chỉ 60–70 giây, nên \"Cơ chế từng bước\" "
+    "tối đa 4 bước sau bước 0 và \"Ý chính\" tối đa 3 ý, kể cả ý cái giá. Notebook và {run}/notebook.txt vẫn làm như trên.")
 BRIEF_CHECK_NEON = (
     "RUN={run}. Chế độ tự động: Tai không duyệt brief. Soát brief ({run}/brief.vi.md) với {run}/sources.md: dữ kiện, ngày, "
     "điểm tranh cãi. Soát mục \"Cơ chế từng bước\" theo luật an toàn: "
@@ -341,15 +342,17 @@ def _flow(run: Run) -> int:
 
 def script_md(run: Run) -> str:
     """loi.md, what Tai approves in the neon style: a row per sentence (what is said, syllables, the seconds they take at
-    the pace of the voice, the writer's note) and the total, since 60–90 s is what he checks."""
+    the pace of the voice, the writer's note) and the total with the length of the video, what Tai checks."""
     rows = ["| id | lời | âm tiết | giây ước tính | note |", "|---|---|---|---|---|"]
-    total = 0
-    for r in run.read("script.vi.json"):
+    total, lines = 0, run.read("script.vi.json")
+    for r in lines:
         n = script.syllables(r["phrases"])
         total += n
-        secs = f"{n / script.PACE:.1f}".replace(".", ",")
+        secs = f"{n / script.NEON_PACE:.1f}".replace(".", ",")
         rows.append(f"| {r['id']} | {' '.join(r['phrases'].replace('|', ' ').split())} | {n} | {secs} | {r.get('note', '')} |")
-    return "\n".join(rows + ["", f"Tổng: {total} âm tiết, ~{total / script.PACE:.0f} giây"]) + "\n"
+    secs = script.video_secs(lines)
+    end = f"Tổng: {total} âm tiết; video ~{secs:.0f} giây, kể cả nghỉ giữa câu và outro (cần {script.VIDEO_MIN}–{script.VIDEO_MAX})"
+    return "\n".join(rows + ["", end]) + "\n"
 
 
 def _no_mechanism(run: Run) -> bool:
