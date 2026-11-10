@@ -155,6 +155,12 @@ export function ScriptReview({ c }: { c: Ctx }) {
         Đối chiếu từng câu, sửa lời Việt ngay trong ô. Dấu <span className="font-mono text-foreground">|</span> là chỗ ngắt cụm phụ đề, giữ nguyên khi sửa.
       </p>
 
+      {d.length && (
+        <p className={cn('text-sm', d.length.secs < d.length.min || d.length.secs > d.length.max ? 'text-red-300' : 'text-muted-foreground')}>
+          Video ~{d.length.secs} giây, kể cả nghỉ giữa câu và outro (cần {d.length.min}–{d.length.max}), theo bản đã lưu.
+        </p>
+      )}
+
       {notice && <NoticeBox n={notice} />}
 
       {proposed && (

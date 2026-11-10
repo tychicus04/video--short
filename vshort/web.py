@@ -26,7 +26,7 @@ from starlette.responses import FileResponse, JSONResponse, Response
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from vshort import auto, cms, cover, publish, queue, stages
+from vshort import auto, cms, cover, publish, queue, script, stages
 from vshort.run import config
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -123,6 +123,12 @@ def _translation(slug: str) -> list[dict] | None:
         return None
 
 
+def _length(slug: str) -> dict | None:
+    """A neon script's estimated final.mp4 length, pauses and outro counted, next to the bounds `vshort check` holds it to."""
+    rows = _translation(slug) if _neon(slug) else None
+    return {"secs": round(script.video_secs(rows)), "min": script.VIDEO_MIN, "max": script.VIDEO_MAX} if rows else None
+
+
 def _proposed(slug: str) -> list[dict] | None:
     try:
         return [{"id": r["id"], "phrases": r["phrases"], "note": r.get("note", "")} for r in _json(slug, "script.proposed.json")]
@@ -156,7 +162,7 @@ def run_detail(request: Request) -> JSONResponse:
     cost = _json(slug, "cost.json")
     return JSONResponse({"row": row, "locked": locked, "style": "neon" if _neon(slug) else "old", "brief_vi": _text(slug, "brief.vi.md"),
                          "brief_en": _text(slug, "brief.en.md"), "brief_en_stale": _stale(slug),
-                         "translation": _translation(slug), "proposed": _proposed(slug), "review_md": _text(slug, "review.md"),
+                         "translation": _translation(slug), "length": _length(slug), "proposed": _proposed(slug), "review_md": _text(slug, "review.md"),
                          "cost": cost if isinstance(cost, list) else [],
                          "log_tail": "\n".join((_text(slug, "auto.log") or "").splitlines()[-LOG_LINES:]),
                          "video": queue.safe_file(slug, "final.mp4") is not None and not locked,

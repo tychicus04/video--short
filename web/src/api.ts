@@ -102,6 +102,7 @@ export interface Detail {
   brief_en: string | null
   brief_en_stale: boolean
   translation: TranslationRow[] | null
+  length: { secs: number; min: number; max: number } | null // a neon script: final.mp4's estimated length, from the saved file
   proposed: ProposedRow[] | null
   review_md: string | null
   cost: CostEntry[]
