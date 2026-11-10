@@ -560,6 +560,35 @@ def test_neon_resume_stays_neon(neon_flow):  # Review Focus 5
     assert (dict(fk.agents), list(fk.cmds)) == before
 
 
+def test_neon_a_second_agent_checks_the_facts_before_the_brief_is_approved_by_tai_or_by_an_agent(neon_flow):
+    run, fk = neon_flow
+    assert auto.run_auto(run) == WAIT_BRIEF  # Tai approves: the check has run, its report is named
+    assert fk.order[:2] == ["vs-researcher", "vs-factcheck"] and run.done("fact_check")
+    assert str(run.path) in fk.prompts["vs-factcheck"][0] and "kiem-chung.md" in auto.get_state(run)["message"]
+    run.mark("approve_brief")
+    auto.run_auto(run)
+    assert fk.agents["vs-factcheck"] == 1  # once
+
+
+def test_neon_auto_mode_checks_the_facts_before_the_agent_that_approves(neon_flow):
+    run, fk = neon_flow
+    run.write("run.json", run.read("run.json") | {"auto": True})
+    fk.brief = "# Tiêu đề\n\n" + MECHANISM
+    auto.run_auto(run)
+    assert fk.order[:3] == ["vs-researcher", "vs-factcheck", "vs-researcher"]  # research, the facts, the brief's own rules
+
+
+def test_neon_a_brief_tai_already_approved_is_not_checked_and_changed_behind_him(neon_flow):
+    run, fk = neon_flow
+    run.file("brief.vi.md").write_text("# Tiêu đề\n\n" + MECHANISM)
+    run.file("notebook.txt").write_text("nb-123\n")
+    run.write("run.json", run.read("run.json") | {"notebook_id": "nb-123"})
+    run.mark("research")
+    run.mark("approve_brief")  # a run from before the fact check (openmatter-neon-70s was started this way)
+    auto.run_auto(run)
+    assert not fk.agents["vs-factcheck"] and fk.agents["vs-writer"] == 1
+
+
 def test_neon_auto_mode_stops_without_mechanism(neon_flow):
     run, fk = neon_flow
     run.write("run.json", run.read("run.json") | {"auto": True})

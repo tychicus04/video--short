@@ -15,7 +15,7 @@ from vshort.run import Run
 ROOT = Path(__file__).resolve().parent.parent  # agents run here: Sonnet session, advisor off, `model:` of the agent
 CLAUDE = ["claude"]
 TIMEOUT = {"vs-researcher": 1800, "vs-transcriber": 900, "vs-translator": 1200, "vs-visuals": 2400,
-           "vs-reviewer": 3600, "vs-writer": 1200, "vs-scene": 2400, "vs-reviewer-neon": 3600}  # seconds
+           "vs-reviewer": 3600, "vs-writer": 1200, "vs-scene": 2400, "vs-reviewer-neon": 3600, "vs-factcheck": 1800}  # seconds
 _COST = threading.Lock()  # agents may log their cost from two threads
 
 
@@ -157,6 +157,11 @@ BRIEF_CHECK_NEON = (
     "một câu chi tiết thật, đúng nguồn. Mỗi con số hay cáo buộc trong \"Ý chính\" mở đầu bằng nguồn của nó, và điều chưa "
     "xác nhận được nói thành câu. Nếu {run}/sources.md có chi tiết liên quan Việt Nam thì một ý nói điều đó, không có thì "
     "không thêm. Lệch thì sửa. Không tạo notebook mới, không nạp nguồn mới.")
+# A second agent, on another model, reads the sources again: everything after the brief is checked against the brief alone, and the
+# brief and its sources.md were written by one Haiku agent (which, in auto mode, also approved its own work).
+FACT_CHECK = ("RUN={run}. Soát dữ kiện của {run}/brief.vi.md với toàn văn nguồn (notebook: {run}/notebook.txt, danh sách: "
+              "{run}/sources.md), sửa chỗ lệch thẳng vào brief, ghi {run}/kiem-chung.md.")
+FACT_FILE = "kiem-chung.md"
 WRITE = ("RUN={run}\n\nViết lời tiếng Việt thẳng từ {run}/brief.vi.md (Tai đã duyệt) và {run}/sources.md, ghi "
          "{run}/script.vi.json, rồi chạy `vshort check {run}` tới khi mã 0.")
 TRANSCRIBE = ("RUN={run}. Đọc các ảnh mảnh phụ đề {sheets} ({n} mảnh, chỉ số 0–{last}, theo {run}/fragments.json) "
@@ -368,10 +373,13 @@ def _flow_neon(run: Run) -> int:
     from vshort.cli import FAILED, OK, WAIT_BRIEF, WAIT_SCRIPT
     p = run.path
     _research(run, RESEARCH_NEON)
+    if not (run.done("approve_brief") or run.done("brief_check")):  # never behind an approval: a brief Tai has read is not changed
+        _agent(run, "fact_check", "vs-factcheck", FACT_CHECK.format(run=p))
     lack = f"Brief chưa có cơ chế từng bước (cần bước 0 và ít nhất 2 bước có nguồn) — sửa {p}/brief.vi.md"
     # a brief that already fails the gate says so at the first stop too: Tai should not approve it, then be stopped again
     _brief_stop(run, BRIEF_CHECK_NEON, (f"{lack} trước khi duyệt. " if _no_mechanism(run) else "")
-                + f"Duyệt brief: {p}/brief.vi.md, rồi `vshort approve {p} brief` và `vshort auto {p}`.")
+                + f"Duyệt brief: {p}/brief.vi.md (bản soát dữ kiện với nguồn: {p}/{FACT_FILE}), rồi `vshort approve {p} brief` "
+                  f"và `vshort auto {p}`.")
     if _no_mechanism(run):
         raise Stop(WAIT_BRIEF, f"{lack}, rồi `vshort auto {p}`.", "wait_brief")
     if not run.done("write"):

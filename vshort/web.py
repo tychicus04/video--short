@@ -161,7 +161,7 @@ def run_detail(request: Request) -> JSONResponse:
     progress = queue.view(run, row["state"], row["auto"], typ, now)
     cost = _json(slug, "cost.json")
     return JSONResponse({"row": row, "locked": locked, "style": "neon" if _neon(slug) else "old", "brief_vi": _text(slug, "brief.vi.md"),
-                         "brief_en": _text(slug, "brief.en.md"), "brief_en_stale": _stale(slug),
+                         "brief_en": _text(slug, "brief.en.md"), "brief_en_stale": _stale(slug), "fact_check": _text(slug, auto.FACT_FILE),
                          "translation": _translation(slug), "length": _length(slug), "proposed": _proposed(slug), "review_md": _text(slug, "review.md"),
                          "cost": cost if isinstance(cost, list) else [],
                          "log_tail": "\n".join((_text(slug, "auto.log") or "").splitlines()[-LOG_LINES:]),

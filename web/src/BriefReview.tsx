@@ -125,6 +125,13 @@ export function BriefReview({ c }: { c: Ctx }) {
 
       {notice && <NoticeBox n={notice} />}
 
+      {d.fact_check && (
+        <details open className="rounded-lg border bg-card p-4 text-sm">
+          <summary className="cursor-pointer font-medium">Soát dữ kiện với nguồn (đã sửa thẳng vào brief bên dưới)</summary>
+          <pre className="mt-3 whitespace-pre-wrap font-sans text-muted-foreground">{d.fact_check}</pre>
+        </details>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle className="flex flex-wrap items-center gap-2">

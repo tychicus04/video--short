@@ -38,9 +38,9 @@ STEPS_OF = {
 DEFAULT_SECONDS = {"research": 480, "brief": 300, "notebooklm": 900, "subtitles": 180, "translate": 240, "approve": 0,
                    "build": 540, "render": 120, "review": 720, "cover": 60}  # render: one ffmpeg run since 06/11
 # The neon style: no NotebookLM, so the voice comes right after the approved narration, then the picture is drawn in code.
-# Steps (auto._flow_neon): research, brief_check | approve_brief, write, approve_script, tts, timeline, scene, render, then
+# Steps (auto._flow_neon): research, fact_check, brief_check | approve_brief, write, approve_script, tts, timeline, scene, render, then
 # review<r>, fix<r>_scene | fix<r>_writer, fixed<r>, and cover.
-STAGES_NEON = [("research", "Tìm hiểu", "Tìm nguồn đáng tin, lập notebook, viết brief"),
+STAGES_NEON = [("research", "Tìm hiểu", "Tìm nguồn đáng tin, lập notebook, viết brief, rồi một agent khác soát dữ kiện với nguồn"),
                ("brief", "Duyệt brief", "Bạn đọc và duyệt brief; bỏ duyệt thì agent tự kiểm"),
                ("write", "Viết lời", "Claude viết lời Việt từ brief, chia cụm phụ đề, tự kiểm"),
                ("approve", "Duyệt lời", "Máy dừng ở đây chờ bạn đọc và duyệt"),
@@ -49,11 +49,11 @@ STAGES_NEON = [("research", "Tìm hiểu", "Tìm nguồn đáng tin, lập noteb
                ("render", "Dựng video", "Vẽ sơ đồ thành video, ghép giọng, tiếng hiệu ứng, outro"),
                ("review", "Soát và sửa", "Xem từng khung, sửa tối đa 2 vòng"),
                ("cover", "Ảnh bìa và xuất", "Tiêu đề đăng, ảnh bìa, prompt Gemini, kéo về Mac")]
-STEPS_OF_NEON = {"research": ("research",), "brief": ("approve_brief", "brief_check"), "write": ("write",),
+STEPS_OF_NEON = {"research": ("research", "fact_check"), "brief": ("approve_brief", "brief_check"), "write": ("write",),
                  "approve": ("approve_script",), "voice": ("tts", "timeline"), "scene": ("scene",), "render": ("render",),
                  "review": (), "cover": ("cover",)}
 # seconds, guessed like the old ones until five neon runs have times.json; scene is Claude's long turn, render HyperFrames' (hf.render's 600 s)
-DEFAULT_SECONDS_NEON = {"research": 480, "brief": 300, "write": 240, "approve": 0, "voice": 150, "scene": 900, "render": 600,
+DEFAULT_SECONDS_NEON = {"research": 780, "brief": 300, "write": 240, "approve": 0, "voice": 150, "scene": 900, "render": 600,
                         "review": 900, "cover": 60}
 
 
@@ -69,7 +69,7 @@ HISTORY = 5  # finished runs the typical time is the median of
 _REVIEW = re.compile(r"(review|fix|fixed)\d.*")
 _ROUND = re.compile(r"fix(\d+)_")
 WHAT_FIX = {"visuals": "chữ sai", "translator": "bản dịch", "scene": "kịch bản hình", "writer": "lời"}
-LABELS = {"brief_check": "Agent soát brief", "visuals_agent": "Soát chữ sai trong hình", "cover": "Ảnh bìa, tiêu đề, xuất"}
+LABELS = {"fact_check": "Soát dữ kiện với nguồn", "brief_check": "Agent soát brief", "visuals_agent": "Soát chữ sai trong hình", "cover": "Ảnh bìa, tiêu đề, xuất"}
 
 
 def style_of(meta) -> str:

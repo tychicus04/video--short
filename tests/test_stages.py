@@ -271,3 +271,12 @@ def test_typical_and_history_are_per_style(tmp_path):
     run("odd", "old", 5); (tmp_path / "odd" / "run.json").write_text("[1]")
     assert [h["research"]["end"] for h in stages.history(tmp_path, "neon")] == [4, 2]
     assert [h["research"]["end"] for h in stages.history(tmp_path)] == [5, 3, 1]  # run.json not an object: the old flow
+
+
+def test_the_fact_check_is_a_step_of_the_neon_research_stage_with_a_label_of_its_own():
+    assert stages.stage_of("fact_check", "neon") == "research" and stages.stage_of("fact_check") is None  # the NotebookLM flow has none
+    times = {"research": {"start": 0, "end": 300}, "fact_check": {"start": 300}}
+    v = stages.view("running", False, {"new", "research"}, times, stages.typical([], "neon"), 400, style="neon")
+    assert v["stages"][0]["status"] == "running" and v["stages"][0]["seconds"] == 400
+    assert [(s["step"], s["label"], s["status"]) for s in v["stages"][0]["steps"]] == [
+        ("research", "Tìm hiểu", "done"), ("fact_check", "Soát dữ kiện với nguồn", "running")]

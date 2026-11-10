@@ -101,6 +101,7 @@ export interface Detail {
   brief_vi: string | null
   brief_en: string | null
   brief_en_stale: boolean
+  fact_check: string | null // kiem-chung.md: what vs-factcheck found and changed in the brief (neon), read while approving
   translation: TranslationRow[] | null
   length: { secs: number; min: number; max: number } | null // a neon script: final.mp4's estimated length, from the saved file
   proposed: ProposedRow[] | null
