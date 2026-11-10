@@ -5,8 +5,7 @@ headline on it, and the export folder named by the publish title.
 ({"n": k | null, "why": ..., "title": publish title, "thumb": headline, "poster": prompt parts}); `make` cuts the pick
 (or, failing that, the video's first still) to both shapes, writes the headline on them (the 9:16 thumb is the video's own
 frame with its title bar instead) and writes cover/prompt.txt, the
-prompt Tai pastes into the Gemini app for a poster cover (a poster without a headline: `save_gemini` fits what he uploads
-to the frame and types the title into the bar); `package` lays out xuat/<title>/ for the Mac to pull.
+prompt Tai pastes into the Gemini app for a poster cover; `package` lays out xuat/<title>/ for the Mac to pull.
 """
 import json
 import os
@@ -44,8 +43,6 @@ EM = (150, 44)  # largest and smallest headline size, px: 44 takes a spoken titl
 MAX_NAME = 200  # bytes of the folder/file name: APFS allows 255, Vietnamese takes 2–3 bytes a letter
 # The prompt Tai pastes into the Gemini app to draw a poster cover by hand (an API key that draws costs money: Tai said
 # no, 05/11). The agent writes only what changes per video (pick.json "poster"); the frame stays the same every time.
-# The poster carries no headline: Gemini misspells and misplaces it, so `save_gemini` types the title into the bar, which
-# the prompt tells Gemini to leave clear (the 9:16 bar is at 53–66 % of the height, the 16:9 one at 70–93 %, left 77 %).
 POSTER = """Create a vertical 9:16 cover image for a Vietnamese cybersecurity news short video (TikTok/Reels thumbnail).
 
 Style: dramatic, cinematic, photorealistic digital poster. Dark navy/black background with red danger glow, sparks, \
@@ -55,20 +52,19 @@ smoke and fire, high contrast, layered composition filling the whole frame, like
 
 Top-right corner: a red badge with the bold text "{badge}".
 
-No headline and no other text. A title bar is added over this image later, across the full width at roughly 50-70 % of \
-the image height: keep the main subject and every face out of that band (the subject in the upper half, only supporting \
-detail at the bottom).
+Lower third: a huge bold condensed Vietnamese headline, stacked and centered, with a thick black outline and drop shadow:
+{lines}
 
-Spell the badge text exactly as given, Vietnamese with correct diacritics. No text other than the badge, no real company \
-or agency logos, no watermark."""
+Spell every text exactly as given, Vietnamese with correct diacritics. No text other than what this prompt quotes, \
+no real company or agency logos, no watermark."""
 # pasted in the same Gemini chat once the 9:16 one is drawn: the article's lead image
-WIDE = """Now make the same poster as a horizontal 16:9 image: same scene, rearranged for the wide frame, with the badge but \
-no headline and no other text. A title bar is added over this image later, across the bottom-left (the lower 30 % of the \
-height, the left three quarters of the width): keep the main subject and every face out of it."""
-# the covers Tai draws in the Gemini app from that prompt and drops on the video's page (the title typed into the bar by
-# `save_gemini`); the export uses them when there
+WIDE = """Now make the same poster as a horizontal 16:9 image: same scene and the same headline text, rearranged for the wide \
+frame, with the headline on the left half."""
+LINE_LOOK = ["red, biggest", "white with the last word in red, big", "yellow, smaller", "white, smaller"]
+# the covers Tai draws in the Gemini app from that prompt and drops on the video's page; the export uses them when there
 GEMINI = {"9x16": "gemini-9x16.jpg", "16x9": "gemini-16x9.jpg"}
 RATIO_TOL = 0.05  # how far off 9:16 or 16:9 an upload may be: Gemini's sizes are not exact
+MAX_SIDE = 2048
 MAX_UPLOAD = 15_000_000  # bytes of the file as uploaded
 MAX_PIXELS = 50_000_000  # a small file may still decode to gigabytes (a "decompression bomb"): refused from its header
 
@@ -261,21 +257,18 @@ def folder_name(title: str) -> str:
     return name or "video"
 
 
-def _pick(run_dir: Path) -> dict:
-    f = run_dir / "cover" / "pick.json"
-    return json.loads(f.read_text(encoding="utf-8")) if f.exists() else {}
-
-
 def poster_prompt(pick: dict) -> str | None:
-    """The Gemini prompt from pick.json's "poster" ({"scene", "badge"}; the "lines" older picks carry are ignored: the
-    title is typed on afterwards); None when the agent wrote none or wrote it in another shape, so a bad prompt never
-    stops the covers."""
+    """The Gemini prompt from pick.json's "poster" ({"scene", "badge", "lines": 2–4 headline lines}); None when the
+    agent wrote none or wrote it in another shape, so a bad prompt never stops the covers."""
     p = pick.get("poster")
     try:
-        scene, badge = p["scene"].strip(), p.get("badge", "CẢNH BÁO KHẨN").strip()
+        scene, badge, lines = p["scene"].strip(), p.get("badge", "CẢNH BÁO KHẨN").strip(), [x.strip() for x in p["lines"]]
     except (TypeError, KeyError, AttributeError):
         return None
-    return POSTER.format(scene=scene, badge=badge) if scene and badge else None
+    if not scene or not badge or not 2 <= len(lines) <= len(LINE_LOOK) or not all(lines):
+        return None
+    head = "\n".join(f'  line {k + 1}, {look}: "{x}"' for k, (x, look) in enumerate(zip(lines, LINE_LOOK)))
+    return POSTER.format(scene=scene, badge=badge, lines=head)
 
 
 def make(run_dir: Path) -> dict:
@@ -284,7 +277,7 @@ def make(run_dir: Path) -> dict:
     agent's, else the spoken title when it does not fit."""
     out = run_dir / "cover"
     out.mkdir(exist_ok=True)
-    pick = _pick(run_dir)
+    pick = json.loads((out / "pick.json").read_text(encoding="utf-8")) if (out / "pick.json").exists() else {}
     rows = {r["n"]: r for r in json.loads((out / "candidates.json").read_text(encoding="utf-8"))} \
         if (out / "candidates.json").exists() else {}
     row = rows.get(pick.get("n"))
@@ -311,10 +304,8 @@ def make(run_dir: Path) -> dict:
 
 
 def save_gemini(run_dir: Path, shape: str, data: bytes) -> Path:
-    """cover/gemini-<shape>.jpg from an uploaded JPEG, PNG or WebP: turned upright, fitted to SIZES[shape] and the title
-    typed into the bar (the 16:9 takes pick.json's "thumb" like `make`, else the spoken title; the 9:16 the spoken title,
-    as the video's own bar shows it), as JPEG. A picture of the wrong shape is refused. ValueError (in Vietnamese) and
-    nothing written when it is not fit or the title does not fit the bar."""
+    """cover/gemini-<shape>.jpg from an uploaded JPEG, PNG or WebP: turned upright, at most MAX_SIDE px, as JPEG. Never cut:
+    a picture of the wrong shape is refused. ValueError (in Vietnamese) and nothing written when it is not fit."""
     if not isinstance(shape, str) or shape not in GEMINI:
         raise ValueError("Khổ ảnh phải là 9x16 hoặc 16x9")
     if len(data) > MAX_UPLOAD:
@@ -330,15 +321,7 @@ def save_gemini(run_dir: Path, shape: str, data: bytes) -> Path:
     a, b = map(int, shape.split("x"))
     if abs((w / h) / (a / b) - 1) > RATIO_TOL:
         raise ValueError(f"Ảnh {w}×{h} không đúng khổ {shape} (lệch quá {RATIO_TOL * 100:.0f} %)")
-    try:
-        spoken = spoken_title(run_dir)
-    except (OSError, ValueError, LookupError, TypeError) as e:  # no script yet, or one that is not a script
-        raise ValueError("Chưa có lời video (script.vi.json) để lấy tiêu đề gõ vào thanh tiêu đề") from e
-    img = ImageOps.fit(img, SIZES[shape], Image.LANCZOS)  # the ratio is within RATIO_TOL: a sliver of edge goes
-    thumb = _pick(run_dir).get("thumb")
-    img = (shape == "16x9" and thumb and headline(img, thumb, shape)) or headline(img, spoken, shape)
-    if img is None:
-        raise ValueError(f"Tiêu đề không vừa thanh tiêu đề: {spoken!r}")
+    img.thumbnail((MAX_SIDE, MAX_SIDE))
     out = run_dir / "cover" / GEMINI[shape]
     out.parent.mkdir(exist_ok=True)
     tmp = out.with_name(f".{out.name}.{os.getpid()}.tmp")
