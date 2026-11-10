@@ -293,7 +293,7 @@ def load_scene(data: dict) -> Scene:
 # ---- timing and checking
 
 MAX_GAP, MAX_TONES, DIM = 5.0, 2, 0.35  # longest stretch with nothing changing; colours at once; opacity of a dimmed element
-TOP, RIGHT, RIGHT_FROM_Y, CAPTION_BAND = UI_TOP, UI_RIGHT, UI_RIGHT_FROM, (1000, 1140)  # the safe zone's edges, px
+TOP, RIGHT, RIGHT_FROM_Y, CAPTION_BAND = UI_TOP, UI_RIGHT, UI_RIGHT_FROM, (1080, 1140)  # the safe zone's edges, px (a caption is one line: y 1092 - 1140)
 LIT = 0.6  # an element this opaque or more counts as a colour on the screen
 OFF, DRAW, HERO_DRAW, MOVE, FLOW = 0.35, 0.6, 0.7, 0.6, 0.85  # seconds: an `off`, a stroke-draw, a hero's, a tile's flight, one pass
 STAGGER = 0.08  # between the tiles of a split or a merge

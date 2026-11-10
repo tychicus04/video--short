@@ -3,8 +3,9 @@ import math
 
 import pytest
 
-from vshort.layout import (C, Box, HUB, ICON, LABEL_FONT, LABEL_MAX, LABEL_SIZE, MIN_LINK, SLOTS, STATEMENT_BAND, _wrap, boxes_overlap,
-                           place, segment_hits_box, text_box)
+from vshort.layout import (ARM, BADGE, C, FREE_CHIPS, HERO, HERO_Y, HUB, ICON, LABEL_FONT, LABEL_MAX, LABEL_SIZE, MIN_LINK, RING, SHORT,
+                           SHORT_HUB, SLOTS, SPACING, STATEMENT_BAND, STROKE, TEXT, TILE, Box, _wrap, boxes_overlap, place, segment_hits_box,
+                           text_box)
 from vshort.scene import Beat, Link, Node, SceneError, Section
 
 
@@ -59,9 +60,11 @@ def test_overlap_and_segment_tests_keep_their_margins():
     assert segment_hits_box(link, [-50, 90, 10, 110]) and not segment_hits_box(link, [210, 90, 260, 110])  # an end inside; past the end
 
 
-def test_ring_slots_match_the_spike():
+def test_ring_slots_stand_on_an_ellipse_round_the_centre():
     r = SLOTS["ring"]
-    assert r["r0"] == pytest.approx((558, 560), abs=0.5) and r["r4"] == pytest.approx((183.4, 385.3), abs=0.5)
+    assert r["r0"] == pytest.approx((C[0] + RING[0], C[1])) and r["r3"] == pytest.approx((C[0] - RING[0], C[1]))
+    assert r["r4"] == pytest.approx((C[0] - RING[0] * math.cos(math.radians(50)), C[1] - RING[1] * math.sin(math.radians(50))))
+    assert r["r0"][0] + ICON / 2 <= 618  # left of the platform's buttons
 
 
 def test_ring_with_labels_stays_left_of_the_buttons():
@@ -106,8 +109,8 @@ def test_full_layouts_have_no_overlap(layout):  # a full layout must not make mi
 def test_a_link_too_short_to_see_is_refused_in_vietnamese(monkeypatch):  # the old pair slots left a 22 px stub
     nodes = (Node("a", "user", "", "left"), Node("b", "server", "", "hub"))
     sec = Section("s1", "", "normal", "pair", nodes, (Link("l1", "a", "b", "solid"),), (), ())
-    assert place(sec)  # 72 px of line
-    monkeypatch.setitem(SLOTS["pair"], "left", (170, 560))  # 160 px from the hub: 2 px of line
+    assert place(sec)  # ARM - SHORT - SHORT_HUB = 61 px of line
+    monkeypatch.setitem(SLOTS["pair"], "left", (C[0] - SHORT - SHORT_HUB - 2, C[1]))  # 2 px of line
     with pytest.raises(SceneError, match=r"nối l1: a và b quá gần nhau để nối \(chỉ thấy 2 px đường, cần ít nhất 48\)"):
         place(sec)
 
@@ -120,21 +123,22 @@ def test_nodes_links_badges_and_tiles_stand_as_in_the_spike():
     dc, u1 = by_id(els, "dc"), by_id(els, "u1")
     assert (dc["size"], u1["size"], dc["kind"], dc["icon"], dc["tone"]) == (HUB, ICON, "icon", "server", "normal")
     assert (dc["x"], dc["y"]) == C
-    link = by_id(els, "l1")  # u1 at r0 is to the right of the hub: 46 px in from the user, 112 from the hub
-    assert math.dist((link["x1"], link["y1"]), (u1["x"], u1["y"])) == pytest.approx(46)
-    assert math.dist((link["x2"], link["y2"]), C) == pytest.approx(112)
-    badge = by_id(els, "s1.0")  # size 34 at (x - 0.6 s, y - 0.74 s): (x - 50, y - 62) at s = 84 in the spike
-    assert (badge["kind"], badge["of"], badge["beat"], badge["size"]) == ("badge", "u1", 0, 34)
-    assert (badge["x"], badge["y"]) == pytest.approx((u1["x"] - 50.4, u1["y"] - 62.16))
-    t0, t1 = by_id(els, "s1.1.0"), by_id(els, "s1.1.1")  # 30 × 30 at (x, y - s / 2 - 41): (x, y - 83) at s = 84
-    assert (t0["kind"], t0["size"], t0["beat"]) == ("tile", 30, 1) and "of" not in t0  # a tile is not its node's
-    assert (t0["x"], t0["y"]) == pytest.approx((u1["x"], u1["y"] - 83))
-    assert (t1["x"], t1["y"]) == pytest.approx((C[0], C[1] - 116))
+    link = by_id(els, "l1")  # u1 at r0 is to the right of the hub: SHORT in from the user, SHORT_HUB from the hub
+    assert math.dist((link["x1"], link["y1"]), (u1["x"], u1["y"])) == pytest.approx(SHORT)
+    assert math.dist((link["x2"], link["y2"]), C) == pytest.approx(SHORT_HUB)
+    badge = by_id(els, "s1.0")  # at (x - 0.6 s, y - 0.74 s), the spike's corner
+    assert (badge["kind"], badge["of"], badge["beat"], badge["size"]) == ("badge", "u1", 0, BADGE)
+    assert (badge["x"], badge["y"]) == pytest.approx((u1["x"] - 0.6 * ICON, u1["y"] - 0.74 * ICON))
+    t0, t1 = by_id(els, "s1.1.0"), by_id(els, "s1.1.1")  # at (x, y - s / 2 - 41), over the icon
+    assert (t0["kind"], t0["size"], t0["beat"]) == ("tile", TILE, 1) and "of" not in t0  # a tile is not its node's
+    assert (t0["x"], t0["y"]) == pytest.approx((u1["x"], u1["y"] - ICON / 2 - 41))
+    assert (t1["x"], t1["y"]) == pytest.approx((C[0], C[1] - HUB / 2 - 41))
     m0, m1 = by_id(els, "s1.2.0"), by_id(els, "s1.2.1")  # a merge's tiles, one a piece, all rest over `into`, on one spot
     assert (m0["kind"], m0["beat"]) == ("tile", 2) and "s1.2.2" not in {e["id"] for e in els}
-    assert (m0["x"], m0["y"]) == pytest.approx((C[0], C[1] - 116)) and (m1["x"], m1["y"]) == (m0["x"], m0["y"])
+    assert (m0["x"], m0["y"]) == pytest.approx((C[0], C[1] - HUB / 2 - 41)) and (m1["x"], m1["y"]) == (m0["x"], m0["y"])
     assert m0["box"] == m1["box"] == t1["box"]
-    assert t0["box"] == pytest.approx([u1["x"] - 16.25, u1["y"] - 99.25, u1["x"] + 16.25, u1["y"] - 66.75], abs=0.01)  # 30 + stroke 2.5
+    h, ty = (TILE + STROKE["tile"]) / 2, u1["y"] - ICON / 2 - 41  # the tile and its stroke
+    assert t0["box"] == pytest.approx([u1["x"] - h, ty - h, u1["x"] + h, ty + h], abs=0.01)
 
 
 def test_split_and_merge_name_a_node_that_is_not_there():
@@ -168,24 +172,24 @@ def test_ids_and_tones_of_everything_a_beat_makes():
     assert tones == {"dc": "risk", "f": "risk", "f.label": "risk", "s9.label": "risk", "s9.0": "risk", "s9.1": "risk",
                      "s9.2": "claim", "s9.3": None, "s9.4": "claim", "s9.5": "safe", "s9.6": "claim"}
     hero, plain = by_id(els, "s9.5"), by_id(els, "s9.6")
-    assert (hero["kind"], hero["size"], hero["x"], hero["y"]) == ("hero", 170, C[0], C[1] - 6)
+    assert (hero["kind"], hero["size"], hero["x"], hero["y"]) == ("hero", HERO, C[0], HERO_Y)
     assert (hero["label"], plain["label"], plain["label_box"][2] - plain["label_box"][0]) == ("BẰNG CHỨNG MẬT MÃ", "", 0)
     lb = hero["label_box"]  # IBM Plex Mono 30, centred on the picture's middle, from y 756
     assert lb[1] == 756 and lb[0] + lb[2] == pytest.approx(2 * C[0], abs=0.1)
     assert hero["box"][1] < hero["box"][3] and hero["box"][3] == lb[3] and hero["box"][0] <= lb[0] and hero["box"][2] >= lb[2]
     sec = by_id(els, "s9.label")
     assert (sec["box"][:2], sec["text"], sec["kind"], sec["align"], sec["font"], sec["size"]) == (
-        [60, 190], "KIỂM CHỨNG", "section", "left", "IBMPlexMono-SemiBold.ttf", 22)
+        [60, 190], "KIỂM CHỨNG", "section", "left", "IBMPlexMono-SemiBold.ttf", TEXT)
     assert (by_id(els, "f.label")["align"], by_id(els, "s9.2")["align"], by_id(els, "s9.2")["font"]) == (
         "center", "center", "IBMPlexMono-SemiBold.ttf")
     assert not [e for e in els if e["kind"] == "tile"]
 
 
-def test_plex_mono_is_measured_with_its_two_pixel_letter_spacing():
+def test_plex_mono_is_measured_with_its_letter_spacing():
     from vshort.layout import MONO
     from vshort.textfit import _font
-    raw = _font(22, MONO).getbbox("PHẢI TIN?")[2]
-    assert text_box("PHẢI TIN?", MONO, 22, 0, 0).x1 == pytest.approx((raw + 2 * 8) * 1.06)
+    raw = _font(TEXT, MONO).getbbox("PHẢI TIN?")[2]
+    assert text_box("PHẢI TIN?", MONO, TEXT, 0, 0).x1 == pytest.approx((raw + SPACING * 8) * 1.06)  # 9 letters, 8 gaps
     raw = _font(22, LABEL_FONT).getbbox("Máy chủ")[2]  # Be Vietnam Pro has none
     assert text_box("Máy chủ", LABEL_FONT, 22, 0, 0).x1 == pytest.approx(raw * 1.06)
 
@@ -195,7 +199,9 @@ def test_statement_and_quote_wrap_and_refuse_what_will_not_fit():
         Beat(1, "statement", {"text": "Mỗi máy chỉ thấy một phần nhỏ của việc"}),
         Beat(2, "quote", {"text": "AI không cần data center khổng lồ", "who": "A"}),), ()))
     st, q = by_id(els, "s1.0"), by_id(els, "s1.1")
-    assert len(st["lines"]) == 2 and 60 <= st["box"][0] and 870 <= st["box"][1] and st["box"][3] <= 990 and st["box"][2] <= 612
+    band = STATEMENT_BAND
+    assert len(st["lines"]) == 2 and band.x0 <= st["box"][0] and band.y0 <= st["box"][1] and st["box"][3] <= band.y1 and st["box"][2] <= band.x1
+    assert band.y1 <= 1080  # a caption stands from y 1092
     assert st["box"][0] + st["box"][2] == pytest.approx(60 + 612, abs=0.1) and st["tone"] is None  # the box centred in the band
     assert 1 <= len(q["lines"]) <= 4 and q["box"] == [60, 380, 600, 750]
     for text, kind, who in [("từ " * 30, "statement", None), ("từ " * 30, "quote", "A"), ("từ", "quote", "x" * 80)]:
@@ -231,12 +237,12 @@ def test_a_statement_loses_its_orphan_last_word_and_no_other_cut_moves(text, exp
 
 def test_chips_without_near_stack_in_the_left_column():
     chips = tuple(Beat(i, "chip", {"text": t}) for i, t in enumerate(["05.11.2026", "chưa xác nhận", "1000 lần"], start=1))
-    for label, y0 in (("", 190), ("THÔNG THƯỜNG", 250)):
+    for label, y0 in (("", 190), ("THÔNG THƯỜNG", 252)):
         els = place(Section("s1", label, "normal", "none", (), (), chips, ()))
         cs = [e for e in els if e["kind"] == "chip"]
         assert [c["box"][0] for c in cs] == [60, 60, 60] and cs[0]["box"][1] == y0
-        assert cs[1]["box"][1] == pytest.approx(cs[0]["box"][3] + 12, abs=0.1)
-        assert cs[2]["box"][1] == pytest.approx(cs[1]["box"][3] + 12, abs=0.1)
+        assert cs[1]["box"][1] == pytest.approx(cs[0]["box"][3] + FREE_CHIPS[1], abs=0.1)
+        assert cs[2]["box"][1] == pytest.approx(cs[1]["box"][3] + FREE_CHIPS[1], abs=0.1)
         assert all(c["tone"] == "claim" for c in cs)
 
 
@@ -257,20 +263,20 @@ def test_a_kept_hub_is_an_obstacle_and_a_link_to_it_is_cut_at_its_size():
     kept = [e for e in first if e["id"] == "dc" or e.get("of") == "dc"]
     assert [e["id"] for e in kept] == ["dc", "dc.label"]
     # what an earlier section left to the left of the hub, where a new node's label would first go
-    kept.append({"id": "old.label", "kind": "label", "of": "dc", "box": [80, 606, 220, 634]})
+    kept.append({"id": "old.label", "kind": "label", "of": "dc", "box": [40, 655, 180, 688]})
     nodes = (Node("u1", "user", "Máy chủ", "left"), Node("u2", "user", "Máy chủ", "above"))
     sec = Section("b", "", "normal", "pair", nodes, (Link("l1", "u2", "dc", "solid"),), (), ("dc",))
     els = place(sec, kept)
     assert {e["id"] for e in els} == {"u1", "u2", "u1.label", "u2.label", "l1"}  # only this section's own
     link = by_id(els, "l1")
-    assert math.dist((link["x2"], link["y2"]), C) == pytest.approx(112)
-    assert math.dist((link["x1"], link["y1"]), (330, 340)) == pytest.approx(46)
+    assert math.dist((link["x2"], link["y2"]), C) == pytest.approx(SHORT_HUB)
+    assert math.dist((link["x1"], link["y1"]), (C[0], C[1] - ARM)) == pytest.approx(SHORT)
     labels = [e for e in els if e["kind"] == "label"]
     solid = kept + [e for e in els if e["kind"] == "icon"]
     assert not any(boxes_overlap(lb["box"], k["box"]) for lb in labels for k in solid)
     assert not any(segment_hits_box(link, lb["box"]) for lb in labels)
     # without that old label, u1's own would stand right under its icon: the kept one is what moved it
-    assert by_id(place(sec, kept[:2]), "u1.label")["box"][1] == pytest.approx(604.75, abs=0.1)
+    assert by_id(place(sec, kept[:2]), "u1.label")["box"][1] == pytest.approx(C[1] + (ICON * 20 / 24 + STROKE["icon"]) / 2 + 8, abs=0.1)
 
 
 def test_a_badge_takes_the_first_corner_no_link_runs_through():
@@ -280,8 +286,8 @@ def test_a_badge_takes_the_first_corner_no_link_runs_through():
                                                  Beat(1, "badge", {"node": "u2", "icon": "lock"})])
     els = place(sec)
     u1, u2, b1, b2 = (by_id(els, i) for i in ("u1", "u2", "s1.0", "s1.1"))
-    assert (b1["x"], b1["y"]) == pytest.approx((u1["x"] - 50.4, u1["y"] - 62.16))
-    assert (b2["x"], b2["y"]) == pytest.approx((u2["x"] + 50.4, u2["y"] - 62.16))
+    assert (b1["x"], b1["y"]) == pytest.approx((u1["x"] - 0.6 * ICON, u1["y"] - 0.74 * ICON))
+    assert (b2["x"], b2["y"]) == pytest.approx((u2["x"] + 0.6 * ICON, u2["y"] - 0.74 * ICON))
     assert not any(segment_hits_box(l, b["box"]) for l in els if l["kind"] == "link" for b in (b1, b2))
 
 

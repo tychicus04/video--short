@@ -242,9 +242,10 @@ def test_a_kept_node_holds_its_slot():
 
 
 def test_a_kept_node_keeps_its_spot_so_the_new_layout_needs_a_slot_there():
-    ps = problems(two("pair", ["u1"], [("x", "left")]))  # u1 stood at the ring's r0 (558, 560)
-    assert len(ps) == 1 and "s2" in ps[0] and "'u1'" in ps[0] and "(558, 560)" in ps[0] and "pair" in ps[0]
-    assert "(330, 560)" in problems(two("grid", ["dc"], [("x", "g0")]))[0]  # a grid has no centre
+    r0, c = (round(v) for v in layout.SLOTS["ring"]["r0"]), (round(v) for v in layout.C)
+    ps = problems(two("pair", ["u1"], [("x", "left")]))  # u1 stood at the ring's r0, 4 px short of the pair's `right`
+    assert len(ps) == 1 and "s2" in ps[0] and "'u1'" in ps[0] and "({}, {})".format(*r0) in ps[0] and "pair" in ps[0]
+    assert "({}, {})".format(*c) in problems(two("grid", ["dc"], [("x", "g0")]))[0]  # a grid has no centre
     assert "'u1'" in problems(two("none", ["u1"]))[0]
 
 
@@ -326,12 +327,18 @@ def test_beat_time_leads_the_phrase():
 
 def test_slots_match_the_layouts():
     s = layout.SLOTS
-    assert set(s) == set(LAYOUTS) and s["none"] == {} and s["center"] == {"hub": layout.C} and layout.C == (330.0, 560.0)
-    assert s["pair"] == {"hub": (330, 560), "left": (100, 560), "right": (560, 560), "above": (330, 340), "below": (330, 780)}
+    (cx, cy), arm = layout.C, layout.ARM
+    assert set(s) == set(LAYOUTS) and s["none"] == {} and s["center"] == {"hub": layout.C} and layout.C == (330.0, 604.0)
+    assert s["pair"] == {"hub": (cx, cy), "left": (cx - arm, cy), "right": (cx + arm, cy), "above": (cx, cy - arm), "below": (cx, cy + arm)}
     assert list(s["ring"]) == ["hub", *(f"r{k}" for k in range(6))]
-    assert s["ring"]["r0"] == pytest.approx((558, 560)) and s["ring"]["r4"] == pytest.approx((183.4, 385.3), abs=0.1)
-    assert s["chain"] == {f"c{k}": (330, 330 + 150 * k) for k in range(4)}
-    assert s["grid"]["g0"] == (162, 460) and s["grid"]["g2"] == (498, 460) and s["grid"]["g5"] == (498, 660) and len(s["grid"]) == 6
+    assert s["ring"]["hub"] == s["pair"]["hub"] == s["center"]["hub"]  # the one slot a node keeps from one of these layouts to another
+    assert s["chain"] == {f"c{k}": (330, 346 + 165 * k) for k in range(4)}
+    assert s["grid"]["g0"] == (158, 492) and s["grid"]["g2"] == (502, 492) and s["grid"]["g5"] == (502, 716) and len(s["grid"]) == 6
+    # every slot's icon stands inside the safe zone: under the section label, over the statement band, left of the buttons
+    for name, slots in s.items():
+        for x, y in slots.values():
+            half = (layout.HUB if (x, y) == layout.C and name != "grid" else layout.ICON) / 2
+            assert 40 <= x - half and x + half <= 618 and 230 <= y - half and y + half <= layout.STATEMENT_BAND.y0, (name, x, y)
 
 
 NAMES = ("user user-x users server hard-drive monitor smartphone cpu cloud globe building-2 file file-lock mail lock lock-open "
@@ -442,11 +449,11 @@ def test_check_tiles_of_one_beat_may_touch():
 def test_check_safe_zone():
     far = chip("c1", "XA QUÁ", [560, 680, 640, 720])  # x 640 under y 535: the buttons
     top = chip("c2", "TRÊN", [200, 100, 300, 130])
-    low = chip("c3", "DƯỚI", [200, 980, 300, 1010])  # into the caption band
+    low = chip("c3", "DƯỚI", [200, 1060, 300, 1090])  # into the caption band
     ok = chip("c4", "VỪA", [500, 300, 640, 340])  # above y 535 the right edge is free
     got = check(rt_of([far, top, low, ok], [act(2, "on", "c1", "c2", "c3", "c4")], 6), "")
     assert len(got) == 3 and all(p.startswith("2,0 s") for p in got)
-    assert "'c1'" in got[0] and "618" in got[0] and "'c2'" in got[1] and "141" in got[1] and "'c3'" in got[2] and "1000" in got[2]
+    assert "'c1'" in got[0] and "618" in got[0] and "'c2'" in got[1] and "141" in got[1] and "'c3'" in got[2] and "1080" in got[2]
 
 
 def test_check_a_dimmed_element_shown_again_is_whole_again():

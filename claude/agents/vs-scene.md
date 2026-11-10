@@ -27,7 +27,7 @@ không viết tọa độ, không chọn màu ngoài bốn nghĩa.
 Một **mục** (section) là một bố cục đứng yên. Chỉ những khóa này có; khóa nào khác là "khóa lạ".
 - mục: `id` (duy nhất), `label` (nhãn gõ dần ở góc trên trái, in hoa, ngắn; `""` là không nhãn), `tone` (màu mặc định của mục),
   `layout`, `keep`, `nodes`, `links`, `beats`. Mục nào cũng cần ít nhất một nhịp.
-- nút: `id`, `icon`, `label` (≤ 10 chữ cái thường: nhãn rộng quá `LABEL_MAX` = 140 px là lỗi, "máy chủ web" (11 ký tự) đã rộng 155 px; `""` là không nhãn), `slot`.
+- nút: `id`, `icon`, `label` (≤ 10 chữ cái thường: nhãn rộng quá `LABEL_MAX` = 159 px là lỗi, "kẻ tấn công" vừa khít ở 157 px, "máy chủ web" đã rộng 176 px; `""` là không nhãn), `slot`.
 - nối: `id`, `a`, `b` (id hai nút), `style`.
 - nhịp: `at` (số cụm, số nguyên), `do` (động từ), `delay` (giây, mặc định 0; xếp hai nhịp cùng cụm cách nhau 0,3–0,6 s) và khóa riêng
   của động từ. Hình vào trước cụm 0,15 s.
@@ -60,9 +60,11 @@ xác nhận), `safe` xanh lá (an toàn, giải pháp).
 - `badge` {`node`, `icon`}: icon nhỏ ở góc nút, màu của nút. `swap` {`node`, `icon`}: đổi icon của nút (tệp thành tệp khóa).
 - `split` {`node`, `to`}: khối chia thành mảnh bay tới các nút trong `to`. `merge` {`from`, `into`}: mảnh bay từ các nút trong `from`
   gộp vào `into`. `to` và `from` là danh sách id.
-- `chip` {`text`, [`near`], [`tone`]}: viên chữ ngắn (nên in hoa, vài chữ), mặc định vàng; `near` là id nút nó đứng cạnh.
+- `chip` {`text`, [`near`], [`tone`]}: viên chữ ngắn (nên in hoa, vài chữ), mặc định vàng; `near` là id nút nó đứng cạnh. Chữ chip
+  cao 26 px, mỗi ký tự rộng khoảng 18 px: chip có `near` nên dưới 16 ký tự ("CHƯA KIỂM CHỨNG" rộng 307 px), dài hơn thường không
+  còn chỗ cạnh nút; chip không `near` dài tới khoảng 28 ký tự.
 - `quote` {`text`, `who`, [`tone`]}: bong bóng lời tuyên bố, `who` là người nói (in hoa, ngắn); chữ trích ngắn, tối đa 4 dòng.
-- `statement` {`text`}: câu lớn màu trắng ở dải dưới, tối đa 2 dòng (khoảng 8 chữ). `hero` {`icon`, [`label`], [`tone`]}: icon lớn
+- `statement` {`text`}: câu lớn màu trắng ở dải ngay trên phụ đề (y 928–1048), tối đa 2 dòng (khoảng 8 chữ). `hero` {`icon`, [`label`], [`tone`]}: icon lớn
   giữa hình cho cao trào, mặc định xanh lá. Hero cần giữa hình trống: nút `hub` còn hiện, kể cả đã `dim`, vẫn "đè lên hero". Dùng hero ở
   mục `none`, hoặc sau `hide` của nút ở giữa, cách `hide` ít nhất 0,35 s (cụm sau, hay `delay` từ 0,4).
 
@@ -128,7 +130,7 @@ Không có tọa độ, không có "clear": sang mục mới thì mọi thứ kh
   sớm hơn thì cho nút hiện không nhãn, hoặc một chip khác đúng với cụm đó.
 - **Chữ phải kịp đọc.** Chip, statement, quote đứng trọn vẹn ít nhất 1 giây trước khi mục của nó tắt (mục tắt 0,35 s trước nhịp đầu
   của mục sau); code kiểm. Chip quan trọng nhất của một mục ("CHƯA KIỂM CHỨNG") đừng đặt ở cụm cuối kèm `delay`.
-- **Badge chỉ phụ họa.** Một badge rộng 34 px, trên điện thoại gần như không đọc ra. Ý nào lời nói thành chữ ("vượt lớp xác thực",
+- **Badge chỉ phụ họa.** Một badge rộng 42 px, trên điện thoại vẫn khó đọc ra. Ý nào lời nói thành chữ ("vượt lớp xác thực",
   "phải tin nơi đó", "không tính toán nặng") thì hình nói bằng một `chip`, không chỉ bằng một badge. Mỗi thứ chỉ vẽ một lần: mảnh đã
   bay tới máy thì không thêm badge "mảnh" lên máy đó. Badge đứng ở góc nút; góc nào có nét nối đi qua thì code tự đổi góc, hết góc
   (nút giữa của `ring` đủ nối) thì báo lỗi.
@@ -276,7 +278,7 @@ mỗi dòng lỗi nêu mục, nhịp, giá trị sai hoặc giờ và các phầ
 - "badge … đè lên nối", "badge của … góc nào … cũng có nét nối": bỏ badge đó, nói ý bằng một chip; badge theo nút được `keep` sang
   mục có nối mới đi qua nó thì khai báo lại nút ở mục sau bằng id mới (không `keep`);
 - "chỉ hiện … rồi tắt …, không kịp đọc": đặt chữ đó ở cụm trước, bỏ `delay`, hoặc dời nhịp đầu của mục sau sang cụm kế;
-- "brief viết 'X', không phải 'x'": viết nhãn đúng hoa thường của brief; rộng quá 140 px thì đổi sang một danh từ chung ("công ty");
+- "brief viết 'X', không phải 'x'": viết nhãn đúng hoa thường của brief; rộng quá 159 px thì đổi sang một danh từ chung ("công ty");
 - "chỉ có thanh tiêu đề trên nền trống": thêm mục mở đầu (luật "Mở đầu");
 - "màu neon cùng lúc": `dim` bớt, hoặc đổi `tone` của chip cho trùng một màu đang có;
 - "hơn 5 giây không có nhịp hình": thêm một nhịp (`state`, `flow`, `chip`…) ở cụm giữa quãng đó;

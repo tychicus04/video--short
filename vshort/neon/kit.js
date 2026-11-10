@@ -76,16 +76,16 @@ const line = (r, L, key, b, size, css = "", font = fontOf(r.e)) =>   // one text
   H("div", `tx ${font} t-${key}`, L, box(b, `font-size:${size}px;line-height:${b[3] - b[1]}px;${css}`));
 
 const KINDS = {
-  icon: (r, L, key) => iconG(r, svgIn(L), r.e.icon, r.e.x, r.e.y, r.e.size, key, r.e.size >= 150 ? 4 : 3.5),   // 4 px at a hub
-  badge: (r, L, key) => iconG(r, svgIn(L), r.e.icon, r.e.x, r.e.y, r.e.size, key, 2.5),
+  icon: (r, L, key) => iconG(r, svgIn(L), r.e.icon, r.e.x, r.e.y, r.e.size, key, r.e.size >= 150 ? 4.5 : 4),   // layout.STROKE: 4.5 px at a hub
+  badge: (r, L, key) => iconG(r, svgIn(L), r.e.icon, r.e.x, r.e.y, r.e.size, key, 3),
   hero(r, L, key) {
     const e = r.e;
-    iconG(r, svgIn(L), e.icon, e.x, e.y, e.size, key, 4.5);
+    iconG(r, svgIn(L), e.icon, e.x, e.y, e.size, key, 5);
     if (e.label) words(r, line(r, L, key, e.label_box, 30, "text-align:center", "f-mono"), e.label);
   },
   tile(r, L, key) {
     const e = r.e, s = e.size;
-    V("rect", { x: e.x - s / 2, y: e.y - s / 2, width: s, height: s, rx: 6, fill: `rgba(${RGB[key]},.16)`, stroke: COLOR[key], "stroke-width": 2.5 },
+    V("rect", { x: e.x - s / 2, y: e.y - s / 2, width: s, height: s, rx: 6, fill: `rgba(${RGB[key]},.16)`, stroke: COLOR[key], "stroke-width": 3 },
       V("g", { class: "g-" + key }, svgIn(L)));
   },
   link(r, L, key) {

@@ -28,7 +28,7 @@ html, body { width: 1080px; height: 1920px; overflow: hidden; background: #04060
 .tx { position: absolute; white-space: pre; }
 .f-bold  { font-family: "Be Vietnam Pro", sans-serif; font-weight: 700; }
 .f-extra { font-family: "Be Vietnam Pro", sans-serif; font-weight: 800; }
-.f-mono  { font-family: "IBM Plex Mono", monospace; font-weight: 600; letter-spacing: 2px; }
+.f-mono  { font-family: "IBM Plex Mono", monospace; font-weight: 600; letter-spacing: 1px; }
 .t-normal { color: #2BE3FF; text-shadow: 0 0 8px rgba(43,227,255,.7); }
 .t-claim  { color: #FFC53D; text-shadow: 0 0 8px rgba(255,197,61,.7); }
 .t-risk   { color: #FF4D61; text-shadow: 0 0 8px rgba(255,77,97,.7); }

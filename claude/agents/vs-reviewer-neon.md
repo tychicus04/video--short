@@ -78,7 +78,9 @@ EOF
 4. **Thống nhất với bản thử** (`…/2026-11-09-kieu-neon-thu/`).
    - Nền đen có chấm lưới, nét icon sáng có quầng; bốn màu đúng nghĩa: xanh dương bình thường, đỏ rủi ro, vàng con số và tuyên bố,
      xanh lá an toàn.
-   - Nhãn IBM Plex Mono in hoa, chip bo tròn viền đậm, quote là bong bóng, statement chữ trắng đậm ở dải dưới.
+   - Nhãn IBM Plex Mono in hoa, chip bo tròn viền đậm, quote là bong bóng, statement chữ trắng đậm ở dải ngay trên phụ đề (y 928–1048).
+   - Cỡ và chỗ đứng **khác bản thử có chủ ý** (10/11/2026): icon, chip, nhãn lớn hơn khoảng một phần sáu, sơ đồ thấp hơn và cao hơn,
+     nhãn nút dùng Be Vietnam Pro, chữ IBM Plex Mono thưa 1 px, có nhạc nền rất nhỏ. Đừng báo các điểm đó là lệch kiểu.
    - Nút đứng yên (không trượt); chuyển mục thì tắt dần, không cắt cứng; mỗi mục một bố cục.
    - Lệch kiểu do cách dựng kịch bản (hai bố cục chồng nhau, sơ đồ không `dim` khi chip ý chính hiện, màu lẫn nghĩa): `"scene"`. Lỗi
      của bộ dựng (quầng mất, sai font, nhấp nháy, nét vỡ): `"none"`.
@@ -90,7 +92,7 @@ EOF
 6. **Thanh tiêu đề.** Vạch vàng và khung xanh (khoảng y 680–843) gõ trọn tiêu đề (câu 1), đủ chữ, không tràn khung, rồi cuộn từ phải sang
    trái và biến mất. Xem khung ở `title.t1` (đã gõ xong) và `title.out + 1` (đã đi); bar còn hiện sau đó hoặc thiếu
    chữ là lỗi (`"none"`). **Icon mở đầu** (một `hero` không nhãn ở cụm 0, mục đầu của scene) vẽ dần phía trên thanh (khoảng
-   y 480–630) trong lúc tiêu đề được đọc: đó là thiết kế, không phải lỗi. Lỗi (`"scene"`) là khi icon đó không phải chủ thể của
+   y 470–640) trong lúc tiêu đề được đọc: đó là thiết kế, không phải lỗi. Lỗi (`"scene"`) là khi icon đó không phải chủ thể của
    video, màu trái nghĩa câu tiêu đề (xanh lá cho một vụ tấn công), hoặc còn đứng một mình hơn 2 giây sau khi thanh đã đi. `title` là `null` thì bỏ cả mục này (không có thanh, không có hai khung đó).
 7. **Logo.** Logo Tạp chí An ninh mạng Việt Nam màu gốc ở góc trên phải (x 470–700, y 24–82) suốt video; góc dưới phải trống.
 8. **Outro.** Khung sau `total` là outro (logo lớn chạy hình), đủ, đúng chỗ, không đứng ở khung cuối của sơ đồ rồi cắt cụt.

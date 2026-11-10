@@ -7,47 +7,56 @@ from dataclasses import dataclass
 from vshort.scene import Beat, SceneError, Section
 from vshort.textfit import UI_RIGHT, UI_RIGHT_FROM, UI_TOP, _font
 
-C = (330.0, 560.0)  # the centre, where a hub stands
+# The picture, 10/11/2026 (Tai: icons, text and the empty band above the captions): everything a sixth larger than the spike (icons
+# 84 -> 98, chips 22 -> 26 px, labels 22 -> 25 px) and the diagram 44 px lower and taller, so it fills the frame down to the statement, which stands just
+# over the captions. The numbers below are worked out together; change one and run tests/test_layout.py's full layouts.
+C = (330.0, 604.0)  # the centre, where a hub stands
 _RING_ANGLES = (0, 50, 130, 180, 230, 310)  # degrees; y grows downwards, so 50 is below and to the right
+RING = (228, 256)  # the ring's half-width and half-height: x is held by the platform's buttons, y has room
+ARM = 232  # how far a `pair` slot stands from the hub
 
 SLOTS: dict[str, dict[str, tuple[float, float]]] = {
     "none": {},
     "center": {"hub": C},
-    # `below` stands 220 under the hub, not 200: at 200 (330, 760) the hub's label fits only at the 4 px fallback, 0.25 px past the 4 px
-    # margin from `below`'s tile, too fragile (the font files are untracked downloads and may differ between the Mac and pve2)
-    # the slots stand 230 / 220 px from the hub, so a link to it shows 72 / 62 px of line once cut at both ends (SHORT + SHORT_HUB = 158;
-    # at 180 px it was a 22 px stub); `above` at 340 keeps its split tile (y - 83) clear of the section-label band (190 - 230)
-    "pair": {"hub": C, "left": (100, 560), "right": (560, 560), "above": (330, 340), "below": (330, 780)},
-    "ring": {"hub": C} | {f"r{k}": (C[0] + 228 * math.cos(math.radians(a)), C[1] + 228 * math.sin(math.radians(a)))
+    # ARM leaves 61 px of link once cut at both ends (SHORT + SHORT_HUB = 171; under MIN_LINK it is a stub). `below` at ARM keeps its
+    # split tile 7 px clear of the hub's label, and its own label (to y 923) clear of the statement band; `above` keeps its tile
+    # (to y 266) clear of the section label (190 - 224)
+    "pair": {"hub": C, "left": (C[0] - ARM, C[1]), "right": (C[0] + ARM, C[1]), "above": (C[0], C[1] - ARM), "below": (C[0], C[1] + ARM)},
+    # RING and a 25 px label no wider than 159 px are the largest at which a ring with every slot, label, badge and tile in use still
+    # places (a sweep of angle, both radii and the label size; a 26 px label finds no ring at all)
+    "ring": {"hub": C} | {f"r{k}": (C[0] + RING[0] * math.cos(math.radians(a)), C[1] + RING[1] * math.sin(math.radians(a)))
                           for k, a in enumerate(_RING_ANGLES)},
-    "chain": {f"c{k}": (330, 330 + 150 * k) for k in range(4)},
-    # the rows are 200 apart, not 170: a label under the top row and a tile over the bottom row need room between them, and 200 keeps
-    # the labels at the 8 px gap with room to spare (175 would also pass)
-    "grid": {f"g{k}": ((162, 330, 498)[k % 3], (460, 660)[k // 3]) for k in range(6)},
+    "chain": {f"c{k}": (330, 346 + 165 * k) for k in range(4)},  # 165 apart: 59 px of link between two nodes; the last ends over the statement
+    # the columns are 172 apart, a label's width and a margin; the rows 224: a label under the top row, then a tile over the bottom row
+    "grid": {f"g{k}": ((158, 330, 502)[k % 3], (492, 716)[k // 3]) for k in range(6)},
 }
 
-ICON, HUB = 84, 150  # an icon's side at a normal slot / at the hub
+ICON, HUB = 98, 164  # an icon's side at a normal slot / at the hub
 INK = 20 / 24  # an icon's paths fill this much of its square: Lucide draws inside a 20 × 20 live area of its 24 × 24 grid
-STROKE = {"icon": 3.5, "hub": 4, "badge": 2.5, "hero": 4.5, "tile": 2.5}  # px, the kit's (runtime-contract "Strokes")
-SHORT, SHORT_HUB = 46, 112  # a link stops this far from the centre of a normal / hub-sized node
+STROKE = {"icon": 4, "hub": 4.5, "badge": 3, "hero": 5, "tile": 3}  # px, the kit's (runtime-contract "Strokes")
+# a link stops this far from the centre of a normal / hub-sized node: at a hub, past the label 8 px under it (70 + 8 + 34 + 4)
+SHORT, SHORT_HUB = 53, 118
 MIN_LINK = 48  # a link with less line than this showing between its two cut ends is refused: a flow dot would hop along a stub
-BADGE, TILE, HERO = 34, 30, 170  # sides of a badge, a split tile and the hero icon
+BADGE, TILE, HERO = 42, 34, 200  # sides of a badge, a split tile and the hero icon
 BADGE_CORNERS = ((-1, -1), (1, -1), (1, 1), (-1, 1))  # where a badge may stand by its node, in the order tried: left/right, above/below
 TUNNEL_HALF = 6  # a `tunnel` link is two rails this far either side of its line; the kit draws them there
-LABEL_FONT, LABEL_SIZE, LABEL_MAX = "BeVietnamPro-Bold.ttf", 22, 140  # a node's label; wider than 140 px is an error
+TEXT = 26  # px: a chip, a section's label (the spike's 22 read small on a phone)
+LABEL_FONT, LABEL_SIZE, LABEL_MAX = "BeVietnamPro-Bold.ttf", 25, 159  # a node's label; wider than LABEL_MAX px is an error ("kẻ tấn công" is 157)
 MONO, EXTRA = "IBMPlexMono-SemiBold.ttf", "BeVietnamPro-ExtraBold.ttf"
-SPACING = 2  # px between the letters of every IBM Plex Mono text (the spike's .lbl)
+SPACING = 1  # px between the letters of every IBM Plex Mono text (the spike's .lbl had 2 at 22 px: at 26 a chip was too wide to stand beside a node)
 ALIGN = {"l": "left", "m": "center"}
 CHIP_PAD = (19, 7)  # the spike's chip: padding 4 × 16 and a 3 px border, around the text
 SECTION_XY = (60, 190)
 LEFT_EDGE, RIGHT_EDGE = 40, 680  # nothing nearer the sides (y < 535: the logo's edge and a margin; below: UI_RIGHT)
-DIAGRAM = (250, 900)  # labels and chips next to a node stay in these rows
-HARD = (UI_TOP, 999)  # everything else: below the top bar, and (y >= 1000 is the caption band) above the captions
+# labels and chips stay in these rows: down to the foot of the statement band, which a section's own statement holds against them
+DIAGRAM = (250, 1048)
+HARD = (UI_TOP, 1079)  # everything else: below the top bar, and above the captions (one line, standing on y 1140: from y 1092)
 # How far from the icon's ink, in the order tried. 4 comes after 8 only because in a full ring r0's and r3's label under the icon
-# (at 8) comes within 3 px of the next node's tile; it is tried only when 8 is blocked.
-LABEL_GAPS, CHIP_GAPS = (8, 4, 16, 24, 32, 40), (12, 24, 36, 48, 60, 72, 84)
-FREE_CHIPS = (60, 12)  # a chip without `near`: the left column, and the gap between two of them
-HERO_LABEL_Y = 756
+# (at 8) comes close to the next node's tile; it is tried only when 8 is blocked.
+# 48: the widest label under the hub of a full ring clears the links to r1 and r2 only that far down.
+LABEL_GAPS, CHIP_GAPS = (8, 4, 16, 24, 32, 40, 48), (12, 24, 36, 48, 60, 72, 84, 96, 108, 120, 132)
+FREE_CHIPS = (60, 8)  # a chip without `near`: the left column, and the gap between two of them (two fit over a full ring)
+HERO_Y, HERO_LABEL_Y = 554, 756  # the hero stays where the spike drew it: over the title bar (y 680 - 843) when it opens the video
 QUOTE_W = 480  # how wide a quote's words may run: the spike starts them at x 96, y 458 inside the bubble
 
 
@@ -59,7 +68,9 @@ class Box:
     y1: float
 
 
-STATEMENT_BAND = Box(60, 870, 612, 990)
+# two lines of 44 px. It starts under the label of a `pair`'s `below` node (to y 923): the closing statement stands over a kept, dimmed
+# diagram, whose labels were placed sections earlier. A caption stands 44 px under it (from y 1092).
+STATEMENT_BAND = Box(60, 928, 612, 1048)
 QUOTE_BOX = Box(60, 380, 600, 750)
 
 
@@ -222,9 +233,9 @@ def place(section: Section, kept: list[dict] = ()) -> list[dict]:
              "tone": tone, "box": [round(v, 2) for v in (min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2))]})
 
     if section.label:
-        b = text_box(section.label, MONO, 22, *SECTION_XY)
+        b = text_box(section.label, MONO, TEXT, *SECTION_XY)
         if _inside(b, *HARD):
-            put(_text("section", f"{sid}.label", section.label, MONO, 22, b, tone, align=ALIGN["l"]))
+            put(_text("section", f"{sid}.label", section.label, MONO, TEXT, b, tone, align=ALIGN["l"]))
         else:
             problems.append(f"nhãn mục {sid}: dài quá, ra ngoài vùng an toàn")
 
@@ -258,7 +269,7 @@ def place(section: Section, kept: list[dict] = ()) -> list[dict]:
         elif bt.do == "hero":
             label = a.get("label", "")
             lb = text_box(label, MONO, 30, C[0], HERO_LABEL_Y, "m") if label else Box(C[0], HERO_LABEL_Y, C[0], HERO_LABEL_Y)
-            hero = _icon("hero", eid, a["icon"], C[0], C[1] - 6, HERO, a.get("tone", "safe"), beat=k, label=label, label_box=_lst(lb))
+            hero = _icon("hero", eid, a["icon"], C[0], HERO_Y, HERO, a.get("tone", "safe"), beat=k, label=label, label_box=_lst(lb))
             if label:  # the hero's box holds its label too, so every check sees it
                 hero["box"] = [f(p, q) for f, p, q in zip((min, min, max, max), hero["box"], hero["label_box"])]
             if label and not _inside(lb, *HARD):
@@ -271,8 +282,8 @@ def place(section: Section, kept: list[dict] = ()) -> list[dict]:
                 continue
             w, lh = max(text_box(s, EXTRA, 44, 0, 0).x1 for s in lines), _line(EXTRA, 44)
             x0 = (band.x0 + band.x1 - w) / 2  # the lines are centred in their box, and the box in the band
-            out.append(_text("statement", eid, a["text"], EXTRA, 44, Box(x0, band.y0, x0 + w, band.y0 + lh * len(lines)), None,
-                             beat=k, lines=lines, lh=lh))
+            put(_text("statement", eid, a["text"], EXTRA, 44, Box(x0, band.y0, x0 + w, band.y0 + lh * len(lines)), None,
+                      beat=k, lines=lines, lh=lh))  # an obstacle: this section's chips and labels keep off it
         elif bt.do == "quote":
             if (lines := _wrap(a["text"], EXTRA, 54, QUOTE_W, 4)) is None:
                 problems.append(f"lời trích {a['text']!r} ({where}): dài quá, hơn 4 dòng trong bong bóng")
@@ -299,14 +310,18 @@ def place(section: Section, kept: list[dict] = ()) -> list[dict]:
         else:
             put(_text("label", f"{n.id}.label", n.label, LABEL_FONT, LABEL_SIZE, b, tone, align=ALIGN["m"], of=n.id))
 
-    y = 250 if section.label else 190  # where the next chip without `near` may start
+    y = 252 if section.label else 190  # where the next chip without `near` may start
     for k, bt in chips:
         text = bt.args["text"]
-        t = text_box(text, MONO, 22, 0, 0)
+        t = text_box(text, MONO, TEXT, 0, 0)
         w, h = t.x1 + 2 * CHIP_PAD[0], t.y1 + 2 * CHIP_PAD[1]
         if near := bt.args.get("near"):
             ic = node(near, f"mục {sid}, nhịp {k} (chip)")
-            spots = (s for g in CHIP_GAPS for s in _spots(Box(*ic["box"]), w, h, g, "abrl"))
+            ib = Box(*ic["box"])
+            spots = [s for g in CHIP_GAPS for s in _spots(ib, w, h, g, "abrl")]
+            # then above and below once more, an end of the chip on the icon's edge instead of its middle on the icon's: a chip a sixth
+            # larger than the spike's is often too wide to stand centred between a neighbour's label and the frame
+            spots += [Box(x, s.y0, x + w, s.y1) for g in CHIP_GAPS for s in _spots(ib, w, h, g, "ab") for x in (ib.x0, ib.x1 - w)]
             b, who = next((s for s in spots if free(s)), None), f" cạnh {near}"
         else:  # the left column, top down: the first place that is free
             x = FREE_CHIPS[0]
@@ -318,7 +333,7 @@ def place(section: Section, kept: list[dict] = ()) -> list[dict]:
         if b is None:
             problems.append(f"chip {text!r}{who}: không còn chỗ trống")
         else:
-            put(_text("chip", f"{sid}.{k}", text, MONO, 22, b, bt.args.get("tone", "claim"), align=ALIGN["m"], beat=k))
+            put(_text("chip", f"{sid}.{k}", text, MONO, TEXT, b, bt.args.get("tone", "claim"), align=ALIGN["m"], beat=k))
 
     if problems:
         raise SceneError(problems)
