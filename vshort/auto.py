@@ -573,7 +573,12 @@ def _finish(run: Run, rev: dict, rounds: int) -> None:
     neon = _neon(run)  # no retiming, no patched pictures: the picture is drawn from scene.json
     if not neon:
         out.append(_retime_note(run))
-    fx = run.read("sfx.json") if run.file("sfx.json").exists() else []
+    elif run.file("timeline.json").exists():  # the length Tai's rule is about: the voice as it was read, and the outro
+        secs = run.read("timeline.json")["total"] + script.OUTRO
+        out.append(f"Độ dài: {secs:.1f} s".replace(".", ",")
+                   + ("" if script.VIDEO_MIN <= secs <= script.VIDEO_MAX else
+                      f" — ngoài {script.VIDEO_MIN}–{script.VIDEO_MAX} s dù giọng đã chỉnh hết mức; rút hoặc thêm lời rồi duyệt lại"))
+    fx =run.read("sfx.json") if run.file("sfx.json").exists() else []
     out.append("Hiệu ứng âm thanh: " + (", ".join(f"{c['name']} {c['at']:.1f} s" for c in fx) or "không có"))
     for v in run.read("visuals.json") if not neon and run.file("visuals.json").exists() else []:
         out.append(f"- {v.get('kind')} câu {v.get('ids') or v.get('id')}: "

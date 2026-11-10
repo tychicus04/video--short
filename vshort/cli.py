@@ -14,13 +14,14 @@ from PIL import Image
 from vshort import auto, cms, cover, hf, publish, retime, sound
 from vshort.captions import Fragment, detect_fragments, write_sheets
 from vshort.compose import write_composition
-from vshort.fit import Placement, build_narration, phrase_times, sequence, total
+from vshort.fit import Placement, build_narration, phrase_times, sequence, tempo, total
 from vshort.media import frame_at, probe
 from vshort.plates import clean, scene_changes, scene_cuts
 from vshort.render import OUTRO, build_ass, export_outro, export_title, render_neon, render_pieces
 from vshort.run import Run, config
 from vshort.scene import SceneError, check, load_scene, phrase_table, resolve
-from vshort.script import (Sentence, check_brief, check_neon, check_numbers, check_script, check_style,
+from vshort.script import OUTRO as OUTRO_SECS
+from vshort.script import (VIDEO_MAX, VIDEO_MIN, Sentence, check_brief, check_neon, check_numbers, check_script, check_style,
                            group_sentences, mechanism_steps, merge_text, merged)
 from vshort.stills import NLM_OUTRO, contact_sheet, grid_image, pick_still, scene_of
 from vshort.tts import (Clip, QuotaExceeded, clip_paths, gemini_speaker, load_api_key, synth_lines, synth_script,
@@ -326,10 +327,16 @@ def cmd_timeline(a) -> int:
         _err("giọng đọc cũ không khớp kịch bản — chạy lại `vshort tts`")
         return BAD_INPUT
     clips = [Clip(c["id"], Path(c["path"]), c["duration"]) for c in rows]
-    placements = sequence(clips)
+    # a neon video runs VIDEO_MIN–VIDEO_MAX s, outro and all (Tai, 10/11/2026): `check` counted syllables, this is the voice itself
+    pace = tempo(clips, VIDEO_MIN - OUTRO_SECS, VIDEO_MAX - OUTRO_SECS) if style_of(run) == "neon" else 1.0
+    placements = sequence(clips, pace)
     end = total(placements)
-    run.write("timeline.json", {"total": end, "placements": [asdict(p) for p in placements]})
-    build_narration(placements, clips, end, run.file("narration.wav"))
+    run.write("timeline.json", {"total": end, "tempo": pace, "placements": [asdict(p) for p in placements]})
+    build_narration(placements, clips, end, run.file("narration.wav"), pace)
+    if pace != 1:
+        vi = lambda x: f"{x:.1f}".replace(".", ",")
+        print(f"Giọng đọc {'nhanh hơn' if pace > 1 else 'chậm hơn'} {vi(abs(pace - 1) * 100)} % để video dài "
+              f"{vi(end + OUTRO_SECS)} s (cần {VIDEO_MIN}–{VIDEO_MAX}).")
     run.mark("timeline")
     return OK
 

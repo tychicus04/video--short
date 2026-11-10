@@ -719,6 +719,15 @@ def test_neon_finish_leaves_out_the_old_flows_lines(neon_flow):
     assert "patch" not in auto.get_state(run)["message"] and "Co giãn" not in auto.get_state(run)["message"]
 
 
+@pytest.mark.parametrize("total, said", [(69.1, "Độ dài: 71,6 s — ngoài 60–70 s"), (65.0, "Độ dài: 67,5 s\n")])
+def test_neon_finish_says_how_long_the_video_runs_and_when_that_is_outside_the_rule(neon_flow, total, said):
+    run, fk = neon_flow
+    approve_all(run, fk)
+    run.write("timeline.json", {"total": total, "placements": []})  # final.mp4 is this and the 2.5 s outro
+    auto.run_auto(run)
+    assert said in auto.get_state(run)["message"]
+
+
 def test_neon_scene_that_fails_vshort_scene_stops_and_the_rerun_asks_again(neon_flow):
     run, fk = neon_flow
     approve_all(run, fk)

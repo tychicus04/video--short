@@ -2,8 +2,9 @@ import wave
 from pathlib import Path
 
 import numpy as np
+import pytest
 
-from vshort.fit import Placement, build_narration, phrase_fracs, phrase_times, sequence, total
+from vshort.fit import Placement, build_narration, phrase_fracs, phrase_times, sequence, tempo, total
 from vshort.tts import Clip
 
 
@@ -46,3 +47,29 @@ def test_build_narration_places_clips(tmp_path):
     loud = np.abs(a) > 1000
     assert not loud[: int(0.45 * 24000)].any() and loud[int(0.6 * 24000)] and loud[int(2.5 * 24000)]
     assert not loud[int(3.2 * 24000):].any()  # no tempo change: the 1.1 s clip lasts 1.1 s, ends at 3.1
+
+
+def _ten(speech: float) -> list[Clip]:
+    return [Clip(k, Path("x"), speech / 10) for k in range(10)]  # with 0.2 + 9 x 0.5 + 0.5 = 5.2 s of breaths around them
+
+
+def test_tempo_leaves_a_voice_that_fits_and_brings_another_half_a_second_inside_the_window():
+    assert tempo(_ten(50), 50, 60) == 1.0  # 55.2 s
+    fast, slow = tempo(_ten(56), 50, 60), tempo(_ten(44), 50, 60)  # 61.2 s and 49.2 s
+    assert fast > 1 > slow
+    assert total(sequence(_ten(56), fast)) == pytest.approx(59.5, abs=0.01)
+    assert total(sequence(_ten(44), slow)) == pytest.approx(50.5, abs=0.01)
+
+
+def test_tempo_never_changes_the_voice_by_more_than_5_percent():
+    assert tempo(_ten(80), 50, 60) == 1.05 and tempo(_ten(20), 50, 60) == 0.95
+
+
+def test_build_narration_plays_the_clips_at_the_tempo(tmp_path):
+    clips = [Clip(1, _tone(tmp_path / "a.wav", 1.0), 1.0)]
+    out = tmp_path / "n.wav"
+    build_narration(sequence(clips, 1.25), clips, total=2.0, out_wav=out, tempo=1.25)
+    with wave.open(str(out)) as w:
+        a = np.frombuffer(w.readframes(w.getnframes()), np.int16)
+    loud = np.abs(a) > 1000
+    assert loud[int(0.6 * 24000)] and not loud[int(1.1 * 24000):].any()  # 0.2 + 1.0 / 1.25 = 1.0: over by 1.1 s, not 1.2

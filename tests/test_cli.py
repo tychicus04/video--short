@@ -87,6 +87,26 @@ def test_timeline_writes_back_to_back_narration(tmp_path):
     assert (tmp_path / "narration.wav").exists() and Run(tmp_path).done("timeline")
 
 
+def _long_voice(run, style):
+    """14 sentences of 4.5 s: 63 s of speech, 70.2 s with fit's breaths, 72.7 s with the outro."""
+    run.mkdir()
+    _timeline_run(run, [{"id": k, "phrases": f"câu {k}"} for k in range(1, 15)])
+    rows = json.loads((run / "tts.json").read_text())
+    (run / "tts.json").write_text(json.dumps([r | {"duration": 4.5} for r in rows]))
+    (run / "run.json").write_text(json.dumps({"slug": "x"} | style))
+    assert main(["timeline", str(run)]) == 0
+    return json.loads((run / "timeline.json").read_text())
+
+
+def test_timeline_plays_a_neon_voice_faster_when_the_video_would_pass_70_s(tmp_path, capsys):
+    t = _long_voice(tmp_path / "neon", {"style": "neon"})
+    assert 1 < t["tempo"] <= 1.05 and 60 <= t["total"] + 2.5 <= 70  # final.mp4 = the voice + the 2.5 s outro
+    assert t["placements"][0]["dur"] == pytest.approx(4.5 / t["tempo"])
+    assert "nhanh hơn" in capsys.readouterr().out
+    old = _long_voice(tmp_path / "old", {})
+    assert old["tempo"] == 1.0 and old["total"] == pytest.approx(70.2)  # the NotebookLM flow has no such rule
+
+
 def test_timeline_refuses_clips_of_another_script(tmp_path, capsys):
     changed = [  # (script now, script the clips were made from)
         (SCRIPT + [{"id": 4, "phrases": "c"}], SCRIPT),  # a line was added
