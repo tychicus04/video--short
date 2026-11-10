@@ -109,3 +109,28 @@ def test_scene_cues_the_opening_hero_under_the_title_bar_takes_neither_the_pop_n
     # a red opening icon is not the moment the attack lands: the glitch waits for the first red of the diagram
     rt = _rt((0.0, "draw", ["r"], {"d": 0.7}), (5.0, "on", ["n"], {}), (20.0, "tone", ["n"], {"to": "risk"}), title=TITLE, elements=[RED])
     assert sound.scene_cues(rt) == [sound.Cue("whoosh", 5.0), sound.Cue("glitch", 20.0)]
+
+
+def _db(x) -> float:
+    return 20 * np.log10(np.sqrt(np.mean(np.square(x, dtype=np.float64))) + 1e-9)
+
+
+def test_a_bed_runs_far_under_the_voice_on_through_the_outro_and_fades_out(tmp_path):
+    t = np.arange(4 * sound.RATE) / sound.RATE
+    voice = (0.3 * np.sin(2 * np.pi * 1000 * t) * ((t > 0.5) & (t < 3))).astype(np.float32)  # speaks 0.5–3 s of a 4 s diagram
+    out, r = tmp_path / "m.wav", sound.RATE
+    sound.master(_wav(tmp_path, voice), [], 4.0, out, bed_to=6.5)  # the outro is 2.5 s more
+    a = sound._decode(out)
+    assert abs(len(a) / r - 6.5) < 0.01
+    said, alone = _db(a[r:2 * r]), _db(a[int(4.2 * r):int(4.8 * r)])
+    assert 16 < said - alone < 28  # about BED_UNDER: heard in the pauses, never over a word
+    assert _db(a[-r // 20:]) < alone - 15 and _db(a[:r // 20]) < alone - 15  # it fades in from nothing and out to nothing
+    sound.master(_wav(tmp_path, voice), [], 4.0, out)  # the NotebookLM flow: no bed, the pause is silent
+    assert np.abs(sound._decode(out)[int(3.2 * r):]).max() < 1e-3
+
+
+def test_scene_cues_a_last_whoosh_takes_the_diagram_out_into_the_outro():
+    rt = _rt((5.0, "on", ["n"], {}), title=TITLE) | {"total": 30.0}
+    assert sound.scene_cues(rt) == [sound.Cue("whoosh", 5.0), sound.Cue("whoosh", 30.0)]
+    rt = _rt((5.0, "on", ["n"], {}), (29.0, "tone", ["n"], {"to": "risk"}), title=TITLE) | {"total": 30.0}
+    assert sound.scene_cues(rt) == [sound.Cue("whoosh", 5.0), sound.Cue("glitch", 29.0)]  # too soon after the glitch: dropped

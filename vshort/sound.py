@@ -19,6 +19,12 @@ LIMIT = f"aresample={4 * RATE},alimiter=limit={10 ** (PEAK / 20):.3f}:attack=1:r
 UNDER = 3.0  # dB an effect sits under the voice (shorts-kit, by ear); past 6 it sounds like a mixing slip
 FX_LUFS = -20.0
 SPACE = 1.5  # s: an effect this soon after another is dropped
+# The neon style's bed: a soft pad made here, so nothing of someone else's goes into the public repo. An open fifth (A2 E3 A3 E4 A4,
+# no third to colour the words), each note a pair 0.4 Hz apart so it breathes. BED_UNDER is by measurement, not by ear: the magazine's
+# own reportage holds its music at -34 to -40 dBFS in the pauses, 20 to 26 dB under its voice. 0 switches the bed off.
+BED = ((110.0, 0.35), (164.81, 0.30), (220.0, 0.45), (329.63, 0.25), (440.0, 0.12))  # Hz, weight
+BED_UNDER = 22.0  # dB under the voice
+BED_FADE = 1.5  # s: in at the start, out at the end of the outro
 
 
 @dataclass(frozen=True)
@@ -46,7 +52,7 @@ def scene_cues(rt: dict) -> list[Cue]:
     """The neon style's accents, from the resolved scene (runtime-contract.md) and not from the picture: a whoosh at the first
     action after the title bar has left, a glitch where red first arrives after it (a `tone` to risk, or the first showing of an element
     that starts red: `resolve` folds a `state` before the element is shown into its starting tone), a pop where a hero is
-    first drawn after the title bar has left (not the opening hero drawn under it). In time order, none within SPACE of the one before it."""
+    first drawn after the title bar has left (not the opening hero drawn under it), a last whoosh where the outro fades in. In time order, none within SPACE of the one before it."""
     acts = rt["actions"]
     left = rt["title"]["out"] if rt.get("title") else 0.0
     heroes = {e["id"] for e in rt["elements"] if e["kind"] == "hero"}
@@ -54,7 +60,8 @@ def scene_cues(rt: dict) -> list[Cue]:
     arrives = lambda a: (a["do"] == "tone" and a.get("to") == "risk") or (a["do"] in ("on", "draw", "type") and red & set(a["ids"]))
     found = [("whoosh", next((a["t"] for a in acts if a["t"] >= left), None)),
              ("glitch", next((a["t"] for a in acts if a["t"] >= left and arrives(a)), None)),
-             ("pop", next((a["t"] for a in acts if a["t"] >= left and a["do"] in ("on", "draw") and heroes & set(a["ids"])), None))]
+             ("pop", next((a["t"] for a in acts if a["t"] >= left and a["do"] in ("on", "draw") and heroes & set(a["ids"])), None)),
+             ("whoosh", rt.get("total"))]  # out of the diagram into the outro, as the first one came in
     out: list[Cue] = []
     for name, at in sorted((f for f in found if f[1] is not None), key=lambda f: f[1]):
         if not out or at - out[-1].at >= SPACE:
@@ -80,15 +87,28 @@ def loudness(pcm: np.ndarray) -> float:
     return float(json.loads(log[log.rindex("{"):log.rindex("}") + 1])["input_i"])  # ffmpeg's summary lines follow it
 
 
-def master(voice: Path, cues: list[Cue], total: float, out: Path) -> None:
-    """`voice` with the effects, at least `total` s, at LUFS with true peaks under PEAK: a 48 kHz mono wav.
+def pad(seconds: float) -> np.ndarray:
+    """The bed, `seconds` long: BED's notes, each swelling slowly at its own pace, faded in and out over BED_FADE."""
+    t = np.arange(round(seconds * RATE)) / RATE
+    wave = sum(w * (1 + 0.25 * np.sin(2 * np.pi * (0.05 + 0.013 * k) * t + k)) * (np.sin(2 * np.pi * f * t) + np.sin(2 * np.pi * (f + 0.4) * t))
+               for k, (f, w) in enumerate(BED))
+    return (wave * np.clip(np.minimum(t, seconds - t) / BED_FADE, 0, 1)).astype(np.float32)
+
+
+def master(voice: Path, cues: list[Cue], total: float, out: Path, bed_to: float | None = None) -> None:
+    """`voice` with the effects, at least `total` s, at LUFS with true peaks under PEAK: a 48 kHz mono wav. With `bed_to` (the
+    neon style: the end of the outro) the track runs that long, over the pad BED_UNDER dB under the voice, so no pause and no
+    outro is dead silent.
 
     A plain gain then the limiter, not loudnorm: it falls back to compressing the voice when the gain would clip, and
     then lands up to 1 LU short.
     """
     track = _decode(voice)
-    track = np.pad(track, (0, max(0, round(total * RATE) - len(track))))
+    track = np.pad(track, (0, max(0, round(max(total, bed_to or 0) * RATE) - len(track))))
     if math.isfinite(loud := loudness(track)):
+        if bed_to and BED_UNDER:
+            bed = pad(bed_to)
+            track[:len(bed)] += bed * 10 ** ((loud - BED_UNDER - loudness(bed)) / 20)
         for c in cues:
             fx = _decode(SFX / f"{c.name}.mp3") * 10 ** ((loud - UNDER - FX_LUFS) / 20)
             i = round(c.at * RATE) - int(np.argmax(np.convolve(fx * fx, np.ones(RATE // 100), "same")))

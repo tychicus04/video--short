@@ -431,9 +431,9 @@ def _render_neon(run: Run) -> int:
         return FAILED
     fx = sound.scene_cues(rt)
     run.write("sfx.json", [asdict(c) for c in fx])
-    sound.master(run.file("narration.wav"), fx, rt["total"], run.file("mix.wav"))
     if not OUTRO.exists():
         export_outro()
+    sound.master(run.file("narration.wav"), fx, rt["total"], run.file("mix.wav"), bed_to=rt["total"] + probe(OUTRO).duration)
     render_neon(visuals, run.file("mix.wav"), rt["total"], final)
     run.mark("render")
     print(final)
