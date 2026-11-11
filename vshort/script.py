@@ -215,9 +215,9 @@ def check_brief(script: list[dict], brief: str) -> list[str]:
 
 
 # Neon style: Claude writes the Vietnamese narration from the approved brief, so it is checked against the brief
-NEON_PACE = 4.5  # syllables a second the neon voice really reads: 384 in 84.8 s, 387 in 84.4 s (10/11/2026)
+NEON_PACE = 4.5  # syllables a second Gemini reads the neon voice: 384 in 84.8 s, 387 in 84.4 s (10/11/2026); fit plays it SPEED faster
 OUTRO = 2.5  # s: anm-outro.mp4, after the narration
-VIDEO_MIN, VIDEO_MAX = 60, 70  # s of final.mp4: Tai, 10/11/2026 ("1p-1p10s", so the viewer doesn't tire)
+VIDEO_MIN, VIDEO_MAX = 45, 90  # s of final.mp4, as long as the topic needs: Tai, 11/11/2026 (60–70 from 10/11 was too tight)
 
 
 def video_secs(script: list[dict]) -> float:
@@ -225,7 +225,7 @@ def video_secs(script: list[dict]) -> float:
     It put openmatter-neon at 99.0 s (98.5 measured) and storm-2603-neon at 98.2 s (96.6)."""
     from vshort import fit  # fit imports this module
     said = [r for r in script if r["phrases"].strip()]
-    speech = sum(syllables(r["phrases"]) for r in said) / NEON_PACE
+    speech = sum(syllables(r["phrases"]) for r in said) / (NEON_PACE * fit.SPEED)
     return speech + fit.LEAD + fit.GAP * max(len(said) - 1, 0) + fit.TAIL + OUTRO
 
 

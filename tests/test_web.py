@@ -663,7 +663,7 @@ def test_neon_run_detail_shows_the_script_without_english(client, run_neon):
     assert j["progress"]["stages"][3]["label"] == "Duyệt lời" and len(j["progress"]["stages"]) == 9
     assert j["style"] == "neon"  # the brief screen's approve button is enabled by it: a neon run has no brief.en.md
     assert j["row"]["progress"]["label"] == "Duyệt lời"
-    assert j["length"] == {"secs": 5, "min": 60, "max": 70}  # 4 âm tiết, 2 câu: 0.9 + 1.2 + 2.5 s outro
+    assert j["length"] == {"secs": 5, "min": 45, "max": 90}  # 4 âm tiết, 2 câu: 0.9 + 1.2 + 2.5 s outro
 
 
 def test_old_run_detail_still_pairs_the_english(client, run_s):

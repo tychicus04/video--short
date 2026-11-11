@@ -9,7 +9,7 @@ import traceback
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from vshort import script, timing
+from vshort import fit, script, timing
 from vshort.run import Run
 
 ROOT = Path(__file__).resolve().parent.parent  # agents run here: Sonnet session, advisor off, `model:` of the agent
@@ -145,7 +145,7 @@ RESEARCH_NEON = (
     "\n\nKiểu neon: video này không làm bằng NotebookLM nên KHÔNG viết {run}/brief.en.md. Mục \"Cơ chế từng bước\" của "
     "brief.vi.md là bắt buộc: bước 0 \"Bình thường: …\" rồi ít nhất 2 bước đánh số tiếp, mỗi bước đúng nguồn (ghi nguồn đó "
     "trong {run}/sources.md); không ghi \"Không có\". Không tìm được cơ chế có nguồn thì nói thẳng điều đó trong brief "
-    "(run sẽ dừng ở bước duyệt brief cho Tai quyết), đừng bịa bước cho đủ. Video chỉ 60–70 giây, nên \"Cơ chế từng bước\" "
+    "(run sẽ dừng ở bước duyệt brief cho Tai quyết), đừng bịa bước cho đủ. Video dài nhiều nhất 90 giây, nên \"Cơ chế từng bước\" "
     "tối đa 4 bước sau bước 0 và \"Ý chính\" tối đa 3 ý, kể cả ý cái giá. Notebook và {run}/notebook.txt vẫn làm như trên.")
 BRIEF_CHECK_NEON = (
     "RUN={run}. Chế độ tự động: Tai không duyệt brief. Soát brief ({run}/brief.vi.md) với {run}/sources.md: dữ kiện, ngày, "
@@ -353,7 +353,7 @@ def script_md(run: Run) -> str:
     for r in lines:
         n = script.syllables(r["phrases"])
         total += n
-        secs = f"{n / script.NEON_PACE:.1f}".replace(".", ",")
+        secs = f"{n / (script.NEON_PACE * fit.SPEED):.1f}".replace(".", ",")
         rows.append(f"| {r['id']} | {' '.join(r['phrases'].replace('|', ' ').split())} | {n} | {secs} | {r.get('note', '')} |")
     secs = script.video_secs(lines)
     end = f"Tổng: {total} âm tiết; video ~{secs:.0f} giây, kể cả nghỉ giữa câu và outro (cần {script.VIDEO_MIN}–{script.VIDEO_MAX})"
@@ -585,7 +585,7 @@ def _finish(run: Run, rev: dict, rounds: int) -> None:
         secs = run.read("timeline.json")["total"] + script.OUTRO
         out.append(f"Độ dài: {secs:.1f} s".replace(".", ",")
                    + ("" if script.VIDEO_MIN <= secs <= script.VIDEO_MAX else
-                      f" — ngoài {script.VIDEO_MIN}–{script.VIDEO_MAX} s dù giọng đã chỉnh hết mức; rút hoặc thêm lời rồi duyệt lại"))
+                      f" — ngoài {script.VIDEO_MIN}–{script.VIDEO_MAX} s; rút hoặc thêm lời rồi duyệt lại"))
     fx =run.read("sfx.json") if run.file("sfx.json").exists() else []
     out.append("Hiệu ứng âm thanh: " + (", ".join(f"{c['name']} {c['at']:.1f} s" for c in fx) or "không có"))
     for v in run.read("visuals.json") if not neon and run.file("visuals.json").exists() else []:

@@ -14,6 +14,7 @@ RATE = 24000
 GAP = 0.5  # silence between two sentences: a breath, as NotebookLM leaves
 LEAD = 0.2  # before the first
 TAIL = 0.5  # after the last
+SPEED = 1.06  # a neon voice is played this much faster than Gemini reads it, pitch kept (Tai, 11/11/2026: "tăng tốc độ đọc lên 1 tí")
 
 
 @dataclass
@@ -21,22 +22,6 @@ class Placement:
     id: int
     start: float
     dur: float
-
-
-MAX_TEMPO = 0.05  # the voice is played at most this much faster or slower: more is heard
-INSIDE = 0.5  # s inside the window a corrected voice lands, not on its edge
-
-
-def tempo(clips: list[Clip], lo: float, hi: float) -> float:
-    """How much faster (> 1) or slower the clips must play for `total(sequence(clips))` to fall in lo–hi s: 1.0 when it already
-    does, else what lands it INSIDE the nearer edge, within MAX_TEMPO. Gemini reads 4.2 to 4.65 syllables a second from one run
-    to the next, so a length counted in syllables is 4 s out either way (four neon runs, 10/11/2026)."""
-    speech = sum(c.duration for c in clips)
-    rest = LEAD + GAP * (len(clips) - 1) + TAIL
-    if lo <= speech + rest <= hi:
-        return 1.0
-    want = (hi - INSIDE if speech + rest > hi else lo + INSIDE) - rest
-    return round(min(1 + MAX_TEMPO, max(1 - MAX_TEMPO, speech / want)), 4)
 
 
 def sequence(clips: list[Clip], tempo: float = 1.0) -> list[Placement]:

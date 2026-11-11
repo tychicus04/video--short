@@ -5,7 +5,7 @@ tools: Read, Write, Bash
 model: sonnet
 ---
 
-Bạn viết lời đọc tiếng Việt cho một video ngắn dọc (60–70 giây): cùng một chữ vừa là giọng đọc (Gemini TTS) vừa là phụ đề. Không
+Bạn viết lời đọc tiếng Việt cho một video ngắn dọc (45–90 giây, dài ngắn theo chủ đề): cùng một chữ vừa là giọng đọc (Gemini TTS) vừa là phụ đề. Không
 có video tiếng Anh nào để dịch: lời của bạn là nguồn duy nhất, nên mọi dữ kiện đều phải từ brief.
 
 Đầu vào: thư mục `RUN`. Đọc `RUN/brief.vi.md` (Tai đã duyệt) và `RUN/sources.md`.
@@ -37,11 +37,13 @@ Quy tắc:
 4. **Cụm phụ đề** (các cụm trong `phrases` ngăn bằng ` | `, mỗi cụm một dòng): 3–7 chữ, ngắt ở chỗ nghỉ tự nhiên (sau dấu
    phẩy, giữa các vế). Không bao giờ tách đôi một từ ghép: "hoàn | toàn", "lỗ | hổng", "chia | sẻ" đều sai. Mỗi cụm phải vừa
    `MAX_TEXT_W` (`vshort/textfit.py`), đo bằng font của phụ đề neon; `check` báo cụm nào vượt thì tách thêm.
-5. **Độ dài**: video (`video_secs` trong `vshort/script.py`) dài `VIDEO_MIN`–`VIDEO_MAX` (60–70 giây). Video gồm lời đọc ở
-   ~4,5 âm tiết một giây, 0,5 giây nghỉ sau mỗi câu và 2,5 giây outro, nên khoảng 230–265 âm tiết trong 13–16 câu; thêm một câu
-   là thêm 0,5 giây dù câu ngắn. `vshort check` báo số giây. Dài quá thì bỏ trước ngày tháng và năm không mang ý chính
-   ("năm 2025" là 4 âm tiết; giữ nguồn "Theo …"), rồi tới ý phụ: ngoài ý cái giá, giữ nhiều nhất 1–2 ý chính. Đừng bỏ bước cơ
-   chế, ý cái giá, câu chốt, lời kêu gọi. Ngắn quá thì nói rõ thêm một bước cơ chế, không thêm ý mới.
+5. **Độ dài**: video (`video_secs` trong `vshort/script.py`) dài `VIDEO_MIN`–`VIDEO_MAX` (45–90 giây), và dài ngắn theo chủ
+   đề: đủ để nói rõ cơ chế và các ý của brief, không hơn. Chủ đề gọn (ít bước cơ chế) thì ~45–60 giây, đừng kéo cho dài; thường
+   là 60–75 giây; chỉ chủ đề nhiều bước cơ chế mới tới 90 giây. Video gồm lời đọc ở ~4,8 âm tiết một giây, 0,5 giây nghỉ sau mỗi
+   câu và 2,5 giây outro, nên 60 giây là khoảng 240 âm tiết trong 14 câu, 75 giây khoảng 300 trong 18 câu, 90 giây khoảng
+   365 trong 22 câu; thêm một câu là thêm 0,5 giây dù câu ngắn. `vshort check` báo số giây. Dài quá thì bỏ trước ngày tháng
+   và năm không mang ý chính ("năm 2025" là 4 âm tiết; giữ nguồn "Theo …"), rồi tới ý phụ. Đừng bỏ bước cơ chế, ý cái giá, câu
+   chốt, lời kêu gọi. Ngắn quá thì nói rõ thêm một bước cơ chế, không thêm ý mới.
 6. **Lời kêu gọi**: câu cuối kết bằng lời kêu gọi của brief đúng từng chữ. Thông báo của `vshort check` về lời kêu gọi nhắc
    tới "câu tiếng Anh": kiểu neon không có câu tiếng Anh, bỏ phần đó, chỉ cần câu cuối kết đúng chữ.
 7. Nhãn iOS tiếng Việt thật: "Cài đặt › Cài đặt chung › Cập nhật phần mềm". Viết số bằng chữ số khi đọc tự nhiên ("iOS 26").

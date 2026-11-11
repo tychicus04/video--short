@@ -11,6 +11,7 @@ from PIL import Image, ImageDraw
 
 from vshort import cli, hf
 from vshort.cli import main
+from vshort.fit import SPEED
 from vshort.media import frame_at, probe
 from vshort.render import OUTRO
 from vshort.run import Run
@@ -88,7 +89,7 @@ def test_timeline_writes_back_to_back_narration(tmp_path):
 
 
 def _long_voice(run, style):
-    """14 sentences of 4.5 s: 63 s of speech, 70.2 s with fit's breaths, 72.7 s with the outro."""
+    """14 sentences of 4.5 s: 63 s of speech, 70.2 s with fit's breaths."""
     run.mkdir()
     _timeline_run(run, [{"id": k, "phrases": f"câu {k}"} for k in range(1, 15)])
     rows = json.loads((run / "tts.json").read_text())
@@ -98,11 +99,10 @@ def _long_voice(run, style):
     return json.loads((run / "timeline.json").read_text())
 
 
-def test_timeline_plays_a_neon_voice_faster_when_the_video_would_pass_70_s(tmp_path, capsys):
+def test_timeline_plays_a_neon_voice_speed_times_faster_however_long_the_video(tmp_path):
     t = _long_voice(tmp_path / "neon", {"style": "neon"})
-    assert 1 < t["tempo"] <= 1.05 and 60 <= t["total"] + 2.5 <= 70  # final.mp4 = the voice + the 2.5 s outro
-    assert t["placements"][0]["dur"] == pytest.approx(4.5 / t["tempo"])
-    assert "nhanh hơn" in capsys.readouterr().out
+    assert t["tempo"] == SPEED and t["total"] == pytest.approx(63 / SPEED + 7.2)  # no stretching to fit a length
+    assert t["placements"][0]["dur"] == pytest.approx(4.5 / SPEED)
     old = _long_voice(tmp_path / "old", {})
     assert old["tempo"] == 1.0 and old["total"] == pytest.approx(70.2)  # the NotebookLM flow has no such rule
 

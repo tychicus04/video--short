@@ -200,15 +200,18 @@ def test_check_neon_measures_captions_in_the_neon_font():
 
 def test_check_neon_length_is_the_videos_with_its_pauses_and_outro():
     rows = [{"id": 1, "phrases": "OpenMatter hứa AI không cần data center", "note": ""}]
-    rows += [{"id": i, "phrases": "Lời nói ngắn gọn thôi mà " * 3, "note": ""} for i in range(2, 15)]
-    assert not any("giây" in p for p in check_neon(rows, NEON_BRIEF))  # 247 âm tiết, 14 câu: ~65 s
+    said = "Lời nói ngắn gọn thôi mà rõ ràng hơn "
+    rows += [{"id": i, "phrases": said * 3, "note": ""} for i in range(2, 15)]
+    assert not any("giây" in p for p in check_neon(rows, NEON_BRIEF))  # 364 âm tiết, 14 câu: ~86 s
     assert any("giây" in p for p in check_neon(rows * 2, NEON_BRIEF))
     # the same syllables in twice the sentences: the breaths between them push it past VIDEO_MAX
-    halves = rows[:1] + [dict(r, phrases="Lời nói ngắn gọn thôi mà " * k) for r in rows[1:] for k in (1, 2)]
+    halves = rows[:1] + [dict(r, phrases=said * k) for r in rows[1:] for k in (1, 2)]
     assert any("giây" in p for p in check_neon(halves, NEON_BRIEF))
 
 
-def test_video_secs_matches_the_two_neon_videos_measured():
+def test_video_secs_matches_the_two_neon_videos_measured(monkeypatch):
+    from vshort import fit
+    monkeypatch.setattr(fit, "SPEED", 1.0)  # measured before the voice was played faster
     def script(per_row):
         return [{"id": i, "phrases": "ba " * n} for i, n in enumerate(per_row, 1)]
     assert abs(video_secs(script([17] * 12 + [18] * 10)) - 98.5) < 1  # openmatter-neon: 384 âm tiết, 22 câu

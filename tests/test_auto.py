@@ -3,7 +3,7 @@ import sys
 
 import pytest
 
-from vshort import auto
+from vshort import auto, fit
 from vshort.run import Run
 
 FAKE = """import json, os, sys, time
@@ -675,10 +675,10 @@ def test_neon_loi_md_has_a_row_per_sentence_and_the_estimated_length(neon_flow):
     auto.run_auto(run)
     rows = run.file("loi.md").read_text(encoding="utf-8").splitlines()
     assert rows[0].startswith("| id |") and "âm tiết" in rows[0] and "giây" in rows[0] and "note" in rows[0]
-    assert [c.strip() for c in rows[2].split("|")[1:-1]] == ["1", "Tiêu đề", "2", f"{2 / script.NEON_PACE:.1f}".replace(".", ","), ""]
+    assert [c.strip() for c in rows[2].split("|")[1:-1]] == ["1", "Tiêu đề", "2", f"{2 / (script.NEON_PACE * fit.SPEED):.1f}".replace(".", ","), ""]
     cells = [c.strip() for c in rows[3].split("|")[1:-1]]
-    assert cells == ["2", "Bình thường máy chủ chạy đúng", "6", f"{6 / script.NEON_PACE:.1f}".replace(".", ","), "theo brief"]
-    assert "|" not in cells[1] and rows[-1].startswith("Tổng: 8 âm tiết; video ~") and "(cần 60–70)" in rows[-1]
+    assert cells == ["2", "Bình thường máy chủ chạy đúng", "6", f"{6 / (script.NEON_PACE * fit.SPEED):.1f}".replace(".", ","), "theo brief"]
+    assert "|" not in cells[1] and rows[-1].startswith("Tổng: 8 âm tiết; video ~") and "(cần 45–90)" in rows[-1]
 
 
 def test_neon_goes_on_from_the_approved_script_to_the_voice_its_timeline_and_the_picture(neon_flow):
@@ -748,7 +748,7 @@ def test_neon_finish_leaves_out_the_old_flows_lines(neon_flow):
     assert "patch" not in auto.get_state(run)["message"] and "Co giãn" not in auto.get_state(run)["message"]
 
 
-@pytest.mark.parametrize("total, said", [(69.1, "Độ dài: 71,6 s — ngoài 60–70 s"), (65.0, "Độ dài: 67,5 s\n")])
+@pytest.mark.parametrize("total, said", [(88.6, "Độ dài: 91,1 s — ngoài 45–90 s"), (65.0, "Độ dài: 67,5 s\n")])
 def test_neon_finish_says_how_long_the_video_runs_and_when_that_is_outside_the_rule(neon_flow, total, said):
     run, fk = neon_flow
     approve_all(run, fk)

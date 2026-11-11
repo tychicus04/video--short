@@ -48,14 +48,14 @@ Chỉ chạy khi Tai nói "kiểu neon". Thiết kế: `~/video-pipeline/docs/su
   - **20 — duyệt brief**: như trên, chỉ sửa `brief.vi.md`. Trước điểm dừng này `vs-factcheck` đã đối chiếu từng dữ kiện với toàn văn
     nguồn và sửa thẳng vào brief: đưa Tai cả `$RUN/kiem-chung.md` (dòng đầu, mục "Đã đổi trong brief" và "Tai nên xem"). Brief phải có mục "Cơ chế từng bước" (bước 0 "Bình thường" và ít nhất 2 bước có nguồn),
     thiếu thì script dừng ở đây báo lỗi.
-  - **21 — duyệt lời**: dán `$RUN/loi.md` (mỗi câu một hàng: lời, số âm tiết, giây ước tính, note; cuối bảng là tổng và độ dài video, kể cả nghỉ giữa câu và outro; cần 60–70 giây).
+  - **21 — duyệt lời**: dán `$RUN/loi.md` (mỗi câu một hàng: lời, số âm tiết, giây ước tính, note; cuối bảng là tổng và độ dài video, kể cả nghỉ giữa câu và outro; cần 45–90 giây, dài ngắn theo chủ đề).
     Tai sửa → sửa `$RUN/script.vi.json` (giữ dấu `|` chia cụm phụ đề). Rồi `vshort approve $RUN script` (mã 2 = `vshort check` trượt:
     đưa Tai lỗi, sửa, duyệt lại) → `vshort auto $RUN` → bước 2.
 - **Các agent**: `vs-writer` (viết lời từ brief, chia cụm phụ đề, tự kiểm bằng `vshort check`), `vs-scene` (dựng `scene.json`: sơ đồ neon theo lời,
   code xếp chỗ và kiểm bằng `vshort scene`), `vs-reviewer-neon` (xem khung `final.mp4`, ghi `review.md` / `review.json`; lỗi thì vòng sửa
   chạy lại `vs-scene` hoặc `vs-writer`, tối đa 2 vòng). `vs-researcher` vẫn lo bước tìm hiểu; `vs-factcheck` (Opus) soát dữ kiện
   của brief với nguồn ngay sau đó, ở cả chế độ `--auto`.
-- Video ra 1080×1920. Độ dài 60–70 giây được giữ trên giọng thật: `vshort timeline` cho giọng nhanh hay chậm tối đa 5 %, và tin kết
-  thúc ghi "Độ dài: … s".
+- Video ra 1080×1920. Độ dài 45–90 giây, theo lời: `vshort timeline` phát giọng nhanh hơn Gemini đọc `fit.SPEED` (1,06) lần, không
+  co giãn cho vừa một mốc; tin kết thúc ghi "Độ dài: … s".
 - Bảng điều khiển hiện 9 chặng thay vì 10 (Viết lời, Duyệt lời, Giọng đọc, Kịch bản hình thay cho chặng NotebookLM → Giọng đọc và hình);
   cột tiếng Anh ở màn duyệt lời để trống.
